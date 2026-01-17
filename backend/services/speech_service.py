@@ -1,6 +1,7 @@
 import os
 import requests
 
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
@@ -34,7 +35,6 @@ def transcribe_audio(audio_path: str) -> str:
             files=files,
             timeout=30
         )
-
     except requests.exceptions.RequestException as e:
         raise TranscriptionError(
             error_type="network",
@@ -44,7 +44,7 @@ def transcribe_audio(audio_path: str) -> str:
     if response.status_code == 429:
         raise TranscriptionError(
             error_type="quota",
-            message="OpenAI transcription quota exceeded"
+            message="Speech transcription quota exceeded"
         )
 
     if response.status_code != 200:

@@ -1,8 +1,6 @@
 import os
-from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -23,24 +21,23 @@ def clarity_transcript(raw_text: str) -> str:
         prompt = f"""
 You are an assistive AI for people with speech impairments.
 
-Improve CLARITY ONLY. Do NOT change meaning.
+Improve CLARITY ONLY.
+Do NOT add meaning, intent, or new information.
 
 INPUT:
 "{raw_text}"
 
-Remove:
-- duplicate adjacent words
-- filler words
-Fix:
-- grammar
-- punctuation
+YOU MAY:
+- Remove adjacent duplicate words
+- Remove filler words (um, uh)
+- Fix grammar and punctuation
 
-Do NOT:
-- add content
-- complete thoughts
-- infer meaning
+YOU MUST NOT:
+- Complete unfinished thoughts
+- Infer missing words
+- Paraphrase
 
-Return only cleaned text.
+Return ONLY the cleaned text.
 """.strip()
 
         response = client.chat.completions.create(
@@ -64,4 +61,5 @@ Return only cleaned text.
         return cleaned
 
     except Exception:
+        # Never block pipeline
         return raw_text
