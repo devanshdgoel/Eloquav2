@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+
+# Environment variables
+.env
+
+# Pytest cache (root-level)
+.pytest_cache/
+
+# Temporary audio files
+backend/temp_audio/

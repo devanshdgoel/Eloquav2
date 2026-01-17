@@ -1,15 +1,10 @@
 from fastapi import FastAPI
+from api.speech_routes import router as speech_router
 
-app = FastAPI()
+app = FastAPI(title="Eloqua Backend")
 
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Eloqua backend running"}
 
-@app.post("/process-audio")
-async def process_audio(file: UploadFile = File(...)):
-    return { 
-        "status": "received", 
-        "filename": file.filename, 
-        "message": "Audio received, pipeline coming next"
-    }
+app.include_router(speech_router, prefix="/api")
