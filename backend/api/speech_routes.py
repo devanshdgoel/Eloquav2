@@ -6,6 +6,8 @@ from utils.file_handler import save_uploaded_audio
 from services.speech_service import transcribe_audio, TranscriptionError
 from services.clarity_speech import clarity_transcript
 
+from services.enhancement_service import generate_enhanced_speech, SpeechEnhancementError
+
 router = APIRouter()
 
 
@@ -42,10 +44,20 @@ async def process_audio(file: UploadFile = File(...)):
     # 4. Clarity (non-blocking)
     cleaned_transcript = clarity_transcript(raw_transcript)
 
+    audio_url = None
+
+    try:
+        audio_path = generate_enhanced_speech(cleaned_transcript)
+        audio_url = f"/api/audio/{audio_path.name}"
+    except SpeechEnhancementError:
+        audio_url = None
+
+
     # 5. Respond
     return {
         "status": "success",
         "raw_transcript": raw_transcript,
         "cleaned_transcript": cleaned_transcript,
-        "clarity_applied": cleaned_transcript != raw_transcript
+        "clarity_applied": cleaned_transcript != raw_transcript,
+        "audio_url": audio_url
     }
