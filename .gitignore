@@ -13,3 +13,14 @@ venv/
 
 # Temporary audio files
 backend/temp_audio/
+
+# Frontend
+node_modules/
+frontend/.expo/
+frontend/dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
