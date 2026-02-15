@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { saveUserProfile } from '../../utils/storage';
+import { colors, typography, spacing, borderRadius } from '../../theme';
 
 const CONDITIONS = [
   { id: 'parkinsons', label: "Parkinson's Disease" },
@@ -57,7 +58,6 @@ export default function SetupAboutYouScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Progress */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: '66%' }]} />
@@ -80,7 +80,6 @@ export default function SetupAboutYouScreen({ navigation }) {
             This helps us personalize your experience and training exercises.
           </Text>
 
-          {/* Name */}
           <Text style={styles.fieldLabel}>What should we call you?</Text>
           <TextInput
             style={styles.textInput}
@@ -90,9 +89,9 @@ export default function SetupAboutYouScreen({ navigation }) {
             onChangeText={setDisplayName}
             autoCapitalize="words"
             returnKeyType="done"
+            accessibilityLabel="Enter your first name"
           />
 
-          {/* Condition */}
           <Text style={styles.fieldLabel}>What condition are you working with?</Text>
           <View style={styles.optionsGrid}>
             {CONDITIONS.map(condition => (
@@ -104,6 +103,9 @@ export default function SetupAboutYouScreen({ navigation }) {
                 ]}
                 onPress={() => setSelectedCondition(condition.id)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={condition.label}
+                accessibilityState={{ selected: selectedCondition === condition.id }}
               >
                 <Text
                   style={[
@@ -117,7 +119,6 @@ export default function SetupAboutYouScreen({ navigation }) {
             ))}
           </View>
 
-          {/* Goals */}
           <Text style={styles.fieldLabel}>What are your goals? (select all that apply)</Text>
           <View style={styles.optionsGrid}>
             {GOALS.map(goal => (
@@ -129,6 +130,9 @@ export default function SetupAboutYouScreen({ navigation }) {
                 ]}
                 onPress={() => toggleGoal(goal.id)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={goal.label}
+                accessibilityState={{ selected: selectedGoals.includes(goal.id) }}
               >
                 <Text
                   style={[
@@ -150,6 +154,9 @@ export default function SetupAboutYouScreen({ navigation }) {
           onPress={handleContinue}
           disabled={!canContinue}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Continue to voice setup"
+          accessibilityState={{ disabled: !canContinue }}
         >
           <Text style={styles.continueButtonText}>Continue</Text>
         </TouchableOpacity>
@@ -161,72 +168,68 @@ export default function SetupAboutYouScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
   flex: {
     flex: 1,
   },
   progressContainer: {
     paddingTop: 60,
-    paddingHorizontal: 32,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
   },
   progressBar: {
     height: 4,
-    backgroundColor: '#2A2A4A',
-    borderRadius: 2,
-    marginBottom: 8,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#6C63FF',
-    borderRadius: 2,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
   },
   progressText: {
-    color: '#A0A0B8',
-    fontSize: 14,
+    color: colors.textSecondary,
+    ...typography.bodySmall,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 32,
-    paddingTop: 24,
-    paddingBottom: 24,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   sectionLabel: {
-    color: '#6C63FF',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 2,
+    color: colors.primary,
+    ...typography.caption,
     marginBottom: 12,
   },
   heading: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
+    ...typography.heading,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
   description: {
-    fontSize: 16,
-    color: '#A0A0B8',
-    lineHeight: 24,
-    marginBottom: 32,
+    ...typography.subheading,
+    color: colors.textSecondary,
+    marginBottom: spacing.xl,
   },
   fieldLabel: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: colors.textPrimary,
+    ...typography.body,
     fontWeight: '600',
     marginBottom: 12,
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   textInput: {
-    backgroundColor: '#2A2A4A',
-    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    color: '#FFFFFF',
-    fontSize: 16,
+    paddingVertical: spacing.md,
+    color: colors.textPrimary,
+    ...typography.body,
     marginBottom: 28,
   },
   optionsGrid: {
@@ -236,7 +239,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   optionChip: {
-    backgroundColor: '#2A2A4A',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 12,
@@ -244,24 +247,24 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   optionChipSelected: {
-    borderColor: '#6C63FF',
-    backgroundColor: '#2A2A5A',
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceHighlight,
   },
   optionChipText: {
-    color: '#A0A0B8',
+    color: colors.textSecondary,
     fontSize: 15,
     fontWeight: '500',
   },
   optionChipTextSelected: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   footer: {
-    paddingHorizontal: 32,
-    paddingBottom: 48,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   continueButton: {
-    backgroundColor: '#6C63FF',
-    borderRadius: 16,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.xl,
     paddingVertical: 18,
     alignItems: 'center',
   },
@@ -269,8 +272,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   continueButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
 });

@@ -14,13 +14,14 @@ import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import { useAuth } from '../../context/AuthContext';
 import { authenticateWithGoogle } from '../../services/authService';
-import { isOnboardingComplete } from '../../utils/storage';
+import { colors, typography, spacing, borderRadius } from '../../theme';
+import {
+  GOOGLE_WEB_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_ANDROID_CLIENT_ID,
+} from '../../config/env';
 
 WebBrowser.maybeCompleteAuthSession();
-
-const GOOGLE_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
-const GOOGLE_IOS_CLIENT_ID = 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com';
-const GOOGLE_ANDROID_CLIENT_ID = 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com';
 
 export default function SignInScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
@@ -58,12 +59,9 @@ export default function SignInScreen({ navigation }) {
         const authResult = await authenticateWithGoogle(idToken);
         setSignedIn(authResult.user);
 
-        // Returning user: if they already completed onboarding, go home
         if (authResult.is_existing_user) {
           setOnboarded();
-          // Navigation will auto-redirect to Home via AppNavigator
         } else {
-          // New user signed in via Sign In (edge case) — still needs setup
           navigation.replace('SetupPermissions');
         }
       } else if (result.type !== 'cancel') {
@@ -83,6 +81,8 @@ export default function SignInScreen({ navigation }) {
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => navigation.goBack()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
       >
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
@@ -98,9 +98,11 @@ export default function SignInScreen({ navigation }) {
           onPress={handleGoogleSignIn}
           disabled={loading}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in with Google"
         >
           {loading ? (
-            <ActivityIndicator color="#1A1A2E" size="small" />
+            <ActivityIndicator color={colors.background} size="small" />
           ) : (
             <>
               <Text style={styles.googleIcon}>G</Text>
@@ -116,37 +118,35 @@ export default function SignInScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
   backButton: {
     paddingTop: 60,
-    paddingHorizontal: 24,
-    paddingBottom: 8,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   backText: {
-    color: '#A0A0B8',
-    fontSize: 16,
+    color: colors.textSecondary,
+    ...typography.body,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 32,
+    paddingHorizontal: spacing.xl,
     justifyContent: 'center',
   },
   heading: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...typography.headingLarge,
+    color: colors.textPrimary,
     marginBottom: 12,
   },
   subheading: {
-    fontSize: 16,
-    color: '#A0A0B8',
-    lineHeight: 24,
+    ...typography.subheading,
+    color: colors.textSecondary,
     marginBottom: 40,
   },
   googleButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
     paddingVertical: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -156,11 +156,10 @@ const styles = StyleSheet.create({
   googleIcon: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.googleBlue,
   },
   googleButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A2E',
+    ...typography.button,
+    color: colors.background,
   },
 });

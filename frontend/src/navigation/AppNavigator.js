@@ -4,9 +4,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
 import { useAuth } from '../context/AuthContext';
+import { colors } from '../theme';
 
 // Splash / Onboarding screens
-import SplashScreen from '../screens/SplashScreen';
+import SplashScreen from '../screens/splash/SplashScreen';
 import SignUpScreen from '../screens/onboarding/SignUpScreen';
 import SignInScreen from '../screens/onboarding/SignInScreen';
 import SetupPermissionsScreen from '../screens/onboarding/SetupPermissionsScreen';
@@ -49,7 +50,7 @@ export default function AppNavigator() {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6C63FF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -66,6 +67,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
 });

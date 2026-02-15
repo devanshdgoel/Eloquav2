@@ -1,8 +1,9 @@
-import os
+import logging
 import requests
 
+from config import OPENAI_API_KEY
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+logger = logging.getLogger(__name__)
 
 
 class TranscriptionError(Exception):
@@ -36,18 +37,21 @@ def transcribe_audio(audio_path: str) -> str:
             timeout=30
         )
     except requests.exceptions.RequestException as e:
+        logger.error("Transcription network error: %s", e)
         raise TranscriptionError(
             error_type="network",
             message=f"Network error during transcription: {str(e)}"
         )
 
     if response.status_code == 429:
+        logger.warning("OpenAI quota exceeded")
         raise TranscriptionError(
             error_type="quota",
             message="Speech transcription quota exceeded"
         )
 
     if response.status_code != 200:
+        logger.error("Whisper API error %d: %s", response.status_code, response.text)
         raise TranscriptionError(
             error_type="internal",
             message=f"Whisper error: {response.text}"

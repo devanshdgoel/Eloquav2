@@ -1,8 +1,9 @@
-import os
+import logging
 from openai import OpenAI
 
+from config import OPENAI_API_KEY
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+logger = logging.getLogger(__name__)
 
 ENABLE_CLARITY = True
 MAXLENGTH_EXPANSION_RATIO = 1.3
@@ -60,6 +61,6 @@ Return ONLY the cleaned text.
 
         return cleaned
 
-    except Exception:
-        # Never block pipeline
+    except Exception as e:
+        logger.warning("Clarity enhancement failed, returning raw text: %s", e)
         return raw_text

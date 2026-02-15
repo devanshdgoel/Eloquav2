@@ -1,7 +1,5 @@
 import { saveToken, removeToken } from '../utils/storage';
-
-// Update this to your Render deployment URL
-const API_BASE_URL = 'http://localhost:8000';
+import { API_BASE_URL } from '../config/env';
 
 /**
  * Send Firebase/Google ID token to backend, receive internal JWT

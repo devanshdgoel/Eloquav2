@@ -11,6 +11,7 @@ import {
 import { Audio } from 'expo-av';
 import { useAuth } from '../../context/AuthContext';
 import { setOnboardingComplete } from '../../utils/storage';
+import { colors, typography, spacing, borderRadius } from '../../theme';
 
 const PRACTICE_SENTENCES = [
   "The rainbow appeared after the morning rain stopped.",
@@ -56,7 +57,6 @@ export default function SetupVoiceScreen({ navigation }) {
     updated[currentSentence] = uri;
     setRecordings(updated);
 
-    // Auto-advance to next sentence
     if (currentSentence < PRACTICE_SENTENCES.length - 1) {
       setTimeout(() => setCurrentSentence(currentSentence + 1), 500);
     }
@@ -65,7 +65,6 @@ export default function SetupVoiceScreen({ navigation }) {
   async function handleFinish() {
     await setOnboardingComplete();
     setOnboarded();
-    // Navigation will automatically redirect to Home via AppNavigator
   }
 
   function handleSkip() {
@@ -89,7 +88,6 @@ export default function SetupVoiceScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Progress */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: '100%' }]} />
@@ -109,7 +107,6 @@ export default function SetupVoiceScreen({ navigation }) {
           patterns. This helps us personalize your enhancement settings.
         </Text>
 
-        {/* Sentence cards */}
         {PRACTICE_SENTENCES.map((sentence, index) => (
           <View
             key={index}
@@ -145,6 +142,8 @@ export default function SetupVoiceScreen({ navigation }) {
                 onPressIn={startRecording}
                 onPressOut={stopRecording}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={isRecording ? 'Release to stop recording' : 'Hold to record'}
               >
                 <View
                   style={[
@@ -166,6 +165,8 @@ export default function SetupVoiceScreen({ navigation }) {
                   updated[index] = null;
                   setRecordings(updated);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Re-record sentence ${index + 1}`}
               >
                 <Text style={styles.retryText}>Re-record</Text>
               </TouchableOpacity>
@@ -175,7 +176,12 @@ export default function SetupVoiceScreen({ navigation }) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+        <TouchableOpacity
+          style={styles.skipButton}
+          onPress={handleSkip}
+          accessibilityRole="button"
+          accessibilityLabel="Skip voice setup"
+        >
           <Text style={styles.skipText}>Skip for now</Text>
         </TouchableOpacity>
 
@@ -184,6 +190,9 @@ export default function SetupVoiceScreen({ navigation }) {
           onPress={handleFinish}
           disabled={!allRecorded}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Finish setup"
+          accessibilityState={{ disabled: !allRecorded }}
         >
           <Text style={styles.finishButtonText}>Finish Setup</Text>
         </TouchableOpacity>
@@ -195,68 +204,64 @@ export default function SetupVoiceScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
   progressContainer: {
     paddingTop: 60,
-    paddingHorizontal: 32,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
   },
   progressBar: {
     height: 4,
-    backgroundColor: '#2A2A4A',
-    borderRadius: 2,
-    marginBottom: 8,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#6C63FF',
-    borderRadius: 2,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
   },
   progressText: {
-    color: '#A0A0B8',
-    fontSize: 14,
+    color: colors.textSecondary,
+    ...typography.bodySmall,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 32,
-    paddingTop: 24,
-    paddingBottom: 24,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   sectionLabel: {
-    color: '#6C63FF',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 2,
+    color: colors.primary,
+    ...typography.caption,
     marginBottom: 12,
   },
   heading: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
+    ...typography.heading,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
   description: {
-    fontSize: 16,
-    color: '#A0A0B8',
-    lineHeight: 24,
-    marginBottom: 32,
+    ...typography.subheading,
+    color: colors.textSecondary,
+    marginBottom: spacing.xl,
   },
   sentenceCard: {
-    backgroundColor: '#2A2A4A',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: spacing.md,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   sentenceCardActive: {
-    borderColor: '#6C63FF',
+    borderColor: colors.primary,
   },
   sentenceCardDone: {
-    borderColor: '#4CAF50',
+    borderColor: colors.success,
     opacity: 0.85,
   },
   sentenceHeader: {
@@ -266,72 +271,72 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sentenceNumber: {
-    color: '#A0A0B8',
-    fontSize: 13,
+    color: colors.textSecondary,
+    ...typography.caption,
+    letterSpacing: 1,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   recordedBadge: {
-    backgroundColor: '#1B3A1B',
-    borderRadius: 8,
+    backgroundColor: colors.successDark,
+    borderRadius: spacing.sm,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   recordedText: {
-    color: '#4CAF50',
+    color: colors.success,
     fontSize: 12,
     fontWeight: '600',
   },
   sentenceText: {
-    color: '#A0A0B8',
+    color: colors.textSecondary,
     fontSize: 17,
     lineHeight: 26,
     fontStyle: 'italic',
   },
   sentenceTextActive: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   recordButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1A1A2E',
-    borderRadius: 14,
-    paddingVertical: 16,
-    marginTop: 16,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    marginTop: spacing.md,
     gap: 10,
   },
   recordButtonActive: {
-    backgroundColor: '#4A1A1A',
+    backgroundColor: colors.errorBackground,
   },
   recordDot: {
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#FF4444',
+    backgroundColor: colors.error,
   },
   recordDotActive: {
-    backgroundColor: '#FF0000',
+    backgroundColor: colors.errorBright,
   },
   recordButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: colors.textPrimary,
+    ...typography.body,
     fontWeight: '600',
   },
   retryButton: {
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
     paddingVertical: 6,
   },
   retryText: {
-    color: '#6C63FF',
-    fontSize: 14,
+    color: colors.primary,
+    ...typography.bodySmall,
     fontWeight: '500',
   },
   footer: {
-    paddingHorizontal: 32,
-    paddingBottom: 48,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
     gap: 12,
   },
   skipButton: {
@@ -339,12 +344,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   skipText: {
-    color: '#A0A0B8',
-    fontSize: 16,
+    color: colors.textSecondary,
+    ...typography.body,
   },
   finishButton: {
-    backgroundColor: '#6C63FF',
-    borderRadius: 16,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.xl,
     paddingVertical: 18,
     alignItems: 'center',
   },
@@ -352,8 +357,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   finishButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
 });

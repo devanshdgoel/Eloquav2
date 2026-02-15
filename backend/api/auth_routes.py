@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 from services.auth_service import verify_google_token, AuthenticationError
 from utils.jwt_handler import create_access_token
+from utils.responses import success_response
 
 
 router = APIRouter()
@@ -32,8 +33,7 @@ async def google_auth(request: GoogleAuthRequest):
         "name": user_info["name"],
     })
 
-    return {
-        "status": "success",
+    return success_response({
         "access_token": access_token,
         "user": {
             "email": user_info["email"],
@@ -41,4 +41,4 @@ async def google_auth(request: GoogleAuthRequest):
             "picture": user_info["picture"],
         },
         "is_existing_user": False,  # TODO: check against DB when user storage is added
-    }
+    })

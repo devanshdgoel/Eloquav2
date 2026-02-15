@@ -7,6 +7,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { colors, typography, spacing, borderRadius } from '../theme';
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
@@ -17,13 +18,24 @@ export default function HomeScreen() {
 
       <View style={styles.header}>
         <Text style={styles.greeting}>Welcome to Eloqua</Text>
-        <TouchableOpacity onPress={signOut} style={styles.signOutButton}>
+        <TouchableOpacity
+          onPress={signOut}
+          style={styles.signOutButton}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
-        <TouchableOpacity style={styles.card} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Speech Enhancement"
+          accessibilityHint="Record your speech and get an AI-enhanced version"
+        >
           <Text style={styles.cardIcon}>🎙️</Text>
           <Text style={styles.cardTitle}>Speech Enhancement</Text>
           <Text style={styles.cardDescription}>
@@ -31,7 +43,13 @@ export default function HomeScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.card} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Vocal Training"
+          accessibilityHint="Practice exercises to strengthen your voice"
+        >
           <Text style={styles.cardIcon}>🗣️</Text>
           <Text style={styles.cardTitle}>Vocal Training</Text>
           <Text style={styles.cardDescription}>
@@ -46,54 +64,54 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 60,
-    paddingHorizontal: 24,
-    paddingBottom: 24,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   greeting: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   signOutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: '#2A2A4A',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surface,
   },
   signOutText: {
-    color: '#A0A0B8',
-    fontSize: 14,
+    color: colors.textSecondary,
+    ...typography.bodySmall,
     fontWeight: '500',
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
-    gap: 16,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
   },
   card: {
-    backgroundColor: '#2A2A4A',
+    backgroundColor: colors.surface,
     borderRadius: 20,
-    padding: 24,
+    padding: spacing.lg,
   },
   cardIcon: {
     fontSize: 40,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   cardTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 20,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   cardDescription: {
-    color: '#A0A0B8',
+    color: colors.textSecondary,
     fontSize: 15,
     lineHeight: 22,
   },

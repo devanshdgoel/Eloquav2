@@ -14,13 +14,14 @@ import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import { useAuth } from '../../context/AuthContext';
 import { authenticateWithGoogle } from '../../services/authService';
+import { colors, typography, spacing, borderRadius } from '../../theme';
+import {
+  GOOGLE_WEB_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_ANDROID_CLIENT_ID,
+} from '../../config/env';
 
 WebBrowser.maybeCompleteAuthSession();
-
-// Replace with your actual Google OAuth client IDs
-const GOOGLE_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
-const GOOGLE_IOS_CLIENT_ID = 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com';
-const GOOGLE_ANDROID_CLIENT_ID = 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com';
 
 export default function SignUpScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
@@ -56,11 +57,9 @@ export default function SignUpScreen({ navigation }) {
       if (result.type === 'success') {
         const idToken = result.params.id_token;
 
-        // Send to our backend
         const authResult = await authenticateWithGoogle(idToken);
         setSignedIn(authResult.user);
 
-        // New account → go through setup
         navigation.replace('SetupPermissions');
       } else if (result.type === 'cancel') {
         // User cancelled, do nothing
@@ -81,6 +80,8 @@ export default function SignUpScreen({ navigation }) {
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => navigation.goBack()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
       >
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
@@ -96,9 +97,11 @@ export default function SignUpScreen({ navigation }) {
           onPress={handleGoogleSignUp}
           disabled={loading}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Continue with Google"
         >
           {loading ? (
-            <ActivityIndicator color="#1A1A2E" size="small" />
+            <ActivityIndicator color={colors.background} size="small" />
           ) : (
             <>
               <Text style={styles.googleIcon}>G</Text>
@@ -140,37 +143,35 @@ function StepItem({ number, title, description }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
   backButton: {
     paddingTop: 60,
-    paddingHorizontal: 24,
-    paddingBottom: 8,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   backText: {
-    color: '#A0A0B8',
-    fontSize: 16,
+    color: colors.textSecondary,
+    ...typography.body,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 32,
+    paddingHorizontal: spacing.xl,
     justifyContent: 'center',
   },
   heading: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...typography.headingLarge,
+    color: colors.textPrimary,
     marginBottom: 12,
   },
   subheading: {
-    fontSize: 16,
-    color: '#A0A0B8',
-    lineHeight: 24,
+    ...typography.subheading,
+    color: colors.textSecondary,
     marginBottom: 40,
   },
   googleButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
     paddingVertical: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -180,27 +181,26 @@ const styles = StyleSheet.create({
   googleIcon: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#4285F4',
+    color: colors.googleBlue,
   },
   googleButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A2E',
+    ...typography.button,
+    color: colors.background,
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 32,
+    marginVertical: spacing.xl,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#2A2A4A',
+    backgroundColor: colors.surface,
   },
   dividerText: {
-    color: '#A0A0B8',
-    paddingHorizontal: 16,
-    fontSize: 14,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.md,
+    ...typography.bodySmall,
   },
   stepsContainer: {
     gap: 20,
@@ -208,31 +208,31 @@ const styles = StyleSheet.create({
   stepItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.md,
   },
   stepNumber: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#2A2A4A',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stepNumberText: {
-    color: '#6C63FF',
-    fontSize: 16,
+    color: colors.primary,
+    ...typography.body,
     fontWeight: '700',
   },
   stepContent: {
     flex: 1,
   },
   stepTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: colors.textPrimary,
+    ...typography.body,
     fontWeight: '600',
   },
   stepDescription: {
-    color: '#A0A0B8',
-    fontSize: 14,
+    color: colors.textSecondary,
+    ...typography.bodySmall,
   },
 });

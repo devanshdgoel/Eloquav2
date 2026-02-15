@@ -8,6 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import { colors, typography, spacing, borderRadius } from '../../theme';
 
 export default function SetupPermissionsScreen({ navigation }) {
   const [micGranted, setMicGranted] = useState(false);
@@ -33,7 +34,6 @@ export default function SetupPermissionsScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Progress indicator */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: '33%' }]} />
@@ -68,6 +68,8 @@ export default function SetupPermissionsScreen({ navigation }) {
               style={styles.enableButton}
               onPress={requestMicrophonePermission}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Enable microphone access"
             >
               <Text style={styles.enableButtonText}>Enable</Text>
             </TouchableOpacity>
@@ -81,6 +83,9 @@ export default function SetupPermissionsScreen({ navigation }) {
           onPress={() => navigation.navigate('SetupAboutYou')}
           disabled={!micGranted}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Continue to next step"
+          accessibilityState={{ disabled: !micGranted }}
         >
           <Text style={styles.continueButtonText}>Continue</Text>
         </TouchableOpacity>
@@ -92,65 +97,61 @@ export default function SetupPermissionsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
   },
   progressContainer: {
     paddingTop: 60,
-    paddingHorizontal: 32,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
   },
   progressBar: {
     height: 4,
-    backgroundColor: '#2A2A4A',
-    borderRadius: 2,
-    marginBottom: 8,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#6C63FF',
-    borderRadius: 2,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
   },
   progressText: {
-    color: '#A0A0B8',
-    fontSize: 14,
+    color: colors.textSecondary,
+    ...typography.bodySmall,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 32,
-    paddingTop: 32,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
   },
   sectionLabel: {
-    color: '#6C63FF',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 2,
+    color: colors.primary,
+    ...typography.caption,
     marginBottom: 12,
   },
   heading: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...typography.heading,
+    color: colors.textPrimary,
     marginBottom: 12,
   },
   description: {
-    fontSize: 16,
-    color: '#A0A0B8',
-    lineHeight: 24,
+    ...typography.subheading,
+    color: colors.textSecondary,
     marginBottom: 40,
   },
   permissionCard: {
-    backgroundColor: '#2A2A4A',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.md,
   },
   permissionIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -161,46 +162,48 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   permissionTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: colors.textPrimary,
+    ...typography.body,
     fontWeight: '600',
     marginBottom: 2,
   },
   permissionStatus: {
-    color: '#A0A0B8',
-    fontSize: 13,
+    color: colors.textSecondary,
+    ...typography.caption,
+    letterSpacing: 0,
+    fontWeight: '400',
   },
   enableButton: {
-    backgroundColor: '#6C63FF',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
   enableButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: colors.white,
+    ...typography.bodySmall,
     fontWeight: '600',
   },
   checkmark: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkmarkText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontSize: 18,
     fontWeight: '700',
   },
   footer: {
-    paddingHorizontal: 32,
-    paddingBottom: 48,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   continueButton: {
-    backgroundColor: '#6C63FF',
-    borderRadius: 16,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.xl,
     paddingVertical: 18,
     alignItems: 'center',
   },
@@ -208,8 +211,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   continueButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
 });

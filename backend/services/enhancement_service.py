@@ -1,13 +1,11 @@
-import os
+import logging
 import uuid
 import requests
 from pathlib import Path
 
+from config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-
-# Pick ONE voice for MVP (replace if needed)
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Example ElevenLabs voice
+logger = logging.getLogger(__name__)
 
 AUDIO_OUTPUT_DIR = Path("temp_audio")
 AUDIO_OUTPUT_DIR.mkdir(exist_ok=True)
@@ -27,7 +25,7 @@ def generate_enhanced_speech(text: str) -> Path:
     if not text or len(text.strip()) < 3:
         raise SpeechEnhancementError("Text too short for speech generation")
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
 
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
@@ -51,9 +49,11 @@ def generate_enhanced_speech(text: str) -> Path:
             timeout=30
         )
     except requests.exceptions.RequestException as e:
+        logger.error("ElevenLabs network error: %s", e)
         raise SpeechEnhancementError(f"Network error: {str(e)}")
 
     if response.status_code != 200:
+        logger.error("ElevenLabs API error %d: %s", response.status_code, response.text)
         raise SpeechEnhancementError(
             f"ElevenLabs error: {response.status_code} {response.text}"
         )

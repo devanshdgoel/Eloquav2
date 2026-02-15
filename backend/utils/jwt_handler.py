@@ -1,11 +1,7 @@
-import os
 import jwt
 from datetime import datetime, timedelta, timezone
 
-
-JWT_SECRET = os.getenv("JWT_SECRET", "eloqua-dev-secret-change-in-production")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
+from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
 
 
 def create_access_token(user_data: dict) -> str:
