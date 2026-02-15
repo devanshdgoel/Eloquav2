@@ -5,8 +5,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 
 import { useAuth } from '../context/AuthContext';
 
-// Onboarding screens
-import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
+// Splash / Onboarding screens
+import SplashScreen from '../screens/SplashScreen';
 import SignUpScreen from '../screens/onboarding/SignUpScreen';
 import SignInScreen from '../screens/onboarding/SignInScreen';
 import SetupPermissionsScreen from '../screens/onboarding/SetupPermissionsScreen';
@@ -25,7 +25,7 @@ const screenOptions = {
 function OnboardingStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="SignIn" component={SignInScreen} />
       <Stack.Screen name="SetupPermissions" component={SetupPermissionsScreen} />
