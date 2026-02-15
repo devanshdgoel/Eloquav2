@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createStackNavigator } from '@react-navigation/stack';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -16,7 +16,7 @@ import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 // Main app screens
 import HomeScreen from '../screens/HomeScreen';
 
-const Stack = createNativeStackNavigator();
+const Stack = createStackNavigator();
 
 const screenOptions = {
   headerShown: false,
