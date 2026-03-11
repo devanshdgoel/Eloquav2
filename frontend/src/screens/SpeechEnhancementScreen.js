@@ -300,6 +300,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {/* ── RESULTS ──────────────────────────────────────────────────────── */}
       {phase === S.RESULTS && result && (
         <View style={styles.resultsArea}>
+          {/* Voice profile badge */}
+          {result.voice_profile && (
+            <View style={styles.profileBadge}>
+              <Text style={styles.profileBadgeText}>
+                🎙 {result.voice_profile.name}  ·  {result.voice_profile.description}
+              </Text>
+            </View>
+          )}
           {/* Transcript card */}
           <View style={styles.transcriptCard}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.transcriptPad}>
@@ -457,6 +465,20 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   retryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+
+  profileBadge: {
+    backgroundColor: 'rgba(44,105,116,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignSelf: 'center',
+  },
+  profileBadgeText: {
+    fontSize: Math.round(13 * SC),
+    color: '#1C4047',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
 
   // RESULTS — Figma: card left=57, w=294, buttons left=58, w=291, h=52, rounded=20
   resultsArea: {

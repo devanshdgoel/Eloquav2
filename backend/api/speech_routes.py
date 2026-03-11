@@ -10,6 +10,7 @@ from utils.responses import success_response, error_response
 from services.speech_service import transcribe_audio, TranscriptionError
 from services.clarity_speech import clarity_transcript
 from services.enhancement_service import generate_enhanced_speech, SpeechEnhancementError
+from services.voice_profile_service import analyze_voice, DEFAULT_PROFILE
 
 logger = logging.getLogger(__name__)
 
@@ -36,39 +37,51 @@ async def process_audio(file: UploadFile = File(...)):
             status_code=413,
             detail=f"File too large. Maximum size is {MAX_AUDIO_SIZE_MB}MB."
         )
-    # Reset file position for save
     await file.seek(0)
 
     # 3. Save audio
     audio_path = save_uploaded_audio(file)
 
-    # 4. Transcribe
+    # 4. Transcribe — verbose_json gives us audio duration for speaking-rate analysis
     try:
-        raw_transcript = transcribe_audio(str(audio_path))
+        raw_transcript, audio_duration_s = transcribe_audio(str(audio_path))
     except TranscriptionError as e:
         if e.error_type == "empty":
             return error_response(e.message, error_type="empty")
-
         if e.error_type in ["quota", "network"]:
             raise HTTPException(status_code=503, detail=e.message)
-
         raise HTTPException(status_code=500, detail=e.message)
 
     # 5. Clarity enhancement
     cleaned_transcript = clarity_transcript(raw_transcript)
 
-    # 6. Generate enhanced speech
+    # 6. Match voice profile from pitch, speaking rate, and energy
+    try:
+        profile, voice_settings = analyze_voice(
+            str(audio_path), raw_transcript, audio_duration_s
+        )
+    except Exception as exc:
+        logger.warning("Voice profile matching failed (%s) — using default", exc)
+        profile = DEFAULT_PROFILE
+        voice_settings = {"stability": 0.50, "similarity_boost": 0.75, "style": 0.30, "speed": 1.0}
+
+    # 7. Generate enhanced speech with the matched voice
     audio_url = None
     try:
-        enhanced_path = generate_enhanced_speech(cleaned_transcript)
+        enhanced_path = generate_enhanced_speech(
+            cleaned_transcript,
+            voice_id=profile.voice_id,
+            voice_settings=voice_settings,
+        )
         audio_url = f"/api/audio/{enhanced_path.name}"
     except SpeechEnhancementError as e:
         logger.warning("Speech enhancement failed: %s", e)
 
-    # 7. Respond
+    # 8. Respond
     return success_response({
         "raw_transcript": raw_transcript,
         "cleaned_transcript": cleaned_transcript,
         "clarity_applied": cleaned_transcript != raw_transcript,
         "audio_url": audio_url,
+        "voice_profile": profile.to_dict(),
     })

@@ -13,7 +13,11 @@ class TranscriptionError(Exception):
         super().__init__(message)
 
 
-def transcribe_audio(audio_path: str) -> str:
+def transcribe_audio(audio_path: str) -> tuple:
+    """
+    Returns (text: str, duration_seconds: float).
+    Uses verbose_json so we get audio duration for speaking-rate analysis.
+    """
     if not OPENAI_API_KEY:
         raise TranscriptionError(
             error_type="internal",
@@ -26,7 +30,8 @@ def transcribe_audio(audio_path: str) -> str:
 
     files = {
         "file": open(audio_path, "rb"),
-        "model": (None, "whisper-1")
+        "model": (None, "whisper-1"),
+        "response_format": (None, "verbose_json"),
     }
 
     try:
@@ -57,7 +62,9 @@ def transcribe_audio(audio_path: str) -> str:
             message=f"Whisper error: {response.text}"
         )
 
-    text = response.json().get("text", "").strip()
+    data = response.json()
+    text = data.get("text", "").strip()
+    duration = float(data.get("duration", 0.0))
 
     if not text:
         raise TranscriptionError(
@@ -65,4 +72,4 @@ def transcribe_audio(audio_path: str) -> str:
             message="No clear speech detected in the audio."
         )
 
-    return text
+    return text, duration

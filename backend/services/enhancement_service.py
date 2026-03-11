@@ -15,9 +15,17 @@ class SpeechEnhancementError(Exception):
     pass
 
 
-def generate_enhanced_speech(text: str) -> Path:
+def generate_enhanced_speech(
+    text: str,
+    voice_id: str | None = None,
+    voice_settings: dict | None = None,
+) -> Path:
     """
-    Sends text to ElevenLabs and returns path to generated audio file.
+    Sends text to ElevenLabs and returns path to the generated audio file.
+
+    voice_id        — ElevenLabs voice ID; falls back to config default.
+    voice_settings  — dict with stability, similarity_boost, style, speed.
+                      Falls back to sensible defaults.
     """
     if not ELEVENLABS_API_KEY:
         raise SpeechEnhancementError("ElevenLabs API key not configured")
@@ -25,7 +33,8 @@ def generate_enhanced_speech(text: str) -> Path:
     if not text or len(text.strip()) < 3:
         raise SpeechEnhancementError("Text too short for speech generation")
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+    used_voice_id = voice_id or ELEVENLABS_VOICE_ID
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{used_voice_id}"
 
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
@@ -33,21 +42,28 @@ def generate_enhanced_speech(text: str) -> Path:
         "Accept": "audio/mpeg",
     }
 
+    settings = {
+        "stability": 0.50,
+        "similarity_boost": 0.75,
+        "style": 0.30,
+        "speed": 1.0,
+    }
+    if voice_settings:
+        settings.update(voice_settings)
+
     payload = {
         "text": text,
-        "voice_settings": {
-            "stability": 0.6,
-            "similarity_boost": 0.7
-        }
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": settings,
     }
 
+    logger.info(
+        "ElevenLabs TTS → voice=%s speed=%.2f stability=%.2f style=%.2f",
+        used_voice_id, settings["speed"], settings["stability"], settings.get("style", 0),
+    )
+
     try:
-        response = requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=30
-        )
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
     except requests.exceptions.RequestException as e:
         logger.error("ElevenLabs network error: %s", e)
         raise SpeechEnhancementError(f"Network error: {str(e)}")
