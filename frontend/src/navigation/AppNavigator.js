@@ -6,46 +6,29 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
 
-// Splash / Onboarding screens
+// Splash
 import SplashScreen from '../screens/splash/SplashScreen';
+
+// Auth
 import SignUpScreen from '../screens/onboarding/SignUpScreen';
 import SignInScreen from '../screens/onboarding/SignInScreen';
+
+// Onboarding flow
+import PersonaliseScreen from '../screens/onboarding/PersonaliseScreen';
 import SetupPermissionsScreen from '../screens/onboarding/SetupPermissionsScreen';
+import AboutYouIntroScreen from '../screens/onboarding/AboutYouIntroScreen';
 import SetupAboutYouScreen from '../screens/onboarding/SetupAboutYouScreen';
 import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 
-// Main app screens
+// Main app
 import HomeScreen from '../screens/HomeScreen';
+import SpeechEnhancementScreen from '../screens/SpeechEnhancementScreen';
+import SpeechDemoScreen from '../screens/SpeechDemoScreen';
 
 const Stack = createStackNavigator();
 
-const screenOptions = {
-  headerShown: false,
-};
-
-function OnboardingStack() {
-  return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Splash" component={SplashScreen} />
-      <Stack.Screen name="SignUp" component={SignUpScreen} />
-      <Stack.Screen name="SignIn" component={SignInScreen} />
-      <Stack.Screen name="SetupPermissions" component={SetupPermissionsScreen} />
-      <Stack.Screen name="SetupAboutYou" component={SetupAboutYouScreen} />
-      <Stack.Screen name="SetupVoice" component={SetupVoiceScreen} />
-    </Stack.Navigator>
-  );
-}
-
-function MainStack() {
-  return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Home" component={HomeScreen} />
-    </Stack.Navigator>
-  );
-}
-
 export default function AppNavigator() {
-  const { isLoading, isSignedIn, hasCompletedOnboarding } = useAuth();
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -57,7 +40,26 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      {isSignedIn && hasCompletedOnboarding ? <MainStack /> : <OnboardingStack />}
+      {/*
+       * Single flat stack — always starts at Splash.
+       * Navigation flow:
+       *   Splash → SignIn → Home (existing users)
+       *   Splash → SignUp → Personalise → SetupPermissions → AboutYouIntro
+       *          → SetupAboutYou → SetupVoice → Home (new users)
+       */}
+      <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
+        <Stack.Screen name="Splash" component={SplashScreen} />
+        <Stack.Screen name="SignUp" component={SignUpScreen} />
+        <Stack.Screen name="SignIn" component={SignInScreen} />
+        <Stack.Screen name="Personalise" component={PersonaliseScreen} />
+        <Stack.Screen name="SetupPermissions" component={SetupPermissionsScreen} />
+        <Stack.Screen name="AboutYouIntro" component={AboutYouIntroScreen} />
+        <Stack.Screen name="SetupAboutYou" component={SetupAboutYouScreen} />
+        <Stack.Screen name="SetupVoice" component={SetupVoiceScreen} />
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
+        <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }

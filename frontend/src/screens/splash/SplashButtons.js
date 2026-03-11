@@ -26,6 +26,19 @@ export default function SplashButtons({ buttonsOpacity, orTextOpacity, waveLogoO
         >
           <Text style={styles.createAccountButtonText}>Create new account</Text>
         </TouchableOpacity>
+
+        <Animated.Text style={[styles.orText, { opacity: orTextOpacity }]}>
+          or
+        </Animated.Text>
+
+        <TouchableOpacity
+          style={styles.demoButton}
+          onPress={() => navigation.navigate('SpeechDemo')}
+          accessibilityRole="button"
+          accessibilityLabel="Try the demo without an account"
+        >
+          <Text style={styles.demoButtonText}>🎙 Try Demo</Text>
+        </TouchableOpacity>
       </Animated.View>
 
       <Animated.Image
@@ -84,6 +97,22 @@ const styles = StyleSheet.create({
     color: colors.splash.text,
     fontSize: 17,
     fontWeight: '500',
+  },
+  demoButton: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+    paddingVertical: 14,
+    borderRadius: 30,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  demoButtonText: {
+    color: colors.splash.text,
+    fontSize: 17,
+    fontWeight: '500',
+    letterSpacing: 0.5,
   },
   waveLogo: {
     position: 'absolute',
