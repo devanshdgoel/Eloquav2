@@ -39,6 +39,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 40,
+    paddingBottom: 340,
   },
   thisIsText: {
     fontSize: 38,
