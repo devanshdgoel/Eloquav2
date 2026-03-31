@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(del:*)",
+      "mcp__figma__get_screenshot",
+      "mcp__figma__get_metadata",
+      "Bash(node:*)",
+      "Bash(npx expo:*)",
+      "mcp__figma__get_design_context",
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:elevenlabs.io)",
+      "Bash(railway:*)",
+      "Bash(cd \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\" && venv/Scripts/pip install firebase-admin==6.8.0)"
+    ]
+  }
+}

@@ -30,6 +30,20 @@ export const colors = {
     buttonBg: '#FFFFFFDD',
     buttonBorder: '#1C4047',
   },
+
+  // Onboarding screen palette (matches Figma "Final version onboarding")
+  onboarding: {
+    gradientStart: '#326F77',
+    gradientEnd: '#1C4047',
+    text: '#1C4047',
+    textPlaceholder: 'rgba(28, 64, 71, 0.5)',
+    cardBg: '#FFFFFF',
+    backBg: '#E0ECDE',
+    backBorder: '#37767A',
+    accentBg: '#68B39F',
+    bubbleBorder: 'rgba(255, 255, 255, 0.45)',
+    bubbleFill: 'rgba(255, 255, 255, 0.25)',
+  },
 };
 
 export const spacing = {
