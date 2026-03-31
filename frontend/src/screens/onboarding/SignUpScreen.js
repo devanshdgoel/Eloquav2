@@ -1,238 +1,349 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
+  TextInput,
   StatusBar,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
-import * as Crypto from 'expo-crypto';
-import { useAuth } from '../../context/AuthContext';
-import { authenticateWithGoogle } from '../../services/authService';
-import { colors, typography, spacing, borderRadius } from '../../theme';
-import {
-  GOOGLE_WEB_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_ANDROID_CLIENT_ID,
-} from '../../config/env';
-
-WebBrowser.maybeCompleteAuthSession();
+import { LinearGradient } from 'expo-linear-gradient';
+import { registerWithEmail } from '../../services/authService';
 
 export default function SignUpScreen({ navigation }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { setSignedIn } = useAuth();
 
-  const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
+  const emailRef = useRef(null);
+  const passwordRef = useRef(null);
+  const confirmRef = useRef(null);
 
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: 'com.eloqua.app',
-  });
-
-  async function handleGoogleSignUp() {
-    if (!discovery) return;
+  async function handleRegister() {
+    const trimEmail = email.trim();
+    const trimPassword = password.trim();
+    if (!name.trim() || !trimEmail || !trimPassword || !confirm.trim()) {
+      Alert.alert('Missing fields', 'Please fill in all fields.');
+      return;
+    }
+    if (trimPassword !== confirm.trim()) {
+      Alert.alert("Passwords don't match", 'Please make sure both passwords are the same.');
+      return;
+    }
+    if (trimPassword.length < 8) {
+      Alert.alert('Password too short', 'Password must be at least 8 characters.');
+      return;
+    }
+    if (!agreed) {
+      Alert.alert('Terms & Conditions', 'Please agree to the Terms of Service and Privacy Policy.');
+      return;
+    }
     setLoading(true);
-
     try {
-      const nonce = await Crypto.randomUUID();
-
-      const request = new AuthSession.AuthRequest({
-        clientId: Platform.select({
-          ios: GOOGLE_IOS_CLIENT_ID,
-          android: GOOGLE_ANDROID_CLIENT_ID,
-          default: GOOGLE_WEB_CLIENT_ID,
-        }),
-        redirectUri,
-        scopes: ['openid', 'profile', 'email'],
-        responseType: AuthSession.ResponseType.IdToken,
-        extraParams: { nonce },
-      });
-
-      const result = await request.promptAsync(discovery);
-
-      if (result.type === 'success') {
-        const idToken = result.params.id_token;
-
-        const authResult = await authenticateWithGoogle(idToken);
-        setSignedIn(authResult.user);
-
-        navigation.replace('SetupPermissions');
-      } else if (result.type === 'cancel') {
-        // User cancelled, do nothing
-      } else {
-        Alert.alert('Sign Up Failed', 'Could not complete Google sign up. Please try again.');
-      }
+      await registerWithEmail(trimEmail, trimPassword, name.trim());
+      navigation.replace('Personalise');
     } catch (error) {
-      Alert.alert('Error', error.message || 'Something went wrong during sign up.');
+      Alert.alert('Registration failed', error.message);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#326F77', '#1C4047']} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-      >
-        <Text style={styles.backText}>← Back</Text>
+      {/* Back button */}
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
 
-      <View style={styles.content}>
-        <Text style={styles.heading}>Create your account</Text>
-        <Text style={styles.subheading}>
-          Sign up to get started with personalized speech enhancement and vocal training.
-        </Text>
+      {/* Decorative bubbles top-right */}
+      <View style={[styles.bubble, { width: 69, height: 69, top: 111, right: 52 }]} />
+      <View style={[styles.bubble, { width: 42, height: 42, top: 61, right: 16 }]} />
+      <View style={[styles.bubble, { width: 42, height: 42, top: 10, right: 31 }]} />
+      <View style={[styles.bubbleDot, { width: 16, height: 16, top: 52, right: 79 }]} />
 
-        <TouchableOpacity
-          style={styles.googleButton}
-          onPress={handleGoogleSignUp}
-          disabled={loading}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Google"
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
-            <ActivityIndicator color={colors.background} size="small" />
-          ) : (
-            <>
-              <Text style={styles.googleIcon}>G</Text>
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
+          <Text style={styles.title}>Create{'\n'}Account</Text>
 
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>then</Text>
-          <View style={styles.dividerLine} />
-        </View>
+          {/* Input fields */}
+          <View style={styles.inputCard}>
+            <TextInput
+              style={styles.input}
+              placeholder="Name"
+              placeholderTextColor="rgba(28,64,71,0.45)"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => emailRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel="Full name"
+            />
+          </View>
 
-        <View style={styles.stepsContainer}>
-          <StepItem number="1" title="Permissions" description="Microphone access" />
-          <StepItem number="2" title="About You" description="Your profile info" />
-          <StepItem number="3" title="Voice Setup" description="Read a few sentences" />
-        </View>
-      </View>
-    </View>
-  );
-}
+          <View style={styles.inputCard}>
+            <TextInput
+              ref={emailRef}
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="rgba(28,64,71,0.45)"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel="Email address"
+            />
+          </View>
 
-function StepItem({ number, title, description }) {
-  return (
-    <View style={styles.stepItem}>
-      <View style={styles.stepNumber}>
-        <Text style={styles.stepNumberText}>{number}</Text>
-      </View>
-      <View style={styles.stepContent}>
-        <Text style={styles.stepTitle}>{title}</Text>
-        <Text style={styles.stepDescription}>{description}</Text>
-      </View>
-    </View>
+          <View style={styles.inputCard}>
+            <TextInput
+              ref={passwordRef}
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="rgba(28,64,71,0.45)"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              returnKeyType="next"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel="Password"
+            />
+          </View>
+
+          <View style={styles.inputCard}>
+            <TextInput
+              ref={confirmRef}
+              style={styles.input}
+              placeholder="Confirm password"
+              placeholderTextColor="rgba(28,64,71,0.45)"
+              value={confirm}
+              onChangeText={setConfirm}
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleRegister}
+              accessibilityLabel="Confirm password"
+            />
+          </View>
+
+          {/* T&Cs */}
+          <View style={styles.tcsSection}>
+            <Text style={styles.tcsLabel}>T&Cs</Text>
+            <View style={styles.tcsLine} />
+            <TouchableOpacity
+              style={styles.tcsRow}
+              onPress={() => setAgreed(!agreed)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                {agreed && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+              <Text style={styles.tcsText}>
+                By ticking this box, you agree to our{' '}
+                <Text style={styles.tcsLink}>Terms of Service</Text>
+                {' '}and{' '}
+                <Text style={styles.tcsLink}>Privacy Policy</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Arrow button */}
+          <TouchableOpacity
+            style={[styles.arrowBtn, loading && styles.arrowBtnDisabled]}
+            onPress={handleRegister}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading
+              ? <ActivityIndicator color="#1C4047" size="small" />
+              : <Text style={styles.arrowText}>→</Text>
+            }
+          </TouchableOpacity>
+
+          {/* Sign in link */}
+          <TouchableOpacity
+            style={styles.signInLink}
+            onPress={() => navigation.navigate('SignIn')}
+          >
+            <Text style={styles.signInText}>Already have an account? Sign In</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  container: { flex: 1 },
+  flex: { flex: 1 },
+
+  backBtn: {
+    position: 'absolute',
+    top: 52,
+    left: 20,
+    backgroundColor: '#E0ECDE',
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    zIndex: 10,
   },
-  backButton: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  backText: {
-    color: colors.textSecondary,
-    ...typography.body,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-    justifyContent: 'center',
-  },
-  heading: {
-    ...typography.headingLarge,
-    color: colors.textPrimary,
-    marginBottom: 12,
-  },
-  subheading: {
-    ...typography.subheading,
-    color: colors.textSecondary,
-    marginBottom: 40,
-  },
-  googleButton: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.xl,
-    paddingVertical: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  googleIcon: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.googleBlue,
-  },
-  googleButtonText: {
-    ...typography.button,
-    color: colors.background,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: spacing.xl,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.surface,
-  },
-  dividerText: {
-    color: colors.textSecondary,
-    paddingHorizontal: spacing.md,
-    ...typography.bodySmall,
-  },
-  stepsContainer: {
-    gap: 20,
-  },
-  stepItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  stepNumber: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stepNumberText: {
-    color: colors.primary,
-    ...typography.body,
-    fontWeight: '700',
-  },
-  stepContent: {
-    flex: 1,
-  },
-  stepTitle: {
-    color: colors.textPrimary,
-    ...typography.body,
+  backArrow: {
+    color: '#1C4047',
+    fontSize: 18,
     fontWeight: '600',
   },
-  stepDescription: {
-    color: colors.textSecondary,
-    ...typography.bodySmall,
+
+  bubble: {
+    position: 'absolute',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  bubbleDot: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+
+  scroll: {
+    paddingTop: 120,
+    paddingHorizontal: 35,
+    paddingBottom: 40,
+  },
+
+  title: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginBottom: 36,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
+  },
+
+  inputCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    marginBottom: 14,
+  },
+  input: {
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    fontSize: 18,
+    color: '#1C4047',
+  },
+
+  tcsSection: {
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  tcsLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  tcsLine: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 14,
+  },
+  tcsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: '#68B39F',
+    borderColor: '#68B39F',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  tcsText: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  tcsLink: {
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  arrowBtn: {
+    alignSelf: 'center',
+    backgroundColor: '#68B39F',
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+    marginBottom: 20,
+  },
+  arrowBtnDisabled: {
+    opacity: 0.6,
+  },
+  arrowText: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '700',
+  },
+
+  signInLink: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  signInText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 15,
   },
 });

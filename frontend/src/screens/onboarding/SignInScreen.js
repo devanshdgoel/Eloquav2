@@ -1,165 +1,264 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
+  TextInput,
   StatusBar,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
-import * as Crypto from 'expo-crypto';
-import { useAuth } from '../../context/AuthContext';
-import { authenticateWithGoogle } from '../../services/authService';
-import { colors, typography, spacing, borderRadius } from '../../theme';
-import {
-  GOOGLE_WEB_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_ANDROID_CLIENT_ID,
-} from '../../config/env';
-
-WebBrowser.maybeCompleteAuthSession();
+import { LinearGradient } from 'expo-linear-gradient';
+import { loginWithEmail } from '../../services/authService';
+import { isOnboardingComplete } from '../../utils/storage';
 
 export default function SignInScreen({ navigation }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setSignedIn, setOnboarded } = useAuth();
+  const passwordRef = useRef(null);
 
-  const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
-
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: 'com.eloqua.app',
-  });
-
-  async function handleGoogleSignIn() {
-    if (!discovery) return;
+  async function handleLogin() {
+    const trimEmail = email.trim();
+    const trimPassword = password.trim();
+    if (!trimEmail || !trimPassword) {
+      Alert.alert('Missing fields', 'Please enter your email and password.');
+      return;
+    }
     setLoading(true);
-
     try {
-      const nonce = await Crypto.randomUUID();
-
-      const request = new AuthSession.AuthRequest({
-        clientId: Platform.select({
-          ios: GOOGLE_IOS_CLIENT_ID,
-          android: GOOGLE_ANDROID_CLIENT_ID,
-          default: GOOGLE_WEB_CLIENT_ID,
-        }),
-        redirectUri,
-        scopes: ['openid', 'profile', 'email'],
-        responseType: AuthSession.ResponseType.IdToken,
-        extraParams: { nonce },
-      });
-
-      const result = await request.promptAsync(discovery);
-
-      if (result.type === 'success') {
-        const idToken = result.params.id_token;
-        const authResult = await authenticateWithGoogle(idToken);
-        setSignedIn(authResult.user);
-
-        if (authResult.is_existing_user) {
-          setOnboarded();
-        } else {
-          navigation.replace('SetupPermissions');
-        }
-      } else if (result.type !== 'cancel') {
-        Alert.alert('Sign In Failed', 'Could not complete Google sign in. Please try again.');
+      await loginWithEmail(trimEmail, trimPassword);
+      const onboarded = await isOnboardingComplete();
+      if (onboarded) {
+        navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+      } else {
+        navigation.replace('Personalise');
       }
     } catch (error) {
-      Alert.alert('Error', error.message || 'Something went wrong during sign in.');
+      Alert.alert('Sign in failed', error.message);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#326F77', '#1C4047']} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-      >
-        <Text style={styles.backText}>← Back</Text>
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
 
-      <View style={styles.content}>
-        <Text style={styles.heading}>Welcome back</Text>
-        <Text style={styles.subheading}>
-          Sign in to continue where you left off.
-        </Text>
+      <View style={[styles.bubble, { width: 69, height: 69, top: 111, right: 52 }]} />
+      <View style={[styles.bubble, { width: 42, height: 42, top: 61, right: 16 }]} />
+      <View style={[styles.bubble, { width: 42, height: 42, top: 10, right: 31 }]} />
+      <View style={[styles.bubbleDot, { width: 16, height: 16, top: 52, right: 79 }]} />
 
-        <TouchableOpacity
-          style={styles.googleButton}
-          onPress={handleGoogleSignIn}
-          disabled={loading}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in with Google"
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
-            <ActivityIndicator color={colors.background} size="small" />
-          ) : (
-            <>
-              <Text style={styles.googleIcon}>G</Text>
-              <Text style={styles.googleButtonText}>Sign in with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
+          <Text style={styles.title}>Sign In</Text>
+
+          <View style={styles.inputCard}>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="rgba(28,64,71,0.45)"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel="Email address"
+            />
+          </View>
+
+          <View style={styles.inputCard}>
+            <TextInput
+              ref={passwordRef}
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="rgba(28,64,71,0.45)"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              accessibilityLabel="Password"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.arrowBtn, loading && styles.arrowBtnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading
+              ? <ActivityIndicator color="#1C4047" size="small" />
+              : <Text style={styles.arrowText}>→</Text>
+            }
+          </TouchableOpacity>
+
+          <Text style={styles.orText}>or</Text>
+
+          <TouchableOpacity
+            style={styles.socialCard}
+            activeOpacity={0.85}
+            onPress={() => Alert.alert('Coming soon', 'Apple Sign-In will be available in a future update.')}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Apple"
+          >
+            <Text style={styles.appleIcon}>󰀶</Text>
+            <Text style={styles.socialText}>Continue with Apple</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.socialCard}
+            activeOpacity={0.85}
+            onPress={() => Alert.alert('Coming soon', 'Google Sign-In will be available in a future update.')}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Google"
+          >
+            <Text style={styles.googleIcon}>G</Text>
+            <Text style={styles.socialText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.createLink}
+            onPress={() => navigation.navigate('SignUp')}
+          >
+            <Text style={styles.createText}>Don't have an account? Create one</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  container: { flex: 1 },
+  flex: { flex: 1 },
+
+  backBtn: {
+    position: 'absolute',
+    top: 52,
+    left: 20,
+    backgroundColor: '#E0ECDE',
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    zIndex: 10,
   },
-  backButton: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+  backArrow: { color: '#1C4047', fontSize: 18, fontWeight: '600' },
+
+  bubble: {
+    position: 'absolute',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
-  backText: {
-    color: colors.textSecondary,
-    ...typography.body,
+  bubbleDot: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-    justifyContent: 'center',
+
+  scroll: {
+    paddingTop: 130,
+    paddingHorizontal: 35,
+    paddingBottom: 40,
+    alignItems: 'center',
   },
-  heading: {
-    ...typography.headingLarge,
-    color: colors.textPrimary,
-    marginBottom: 12,
+
+  title: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginBottom: 36,
+    alignSelf: 'stretch',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
-  subheading: {
-    ...typography.subheading,
-    color: colors.textSecondary,
-    marginBottom: 40,
+
+  inputCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    marginBottom: 14,
+    alignSelf: 'stretch',
   },
-  googleButton: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.xl,
+  input: {
+    paddingHorizontal: 20,
     paddingVertical: 18,
+    fontSize: 18,
+    color: '#1C4047',
+  },
+
+  arrowBtn: {
+    backgroundColor: '#68B39F',
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+    marginTop: 8,
+    marginBottom: 28,
+  },
+  arrowBtnDisabled: { opacity: 0.6 },
+  arrowText: { color: '#FFFFFF', fontSize: 32, fontWeight: '700' },
+
+  orText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    letterSpacing: 1,
+    marginBottom: 20,
+  },
+
+  socialCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    paddingVertical: 18,
+    paddingHorizontal: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+    gap: 16,
+    alignSelf: 'stretch',
+    marginBottom: 14,
   },
-  googleIcon: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.googleBlue,
-  },
-  googleButtonText: {
-    ...typography.button,
-    color: colors.background,
-  },
+  appleIcon: { fontSize: 24, color: '#1C4047', fontWeight: '700', width: 28, textAlign: 'center' },
+  googleIcon: { fontSize: 22, color: '#4285F4', fontWeight: '700', width: 28, textAlign: 'center' },
+  socialText: { fontSize: 18, color: '#1C4047', letterSpacing: 0.3 },
+
+  createLink: { marginTop: 24, paddingVertical: 8 },
+  createText: { color: 'rgba(255,255,255,0.7)', fontSize: 15 },
 });

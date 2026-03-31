@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,358 +6,235 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  ScrollView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
-import { useAuth } from '../../context/AuthContext';
 import { setOnboardingComplete } from '../../utils/storage';
-import { colors, typography, spacing, borderRadius } from '../../theme';
 
-const PRACTICE_SENTENCES = [
-  "The rainbow appeared after the morning rain stopped.",
-  "She sells seashells by the beautiful seashore.",
-  "Peter picked a peck of pickled peppers today.",
+// The three reference sentences used to capture a baseline voice profile.
+const SENTENCES = [
+  "I need to schedule an appointment with my doctor for next Tuesday, at three o'clock.",
+  "I love spending time with my family, especially my grandchildren when they visit on weekends.",
+  "The weather today is absolutely beautiful and I feel grateful to be outside enjoying it.",
 ];
 
 export default function SetupVoiceScreen({ navigation }) {
-  const { setOnboarded } = useAuth();
-  const [currentSentence, setCurrentSentence] = useState(0);
-  const [recordings, setRecordings] = useState([null, null, null]);
-  const [isRecording, setIsRecording] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [recordings, setRecordings]     = useState([null, null, null]);
+  const [isRecording, setIsRecording]   = useState(false);
   const recordingRef = useRef(null);
 
-  const allRecorded = recordings.every(r => r !== null);
+  // Stop and discard any active recording if the user navigates away
+  // before completing the voice setup (e.g. Android back gesture).
+  useEffect(() => {
+    return () => {
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+        recordingRef.current = null;
+      }
+    };
+  }, []);
+
+  function handleMicPress() {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }
 
   async function startRecording() {
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
       recordingRef.current = recording;
       setIsRecording(true);
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Could not start recording. Please check microphone permissions.');
     }
   }
 
   async function stopRecording() {
     if (!recordingRef.current) return;
-
     setIsRecording(false);
+
     await recordingRef.current.stopAndUnloadAsync();
     const uri = recordingRef.current.getURI();
     recordingRef.current = null;
 
+    // Save the URI for this sentence and advance to the next one.
     const updated = [...recordings];
-    updated[currentSentence] = uri;
+    updated[currentIndex] = uri;
     setRecordings(updated);
 
-    if (currentSentence < PRACTICE_SENTENCES.length - 1) {
-      setTimeout(() => setCurrentSentence(currentSentence + 1), 500);
+    if (currentIndex < SENTENCES.length - 1) {
+      // Brief pause before showing the next sentence so the transition
+      // feels deliberate rather than abrupt.
+      setTimeout(() => setCurrentIndex(currentIndex + 1), 400);
+    } else {
+      await finishSetup();
     }
   }
 
-  async function handleFinish() {
+  async function finishSetup() {
     await setOnboardingComplete();
-    setOnboarded();
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
 
-  function handleSkip() {
-    Alert.alert(
-      'Skip Voice Setup?',
-      'You can always set up your voice profile later in Settings.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Skip',
-          onPress: async () => {
-            await setOnboardingComplete();
-            setOnboarded();
-          },
-        },
-      ]
-    );
+  async function handleSkip() {
+    await setOnboardingComplete();
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '100%' }]} />
+      {/* Top half — light mint background with sentence card */}
+      <LinearGradient colors={['#E0ECDE', '#C5E0D4']} style={styles.topHalf}>
+        <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.85}>
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.title}>Voice Setup</Text>
+        <Text style={styles.subtitle}>Press the button and read this sentence aloud:</Text>
+
+        <View style={styles.sentenceCard}>
+          <Text style={styles.sentenceText}>"{SENTENCES[currentIndex]}"</Text>
         </View>
-        <Text style={styles.progressText}>Step 3 of 3</Text>
-      </View>
+      </LinearGradient>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.sectionLabel}>VOICE SETUP</Text>
-        <Text style={styles.heading}>Let's hear your voice</Text>
-        <Text style={styles.description}>
-          Read each sentence aloud so we can understand your current speech
-          patterns. This helps us personalize your enhancement settings.
-        </Text>
-
-        {PRACTICE_SENTENCES.map((sentence, index) => (
-          <View
-            key={index}
-            style={[
-              styles.sentenceCard,
-              index === currentSentence && styles.sentenceCardActive,
-              recordings[index] && styles.sentenceCardDone,
-            ]}
-          >
-            <View style={styles.sentenceHeader}>
-              <Text style={styles.sentenceNumber}>Sentence {index + 1}</Text>
-              {recordings[index] && (
-                <View style={styles.recordedBadge}>
-                  <Text style={styles.recordedText}>✓ Recorded</Text>
-                </View>
-              )}
-            </View>
-            <Text
-              style={[
-                styles.sentenceText,
-                index === currentSentence && styles.sentenceTextActive,
-              ]}
-            >
-              "{sentence}"
-            </Text>
-
-            {index === currentSentence && (
-              <TouchableOpacity
-                style={[
-                  styles.recordButton,
-                  isRecording && styles.recordButtonActive,
-                ]}
-                onPressIn={startRecording}
-                onPressOut={stopRecording}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={isRecording ? 'Release to stop recording' : 'Hold to record'}
-              >
-                <View
-                  style={[
-                    styles.recordDot,
-                    isRecording && styles.recordDotActive,
-                  ]}
-                />
-                <Text style={styles.recordButtonText}>
-                  {isRecording ? 'Release to stop' : 'Hold to record'}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {recordings[index] && index === currentSentence && (
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={() => {
-                  const updated = [...recordings];
-                  updated[index] = null;
-                  setRecordings(updated);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Re-record sentence ${index + 1}`}
-              >
-                <Text style={styles.retryText}>Re-record</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ))}
-      </ScrollView>
-
-      <View style={styles.footer}>
+      {/* Bottom half — teal background with mic button and progress dots */}
+      <LinearGradient colors={['#9FCFBD', '#2D6974']} style={styles.bottomHalf}>
         <TouchableOpacity
-          style={styles.skipButton}
-          onPress={handleSkip}
+          style={[styles.micBtn, isRecording && styles.micBtnRecording]}
+          onPress={handleMicPress}
+          activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Skip voice setup"
+          accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
         >
-          <Text style={styles.skipText}>Skip for now</Text>
+          <Text style={styles.micIcon}>🎤</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.finishButton, !allRecorded && styles.finishButtonDisabled]}
-          onPress={handleFinish}
-          disabled={!allRecorded}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Finish setup"
-          accessibilityState={{ disabled: !allRecorded }}
-        >
-          <Text style={styles.finishButtonText}>Finish Setup</Text>
-        </TouchableOpacity>
-      </View>
+        {/* One dot per sentence; the current sentence is highlighted white. */}
+        <View style={styles.dotsRow}>
+          {SENTENCES.map((_, i) => (
+            <View
+              key={i}
+              style={[styles.dot, i === currentIndex ? styles.dotCurrent : styles.dotOther]}
+            />
+          ))}
+        </View>
+      </LinearGradient>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+
+  topHalf: {
     flex: 1,
-    backgroundColor: colors.background,
+    paddingTop: 52,
+    paddingHorizontal: 28,
+    paddingBottom: 24,
   },
-  progressContainer: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.md,
+
+  skipBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#FFA940',
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 20,
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.sm,
-    marginBottom: spacing.sm,
+  skipText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.sm,
-  },
-  progressText: {
-    color: colors.textSecondary,
-    ...typography.bodySmall,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  sectionLabel: {
-    color: colors.primary,
-    ...typography.caption,
+
+  title: {
+    fontSize: 38,
+    fontWeight: '700',
+    color: '#1C4047',
+    letterSpacing: 0.5,
     marginBottom: 12,
   },
-  heading: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
+  subtitle: {
+    fontSize: 16,
+    color: '#1C4047',
+    marginBottom: 24,
+    lineHeight: 24,
+    letterSpacing: 0.3,
   },
-  description: {
-    ...typography.subheading,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
+
   sentenceCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: 20,
-    marginBottom: spacing.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  sentenceCardActive: {
-    borderColor: colors.primary,
-  },
-  sentenceCardDone: {
-    borderColor: colors.success,
-    opacity: 0.85,
-  },
-  sentenceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  sentenceNumber: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    letterSpacing: 1,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  recordedBadge: {
-    backgroundColor: colors.successDark,
-    borderRadius: spacing.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  recordedText: {
-    color: colors.success,
-    fontSize: 12,
-    fontWeight: '600',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    flex: 1,
+    justifyContent: 'center',
   },
   sentenceText: {
-    color: colors.textSecondary,
-    fontSize: 17,
-    lineHeight: 26,
+    fontSize: 20,
+    color: '#1C4047',
+    lineHeight: 32,
     fontStyle: 'italic',
+    textAlign: 'center',
+    letterSpacing: 0.3,
   },
-  sentenceTextActive: {
-    color: colors.textPrimary,
-  },
-  recordButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  bottomHalf: {
+    height: 220,
     justifyContent: 'center',
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing.md,
-    marginTop: spacing.md,
-    gap: 10,
+    alignItems: 'center',
+    gap: 24,
   },
-  recordButtonActive: {
-    backgroundColor: colors.errorBackground,
+
+  micBtn: {
+    width: 84,
+    height: 84,
+    borderRadius: 18,
+    backgroundColor: '#2D6974',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  recordDot: {
+  micBtnRecording: {
+    backgroundColor: '#C0392B',
+  },
+  micIcon: { fontSize: 38 },
+
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  dotCurrent: {
+    backgroundColor: '#FFFFFF',
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: colors.error,
   },
-  recordDotActive: {
-    backgroundColor: colors.errorBright,
-  },
-  recordButtonText: {
-    color: colors.textPrimary,
-    ...typography.body,
-    fontWeight: '600',
-  },
-  retryButton: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    paddingVertical: 6,
-  },
-  retryText: {
-    color: colors.primary,
-    ...typography.bodySmall,
-    fontWeight: '500',
-  },
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl,
-    gap: 12,
-  },
-  skipButton: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  skipText: {
-    color: colors.textSecondary,
-    ...typography.body,
-  },
-  finishButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.xl,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  finishButtonDisabled: {
-    opacity: 0.4,
-  },
-  finishButtonText: {
-    ...typography.button,
-    color: colors.white,
+  dotOther: {
+    backgroundColor: '#1C4047',
   },
 });

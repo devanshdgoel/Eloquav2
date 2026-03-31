@@ -14,6 +14,9 @@ venv/
 # Temporary audio files
 backend/temp_audio/
 
+# Firebase service account — NEVER commit this
+backend/firebase-service-account.json
+
 # Frontend
 node_modules/
 frontend/.expo/

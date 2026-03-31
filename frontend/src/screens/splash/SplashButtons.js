@@ -1,3 +1,4 @@
+import React from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { colors } from '../../theme';
 

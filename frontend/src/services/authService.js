@@ -1,50 +1,66 @@
-import { saveToken, removeToken } from '../utils/storage';
-import { API_BASE_URL } from '../config/env';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  signOut as firebaseSignOut,
+  GoogleAuthProvider,
+  signInWithCredential,
+} from 'firebase/auth';
+import { auth } from '../config/firebase';
 
-/**
- * Send Firebase/Google ID token to backend, receive internal JWT
- */
-export async function authenticateWithGoogle(idToken) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_token: idToken }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Authentication failed');
+// Map Firebase error codes to user-friendly messages
+function friendlyError(error) {
+  switch (error.code) {
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters.';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Invalid email or password.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection.';
+    default:
+      return error.message || 'Something went wrong. Please try again.';
   }
-
-  const data = await response.json();
-  await saveToken(data.access_token);
-  return data;
 }
 
-/**
- * Send user profile data to backend after onboarding
- */
-export async function submitUserProfile(token, profileData) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify(profileData),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || 'Failed to save profile');
+export async function registerWithEmail(email, password, name = '') {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    if (name) {
+      await updateProfile(cred.user, { displayName: name });
+    }
+    return cred.user;
+  } catch (error) {
+    throw new Error(friendlyError(error));
   }
-
-  return await response.json();
 }
 
-/**
- * Sign out - clear stored token
- */
+export async function loginWithEmail(email, password) {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    return cred.user;
+  } catch (error) {
+    throw new Error(friendlyError(error));
+  }
+}
+
+export async function signInWithGoogleCredential(idToken, accessToken) {
+  try {
+    const credential = GoogleAuthProvider.credential(idToken, accessToken);
+    const userCred = await signInWithCredential(auth, credential);
+    return userCred.user;
+  } catch (error) {
+    throw new Error(friendlyError(error));
+  }
+}
+
 export async function signOut() {
-  await removeToken();
+  await firebaseSignOut(auth);
 }

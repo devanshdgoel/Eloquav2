@@ -6,273 +6,314 @@ import {
   TouchableOpacity,
   TextInput,
   StatusBar,
-  ScrollView,
+  Modal,
+  FlatList,
+  SafeAreaView,
   KeyboardAvoidingView,
+  ScrollView,
   Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { saveUserProfile } from '../../utils/storage';
-import { colors, typography, spacing, borderRadius } from '../../theme';
 
-const CONDITIONS = [
-  { id: 'parkinsons', label: "Parkinson's Disease" },
-  { id: 'als', label: 'ALS / Motor Neuron Disease' },
-  { id: 'ms', label: 'Multiple Sclerosis' },
-  { id: 'stroke', label: 'Stroke Recovery' },
-  { id: 'tbi', label: 'Traumatic Brain Injury' },
-  { id: 'other', label: 'Other' },
-];
-
-const GOALS = [
-  { id: 'clarity', label: 'Improve speech clarity' },
-  { id: 'volume', label: 'Speak louder and stronger' },
-  { id: 'pace', label: 'Control speaking pace' },
-  { id: 'confidence', label: 'Build speaking confidence' },
+const AGE_RANGES = [
+  'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
 ];
 
 export default function SetupAboutYouScreen({ navigation }) {
-  const [displayName, setDisplayName] = useState('');
-  const [selectedCondition, setSelectedCondition] = useState(null);
-  const [selectedGoals, setSelectedGoals] = useState([]);
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [ageModalVisible, setAgeModalVisible] = useState(false);
 
-  function toggleGoal(goalId) {
-    setSelectedGoals(prev =>
-      prev.includes(goalId)
-        ? prev.filter(g => g !== goalId)
-        : [...prev, goalId]
-    );
-  }
-
-  const canContinue = displayName.trim().length > 0 && selectedCondition && selectedGoals.length > 0;
-
-  async function handleContinue() {
-    const profile = {
-      displayName: displayName.trim(),
-      condition: selectedCondition,
-      goals: selectedGoals,
-    };
-    await saveUserProfile(profile);
+  async function handleNext() {
+    // Trim whitespace before persisting so stored values are always clean.
+    await saveUserProfile({ name: name.trim(), age });
     navigation.navigate('SetupVoice');
   }
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+  const canProceed = name.trim().length > 0;
 
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '66%' }]} />
-        </View>
-        <Text style={styles.progressText}>Step 2 of 3</Text>
-      </View>
+  return (
+    <LinearGradient colors={['#E0ECDE', '#9FCFBD']} style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+
+      {/* Back button — absolute so it stays visible above the scroll */}
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <Text style={styles.backArrow}>←</Text>
+      </TouchableOpacity>
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.sectionLabel}>ABOUT YOU</Text>
-          <Text style={styles.heading}>Tell us about yourself</Text>
-          <Text style={styles.description}>
-            This helps us personalize your experience and training exercises.
-          </Text>
+          <Text style={styles.title}>About you</Text>
 
-          <Text style={styles.fieldLabel}>What should we call you?</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Your first name"
-            placeholderTextColor="#666680"
-            value={displayName}
-            onChangeText={setDisplayName}
-            autoCapitalize="words"
-            returnKeyType="done"
-            accessibilityLabel="Enter your first name"
-          />
-
-          <Text style={styles.fieldLabel}>What condition are you working with?</Text>
-          <View style={styles.optionsGrid}>
-            {CONDITIONS.map(condition => (
-              <TouchableOpacity
-                key={condition.id}
-                style={[
-                  styles.optionChip,
-                  selectedCondition === condition.id && styles.optionChipSelected,
-                ]}
-                onPress={() => setSelectedCondition(condition.id)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={condition.label}
-                accessibilityState={{ selected: selectedCondition === condition.id }}
-              >
-                <Text
-                  style={[
-                    styles.optionChipText,
-                    selectedCondition === condition.id && styles.optionChipTextSelected,
-                  ]}
-                >
-                  {condition.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          {/* Preferred Name */}
+          <Text style={styles.label}>Preferred Name:</Text>
+          <View style={styles.inputCard}>
+            <TextInput
+              style={styles.input}
+              placeholder="Name/Nickname"
+              placeholderTextColor="rgba(28,64,71,0.4)"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              returnKeyType="done"
+              accessibilityLabel="Preferred name"
+            />
           </View>
 
-          <Text style={styles.fieldLabel}>What are your goals? (select all that apply)</Text>
-          <View style={styles.optionsGrid}>
-            {GOALS.map(goal => (
-              <TouchableOpacity
-                key={goal.id}
-                style={[
-                  styles.optionChip,
-                  selectedGoals.includes(goal.id) && styles.optionChipSelected,
-                ]}
-                onPress={() => toggleGoal(goal.id)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={goal.label}
-                accessibilityState={{ selected: selectedGoals.includes(goal.id) }}
-              >
-                <Text
-                  style={[
-                    styles.optionChipText,
-                    selectedGoals.includes(goal.id) && styles.optionChipTextSelected,
-                  ]}
-                >
-                  {goal.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          {/* Age */}
+          <Text style={styles.label}>How old are you?</Text>
+          <TouchableOpacity
+            style={styles.selectCard}
+            onPress={() => setAgeModalVisible(true)}
+            activeOpacity={0.85}
+            accessibilityLabel="Select age range"
+            accessibilityRole="button"
+          >
+            <Text style={[styles.selectText, !age && styles.selectPlaceholder]}>
+              {age || 'Select'}
+            </Text>
+            <Text style={styles.chevron}>⌄</Text>
+          </TouchableOpacity>
+
+          {/* Progress dots */}
+          <View style={styles.dotsRow}>
+            <View style={styles.dotActive} />
+            <View style={styles.dotInactive} />
+            <View style={styles.dotInactive} />
           </View>
+
+          {/* Orange → button */}
+          <TouchableOpacity
+            style={[styles.nextBtn, !canProceed && styles.nextBtnDisabled]}
+            onPress={handleNext}
+            disabled={!canProceed}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Continue"
+          >
+            <Text style={styles.nextArrow}>→</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.continueButton, !canContinue && styles.continueButtonDisabled]}
-          onPress={handleContinue}
-          disabled={!canContinue}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Continue to voice setup"
-          accessibilityState={{ disabled: !canContinue }}
-        >
-          <Text style={styles.continueButtonText}>Continue</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+      {/* Age picker modal */}
+      <Modal visible={ageModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>How old are you?</Text>
+            <FlatList
+              data={AGE_RANGES}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setAge(item);
+                    setAgeModalVisible(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={item}
+                >
+                  <Text style={[styles.modalItemText, age === item && styles.modalItemSelected]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity style={styles.modalCancel} onPress={() => setAgeModalVisible(false)}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </SafeAreaView>
+        </View>
+      </Modal>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  progressContainer: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.sm,
-    marginBottom: spacing.sm,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.sm,
-  },
-  progressText: {
-    color: colors.textSecondary,
-    ...typography.bodySmall,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  sectionLabel: {
-    color: colors.primary,
-    ...typography.caption,
-    marginBottom: 12,
-  },
-  heading: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  description: {
-    ...typography.subheading,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
-  fieldLabel: {
-    color: colors.textPrimary,
-    ...typography.body,
-    fontWeight: '600',
-    marginBottom: 12,
-    marginTop: spacing.sm,
-  },
-  textInput: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: 20,
-    paddingVertical: spacing.md,
-    color: colors.textPrimary,
-    ...typography.body,
-    marginBottom: 28,
-  },
-  optionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 28,
-  },
-  optionChip: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+  container: { flex: 1 },
+  flex: { flex: 1 },
+
+  backBtn: {
+    position: 'absolute',
+    top: 52,
+    left: 20,
+    backgroundColor: '#1C4047',
+    borderRadius: 10,
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    zIndex: 10,
+  },
+  backArrow: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
+  scroll: {
+    paddingTop: 130,
+    paddingHorizontal: 32,
+    paddingBottom: 48,
+  },
+
+  title: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#1C4047',
+    letterSpacing: 1,
+    marginBottom: 32,
+  },
+
+  label: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1C4047',
+    marginBottom: 10,
+    letterSpacing: 0.3,
+  },
+
+  inputCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+    marginBottom: 28,
+  },
+  input: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    fontSize: 18,
+    color: '#1C4047',
+  },
+
+  selectCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'flex-start',
+    minWidth: 160,
+    marginBottom: 40,
+  },
+  selectText: {
+    fontSize: 18,
+    color: '#1C4047',
+    marginRight: 12,
+  },
+  selectPlaceholder: {
+    color: 'rgba(28,64,71,0.4)',
+  },
+  chevron: {
+    fontSize: 22,
+    color: '#FFA940',
+    fontWeight: '700',
+    marginTop: -4,
+  },
+
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 20,
+  },
+  dotActive: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#FFFFFF',
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: '#1C4047',
   },
-  optionChipSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surfaceHighlight,
+  dotInactive: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#1C4047',
   },
-  optionChipText: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
+
+  nextBtn: {
+    alignSelf: 'center',
+    backgroundColor: '#FFA940',
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#FFA940',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  optionChipTextSelected: {
-    color: colors.textPrimary,
+  nextBtnDisabled: {
+    opacity: 0.45,
   },
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl,
+  nextArrow: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
   },
-  continueButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.xl,
-    paddingVertical: 18,
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '60%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1C4047',
+    textAlign: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(28,64,71,0.1)',
+  },
+  modalItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  modalItemText: {
+    fontSize: 18,
+    color: '#1C4047',
+  },
+  modalItemSelected: {
+    fontWeight: '700',
+    color: '#326F77',
+  },
+  modalCancel: {
+    padding: 20,
     alignItems: 'center',
   },
-  continueButtonDisabled: {
-    opacity: 0.4,
-  },
-  continueButtonText: {
-    ...typography.button,
-    color: colors.white,
+  modalCancelText: {
+    fontSize: 16,
+    color: '#888',
   },
 });

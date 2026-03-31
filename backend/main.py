@@ -4,21 +4,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import ALLOWED_ORIGINS
+from firebase_config import initialize_firebase
 from api.speech_routes import router as speech_router
 from api.audio_routes import router as audio_router
-from api.auth_routes import router as auth_router
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+initialize_firebase()
+
 app = FastAPI(title="Eloqua Backend")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -31,4 +33,7 @@ def health_check():
 
 app.include_router(speech_router, prefix="/api")
 app.include_router(audio_router, prefix="/api")
-app.include_router(auth_router, prefix="/api")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

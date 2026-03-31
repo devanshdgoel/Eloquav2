@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getToken, removeToken, isOnboardingComplete } from '../utils/storage';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../config/firebase';
+import { signOut as firebaseSignOut } from '../services/authService';
+import { isOnboardingComplete, setOnboardingComplete } from '../utils/storage';
 
 const AuthContext = createContext(null);
 
@@ -12,39 +15,41 @@ export function AuthProvider({ children }) {
   });
 
   useEffect(() => {
-    checkAuthState();
+    // Firebase manages auth persistence automatically via AsyncStorage.
+    // onAuthStateChanged fires on startup (restoring session) and on every sign-in/out.
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const onboarded = await isOnboardingComplete();
+        setState({
+          isLoading: false,
+          isSignedIn: true,
+          hasCompletedOnboarding: onboarded,
+          user: {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || '',
+            picture: firebaseUser.photoURL || '',
+          },
+        });
+      } else {
+        setState({
+          isLoading: false,
+          isSignedIn: false,
+          hasCompletedOnboarding: false,
+          user: null,
+        });
+      }
+    });
+
+    return unsubscribe; // Unsubscribe on unmount
   }, []);
-
-  async function checkAuthState() {
-    try {
-      const token = await getToken();
-      const onboarded = await isOnboardingComplete();
-      setState({
-        isLoading: false,
-        isSignedIn: !!token,
-        hasCompletedOnboarding: onboarded,
-        user: null,
-      });
-    } catch {
-      setState({
-        isLoading: false,
-        isSignedIn: false,
-        hasCompletedOnboarding: false,
-        user: null,
-      });
-    }
-  }
-
-  function setSignedIn(user) {
-    setState(prev => ({ ...prev, isSignedIn: true, user }));
-  }
 
   function setOnboarded() {
     setState(prev => ({ ...prev, hasCompletedOnboarding: true }));
   }
 
   async function signOut() {
-    await removeToken();
+    await firebaseSignOut();
     setState({
       isLoading: false,
       isSignedIn: false,
@@ -54,7 +59,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, setSignedIn, setOnboarded, signOut, checkAuthState }}>
+    <AuthContext.Provider value={{ ...state, setOnboarded, signOut }}>
       {children}
     </AuthContext.Provider>
   );
