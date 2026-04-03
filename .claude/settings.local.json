@@ -12,7 +12,9 @@
       "WebSearch",
       "WebFetch(domain:elevenlabs.io)",
       "Bash(railway:*)",
-      "Bash(cd \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\" && venv/Scripts/pip install firebase-admin==6.8.0)"
+      "Bash(cd \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\" && venv/Scripts/pip install firebase-admin==6.8.0)",
+      "Bash(curl -s -X POST http://localhost:8000/api/voice/clone \\\\\n  -F \"files=@backend/temp_audio/1b47e19c-1831-4132-8e2d-5934f5ada433_recording.m4a\" \\\\\n  -F \"user_id=test123\" \\\\\n  -F \"user_name=Test User\" 2>&1)",
+      "Bash(curl -s \"http://localhost:8000/api/voice/status?user_id=test123\" 2>&1)"
     ]
   }
 }
