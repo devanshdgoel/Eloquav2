@@ -15,6 +15,7 @@ import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 
 // Main app screens
 import HomeScreen from '../screens/HomeScreen';
+import SpeechDemoScreen from '../screens/SpeechDemoScreen';
 
 const Stack = createStackNavigator();
 
@@ -39,6 +40,7 @@ function MainStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
     </Stack.Navigator>
   );
 }

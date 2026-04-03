@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const { signOut } = useAuth();
 
   return (
@@ -23,7 +23,11 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.content}>
-        <TouchableOpacity style={styles.card} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('SpeechDemo')}
+        >
           <Text style={styles.cardIcon}>🎙️</Text>
           <Text style={styles.cardTitle}>Speech Enhancement</Text>
           <Text style={styles.cardDescription}>

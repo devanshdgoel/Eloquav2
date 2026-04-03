@@ -43,6 +43,15 @@ export function AuthProvider({ children }) {
     setState(prev => ({ ...prev, hasCompletedOnboarding: true }));
   }
 
+  function enterDemoMode() {
+    setState({
+      isLoading: false,
+      isSignedIn: true,
+      hasCompletedOnboarding: true,
+      user: { name: 'Demo User', email: 'demo@eloqua.app' },
+    });
+  }
+
   async function signOut() {
     await removeToken();
     setState({
@@ -54,7 +63,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, setSignedIn, setOnboarded, signOut, checkAuthState }}>
+    <AuthContext.Provider value={{ ...state, setSignedIn, setOnboarded, signOut, checkAuthState, enterDemoMode }}>
       {children}
     </AuthContext.Provider>
   );

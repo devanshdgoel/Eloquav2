@@ -10,10 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useAuth } from '../context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen({ navigation }) {
+  const { enterDemoMode } = useAuth();
+
   // Animated values
   const dolphinY = useRef(new Animated.Value(height + 60)).current;
   const dolphinX = useRef(new Animated.Value(width * 0.05)).current;
@@ -229,6 +232,13 @@ export default function SplashScreen({ navigation }) {
         >
           <Text style={styles.createAccountButtonText}>Create new account</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.demoButton}
+          onPress={enterDemoMode}
+        >
+          <Text style={styles.demoButtonText}>Try Demo</Text>
+        </TouchableOpacity>
       </Animated.View>
 
       {/* Wave logo */}
@@ -356,6 +366,16 @@ const styles = StyleSheet.create({
     color: '#1C4047',
     fontSize: 17,
     fontWeight: '500',
+  },
+  demoButton: {
+    marginTop: 16,
+    paddingVertical: 10,
+  },
+  demoButtonText: {
+    color: '#FFFFFF99',
+    fontSize: 15,
+    fontWeight: '400',
+    textDecorationLine: 'underline',
   },
   waveLogo: {
     position: 'absolute',
