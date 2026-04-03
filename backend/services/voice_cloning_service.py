@@ -1,21 +1,19 @@
-import json
 import logging
 import os
 import requests
-from pathlib import Path
+from firebase_admin import firestore
 
 logger = logging.getLogger(__name__)
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-# Local directory for per-user voice profiles (voice_id mapping).
-# NOTE: this directory is ephemeral on Railway — profiles are lost on redeploy.
-# For production, migrate to Firestore.
-VOICE_STORE_PATH = Path("voice_profiles")
-VOICE_STORE_PATH.mkdir(exist_ok=True)
-
 # Rachel — ElevenLabs default voice used when no clone exists.
 DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+
+# Firestore collection that holds per-user profiles.
+# voice_id is stored as a field on the same document as name/email/age/phone.
+_USERS_COLLECTION = "users"
+_VOICE_ID_FIELD = "elevenlabs_voice_id"
 
 
 class VoiceCloningError(Exception):
@@ -25,9 +23,10 @@ class VoiceCloningError(Exception):
         super().__init__(message)
 
 
-def create_cloned_voice(user_id: str, audio_paths: list[Path], user_name: str = "User") -> str:
+def create_cloned_voice(user_id: str, audio_paths: list, user_name: str = "User") -> str:
     """
-    Create an ElevenLabs Instant Voice Clone from one or more audio samples.
+    Create an ElevenLabs Instant Voice Clone from one or more audio samples
+    and persist the returned voice_id to Firestore.
 
     ElevenLabs recommends at least 30 seconds of clean audio for best results.
     Supported formats: mp3, wav, m4a. Returns the new voice_id string.
@@ -88,66 +87,81 @@ def create_cloned_voice(user_id: str, audio_paths: list[Path], user_name: str = 
     if not voice_id:
         raise VoiceCloningError("ElevenLabs returned no voice_id.", "api")
 
-    _save_voice_profile(user_id, voice_id, voice_name)
-    logger.info("Voice cloned for user %s → voice_id=%s", user_id[:8], voice_id)
+    _save_voice_id(user_id, voice_id)
+    logger.info("Voice cloned for user %s -> voice_id=%s", user_id[:8], voice_id)
     return voice_id
 
 
 def get_user_voice_id(user_id: str) -> str:
     """Return the user's cloned voice_id, or the default voice if none exists."""
-    profile = _load_voice_profile(user_id)
-    if profile and profile.get("voice_id"):
-        return profile["voice_id"]
-    return DEFAULT_VOICE_ID
+    voice_id = _load_voice_id(user_id)
+    return voice_id if voice_id else DEFAULT_VOICE_ID
 
 
 def has_cloned_voice(user_id: str) -> bool:
-    """Return True if a cloned voice profile exists for this user."""
-    profile = _load_voice_profile(user_id)
-    return profile is not None and "voice_id" in profile
+    """Return True if a cloned voice_id exists for this user in Firestore."""
+    return _load_voice_id(user_id) is not None
 
 
 def delete_cloned_voice(user_id: str) -> bool:
     """
-    Delete the user's cloned voice from ElevenLabs and remove the local profile.
-    Returns False if no profile exists.
+    Delete the user's cloned voice from ElevenLabs and remove the voice_id
+    from Firestore. Returns False if no voice_id exists for this user.
     """
-    profile = _load_voice_profile(user_id)
-    if not profile or "voice_id" not in profile:
+    voice_id = _load_voice_id(user_id)
+    if not voice_id:
         return False
 
-    # Best-effort deletion from ElevenLabs — don't block on failure.
+    # Best-effort deletion from ElevenLabs — do not block on failure.
     if ELEVENLABS_API_KEY:
         try:
             requests.delete(
-                f"https://api.elevenlabs.io/v1/voices/{profile['voice_id']}",
+                f"https://api.elevenlabs.io/v1/voices/{voice_id}",
                 headers={"xi-api-key": ELEVENLABS_API_KEY},
                 timeout=15,
             )
         except Exception as exc:
             logger.warning("Failed to delete ElevenLabs voice: %s", exc)
 
-    profile_path = VOICE_STORE_PATH / f"{user_id}.json"
-    if profile_path.exists():
-        profile_path.unlink()
-
+    _clear_voice_id(user_id)
     return True
 
 
-# ── Private helpers ───────────────────────────────────────────────────────────
+# ── Firestore helpers ─────────────────────────────────────────────────────────
 
-def _save_voice_profile(user_id: str, voice_id: str, voice_name: str) -> None:
-    profile_path = VOICE_STORE_PATH / f"{user_id}.json"
-    with open(profile_path, "w") as f:
-        json.dump({"user_id": user_id, "voice_id": voice_id, "voice_name": voice_name}, f, indent=2)
+def _user_doc_ref(user_id: str):
+    """Return a Firestore DocumentReference for users/{user_id}."""
+    return firestore.client().collection(_USERS_COLLECTION).document(user_id)
 
 
-def _load_voice_profile(user_id: str) -> dict | None:
-    profile_path = VOICE_STORE_PATH / f"{user_id}.json"
-    if not profile_path.exists():
-        return None
+def _save_voice_id(user_id: str, voice_id: str) -> None:
+    """Write (or overwrite) the voice_id field on the user's Firestore document."""
+    _user_doc_ref(user_id).set(
+        {_VOICE_ID_FIELD: voice_id},
+        merge=True,
+    )
+
+
+def _load_voice_id(user_id: str) -> str | None:
+    """
+    Read the voice_id field from Firestore.
+    Returns None if the document or field does not exist.
+    """
     try:
-        with open(profile_path, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
+        doc = _user_doc_ref(user_id).get()
+        if not doc.exists:
+            return None
+        return doc.to_dict().get(_VOICE_ID_FIELD)
+    except Exception as exc:
+        logger.warning("Failed to read voice_id from Firestore: %s", exc)
         return None
+
+
+def _clear_voice_id(user_id: str) -> None:
+    """Remove the voice_id field from the user's Firestore document."""
+    try:
+        _user_doc_ref(user_id).update(
+            {_VOICE_ID_FIELD: firestore.DELETE_FIELD}
+        )
+    except Exception as exc:
+        logger.warning("Failed to clear voice_id from Firestore: %s", exc)
