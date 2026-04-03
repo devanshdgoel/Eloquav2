@@ -27,6 +27,7 @@ export default function SplashScreen({ navigation }) {
   const waveLogoOpacity = useRef(new Animated.Value(0)).current;
   const orTextOpacity = useRef(new Animated.Value(0)).current;
   const gradientFade = useRef(new Animated.Value(0)).current;
+  const hiOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.sequence([
@@ -36,7 +37,11 @@ export default function SplashScreen({ navigation }) {
         Animated.timing(dolphinX, { toValue: width * 0.28, duration: 1400, useNativeDriver: true }),
         Animated.timing(dolphinY, { toValue: height - 220, duration: 1400, useNativeDriver: true }),
       ]),
-      Animated.delay(1000),
+      // "Hi!" fades in while the dolphin is stationary
+      Animated.timing(hiOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.delay(600),
+      // "Hi!" fades out as the dolphin begins to exit
+      Animated.timing(hiOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
       // Dolphin exits while scene transitions
       Animated.parallel([
         Animated.timing(dolphinX, { toValue: width * 0.85, duration: 2400, useNativeDriver: true }),
@@ -91,6 +96,7 @@ export default function SplashScreen({ navigation }) {
         dolphinX={dolphinX}
         dolphinY={dolphinY}
         rotateInterpolation={rotateInterpolation}
+        hiOpacity={hiOpacity}
       />
 
       <BrandReveal
