@@ -17,7 +17,7 @@ export async function isOnboardingComplete() {
   return value === 'true';
 }
 
-// User profile (name, age — collected during onboarding, stored locally)
+// User profile (name, age, phone — collected during onboarding, stored locally)
 export async function saveUserProfile(profile) {
   await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
 }

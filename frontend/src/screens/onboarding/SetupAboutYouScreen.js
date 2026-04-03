@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { saveUserProfileToFirestore } from '../../services/userService';
 import { saveUserProfile } from '../../utils/storage';
 
 const AGE_RANGES = [
@@ -21,13 +22,26 @@ const AGE_RANGES = [
 ];
 
 export default function SetupAboutYouScreen({ navigation }) {
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
+  const [name, setName]                 = useState('');
+  const [age, setAge]                   = useState('');
+  const [phone, setPhone]               = useState('');
   const [ageModalVisible, setAgeModalVisible] = useState(false);
 
   async function handleNext() {
-    // Trim whitespace before persisting so stored values are always clean.
-    await saveUserProfile({ name: name.trim(), age });
+    const trimmedName  = name.trim();
+    const trimmedPhone = phone.trim();
+
+    // Persist locally for offline access.
+    await saveUserProfile({ name: trimmedName, age, phone: trimmedPhone });
+
+    // Persist to Firestore so the profile is accessible from any device
+    // and visible in the Firebase console. Failure is non-fatal.
+    try {
+      await saveUserProfileToFirestore({ name: trimmedName, age, phone: trimmedPhone });
+    } catch (err) {
+      console.warn('Failed to save profile to Firestore:', err.message);
+    }
+
     navigation.navigate('SetupVoice');
   }
 
@@ -58,17 +72,32 @@ export default function SetupAboutYouScreen({ navigation }) {
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
-              placeholder="Name/Nickname"
+              placeholder="Name / Nickname"
               placeholderTextColor="rgba(28,64,71,0.4)"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
-              returnKeyType="done"
+              returnKeyType="next"
               accessibilityLabel="Preferred name"
             />
           </View>
 
-          {/* Age */}
+          {/* Phone Number */}
+          <Text style={styles.label}>Phone Number (optional):</Text>
+          <View style={styles.inputCard}>
+            <TextInput
+              style={styles.input}
+              placeholder="+44 7700 900000"
+              placeholderTextColor="rgba(28,64,71,0.4)"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              returnKeyType="done"
+              accessibilityLabel="Phone number"
+            />
+          </View>
+
+          {/* Age Range */}
           <Text style={styles.label}>How old are you?</Text>
           <TouchableOpacity
             style={styles.selectCard}
@@ -80,7 +109,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             <Text style={[styles.selectText, !age && styles.selectPlaceholder]}>
               {age || 'Select'}
             </Text>
-            <Text style={styles.chevron}>⌄</Text>
+            <Text style={styles.chevron}>v</Text>
           </TouchableOpacity>
 
           {/* Progress dots */}
@@ -90,7 +119,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             <View style={styles.dotInactive} />
           </View>
 
-          {/* Orange → button */}
+          {/* Orange next button */}
           <TouchableOpacity
             style={[styles.nextBtn, !canProceed && styles.nextBtnDisabled]}
             onPress={handleNext}
@@ -223,10 +252,9 @@ const styles = StyleSheet.create({
     color: 'rgba(28,64,71,0.4)',
   },
   chevron: {
-    fontSize: 22,
+    fontSize: 18,
     color: '#FFA940',
     fontWeight: '700',
-    marginTop: -4,
   },
 
   dotsRow: {
