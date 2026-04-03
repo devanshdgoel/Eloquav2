@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import { getVoiceStatus } from '../services/voiceService';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -18,8 +19,15 @@ export default function SpeechDemoScreen({ navigation }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [voiceInfo, setVoiceInfo] = useState(null);
   const recordingRef = useRef(null);
   const soundRef = useRef(null);
+
+  useEffect(() => {
+    getVoiceStatus('demo_user')
+      .then(setVoiceInfo)
+      .catch(() => {});
+  }, []);
 
   async function startRecording() {
     try {
@@ -58,13 +66,14 @@ export default function SpeechDemoScreen({ navigation }) {
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
 
-      // Send to backend
+      // Send to backend with user_id for voice matching
       const formData = new FormData();
       formData.append('file', {
         uri,
         name: 'recording.m4a',
         type: 'audio/m4a',
       });
+      formData.append('user_id', 'demo_user');
 
       const response = await fetch(`${API_BASE_URL}/api/process-audio`, {
         method: 'POST',
@@ -135,6 +144,17 @@ export default function SpeechDemoScreen({ navigation }) {
             4. AI will enhance your speech for clarity
           </Text>
         </View>
+
+        {/* Voice status */}
+        {voiceInfo && (
+          <View style={[styles.voiceStatus, !voiceInfo.is_default && styles.voiceStatusCloned]}>
+            <Text style={styles.voiceStatusText}>
+              {voiceInfo.is_default
+                ? '🔈 Using default voice — set up your voice in onboarding for personalized output'
+                : '🎯 Using your cloned voice — output will sound like you'}
+            </Text>
+          </View>
+        )}
 
         {/* Record button */}
         <View style={styles.recordSection}>
@@ -259,6 +279,22 @@ const styles = StyleSheet.create({
     color: '#A0A0B8',
     fontSize: 15,
     lineHeight: 24,
+  },
+  voiceStatus: {
+    backgroundColor: '#2A2A4A',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 24,
+    borderLeftWidth: 3,
+    borderLeftColor: '#A0A0B8',
+  },
+  voiceStatusCloned: {
+    borderLeftColor: '#4CAF50',
+  },
+  voiceStatusText: {
+    color: '#A0A0B8',
+    fontSize: 14,
+    lineHeight: 20,
   },
   recordSection: {
     alignItems: 'center',

@@ -7,10 +7,12 @@ import {
   StatusBar,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useAuth } from '../../context/AuthContext';
 import { setOnboardingComplete } from '../../utils/storage';
+import { cloneVoice } from '../../services/voiceService';
 
 const PRACTICE_SENTENCES = [
   "The rainbow appeared after the morning rain stopped.",
@@ -25,6 +27,7 @@ export default function SetupVoiceScreen({ navigation }) {
   const [isRecording, setIsRecording] = useState(false);
   const recordingRef = useRef(null);
 
+  const [isCloning, setIsCloning] = useState(false);
   const allRecorded = recordings.every(r => r !== null);
 
   async function startRecording() {
@@ -63,9 +66,37 @@ export default function SetupVoiceScreen({ navigation }) {
   }
 
   async function handleFinish() {
+    const validRecordings = recordings.filter(r => r !== null);
+
+    if (validRecordings.length > 0) {
+      setIsCloning(true);
+      try {
+        await cloneVoice(validRecordings, 'demo_user', 'User');
+        Alert.alert(
+          'Voice Cloned!',
+          'Your voice profile has been created. Enhanced speech will now sound like you.',
+          [{ text: 'Continue', onPress: completeOnboarding }]
+        );
+        return;
+      } catch (err) {
+        // Voice cloning failed — continue anyway, will use default voice
+        Alert.alert(
+          'Voice setup skipped',
+          'We couldn\'t create your voice profile right now. You can try again later. Enhanced speech will use a default voice.',
+          [{ text: 'Continue', onPress: completeOnboarding }]
+        );
+        return;
+      } finally {
+        setIsCloning(false);
+      }
+    }
+
+    completeOnboarding();
+  }
+
+  async function completeOnboarding() {
     await setOnboardingComplete();
     setOnboarded();
-    // Navigation will automatically redirect to Home via AppNavigator
   }
 
   function handleSkip() {
@@ -180,12 +211,19 @@ export default function SetupVoiceScreen({ navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.finishButton, !allRecorded && styles.finishButtonDisabled]}
+          style={[styles.finishButton, (!allRecorded || isCloning) && styles.finishButtonDisabled]}
           onPress={handleFinish}
-          disabled={!allRecorded}
+          disabled={!allRecorded || isCloning}
           activeOpacity={0.8}
         >
-          <Text style={styles.finishButtonText}>Finish Setup</Text>
+          {isCloning ? (
+            <View style={styles.cloningRow}>
+              <ActivityIndicator size="small" color="#FFFFFF" />
+              <Text style={styles.finishButtonText}>Creating your voice...</Text>
+            </View>
+          ) : (
+            <Text style={styles.finishButtonText}>Finish Setup</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -350,6 +388,11 @@ const styles = StyleSheet.create({
   },
   finishButtonDisabled: {
     opacity: 0.4,
+  },
+  cloningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   finishButtonText: {
     color: '#FFFFFF',

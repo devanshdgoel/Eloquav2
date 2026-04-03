@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from typing import Optional
 
 from utils.validators import is_valid_audio
 from utils.file_handler import save_uploaded_audio
@@ -12,7 +13,10 @@ router = APIRouter()
 
 
 @router.post("/process-audio")
-async def process_audio(file: UploadFile = File(...)):
+async def process_audio(
+    file: UploadFile = File(...),
+    user_id: Optional[str] = Form(default=None),
+):
     # 1. Validate audio
     if not is_valid_audio(file.filename):
         raise HTTPException(
@@ -47,7 +51,7 @@ async def process_audio(file: UploadFile = File(...)):
     audio_url = None
 
     try:
-        audio_path = generate_enhanced_speech(cleaned_transcript)
+        audio_path = generate_enhanced_speech(cleaned_transcript, user_id=user_id)
         audio_url = f"/api/audio/{audio_path.name}"
     except SpeechEnhancementError:
         audio_url = None

@@ -3,11 +3,9 @@ import uuid
 import requests
 from pathlib import Path
 
+from services.voice_cloning_service import get_user_voice_id, DEFAULT_VOICE_ID
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-
-# Pick ONE voice for MVP (replace if needed)
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Example ElevenLabs voice
 
 AUDIO_OUTPUT_DIR = Path("temp_audio")
 AUDIO_OUTPUT_DIR.mkdir(exist_ok=True)
@@ -17,9 +15,11 @@ class SpeechEnhancementError(Exception):
     pass
 
 
-def generate_enhanced_speech(text: str) -> Path:
+def generate_enhanced_speech(text: str, user_id: str = None) -> Path:
     """
     Sends text to ElevenLabs and returns path to generated audio file.
+    If user_id is provided and has a cloned voice, uses their voice.
+    Otherwise falls back to default voice.
     """
     if not ELEVENLABS_API_KEY:
         raise SpeechEnhancementError("ElevenLabs API key not configured")
@@ -27,7 +27,13 @@ def generate_enhanced_speech(text: str) -> Path:
     if not text or len(text.strip()) < 3:
         raise SpeechEnhancementError("Text too short for speech generation")
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+    # Use user's cloned voice if available, otherwise default
+    if user_id:
+        voice_id = get_user_voice_id(user_id)
+    else:
+        voice_id = DEFAULT_VOICE_ID
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
@@ -38,8 +44,8 @@ def generate_enhanced_speech(text: str) -> Path:
     payload = {
         "text": text,
         "voice_settings": {
-            "stability": 0.6,
-            "similarity_boost": 0.7
+            "stability": 0.5,
+            "similarity_boost": 0.85,
         }
     }
 
