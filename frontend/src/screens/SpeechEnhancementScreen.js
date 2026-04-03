@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { SvgXml } from 'react-native-svg';
+import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
 
 const { width: SW } = Dimensions.get('window');
@@ -189,6 +190,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
     try {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: 'recording.m4a' });
+
+      // Include the user's Firebase UID so the backend can use their cloned
+      // voice for synthesis if one exists. Falls back gracefully if null.
+      const uid = auth.currentUser?.uid;
+      if (uid) form.append('user_id', uid);
+
       const res = await fetch(`${API_BASE_URL}/api/process-audio`, { method: 'POST', body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

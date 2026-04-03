@@ -6,9 +6,12 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
+import { auth } from '../../config/firebase';
+import { cloneVoice } from '../../services/voiceService';
 import { setOnboardingComplete } from '../../utils/storage';
 
 // The three reference sentences used to capture a baseline voice profile.
@@ -19,13 +22,14 @@ const SENTENCES = [
 ];
 
 export default function SetupVoiceScreen({ navigation }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [recordings, setRecordings]     = useState([null, null, null]);
-  const [isRecording, setIsRecording]   = useState(false);
+  const [currentIndex, setCurrentIndex]   = useState(0);
+  const [recordings, setRecordings]       = useState([null, null, null]);
+  const [isRecording, setIsRecording]     = useState(false);
+  const [isCloningVoice, setIsCloningVoice] = useState(false);
   const recordingRef = useRef(null);
 
   // Stop and discard any active recording if the user navigates away
-  // before completing the voice setup (e.g. Android back gesture).
+  // before completing voice setup (e.g. Android back gesture).
   useEffect(() => {
     return () => {
       if (recordingRef.current) {
@@ -74,11 +78,35 @@ export default function SetupVoiceScreen({ navigation }) {
       // feels deliberate rather than abrupt.
       setTimeout(() => setCurrentIndex(currentIndex + 1), 400);
     } else {
-      await finishSetup();
+      await finishSetup(updated);
     }
   }
 
-  async function finishSetup() {
+  /**
+   * Called after all three sentences are recorded.
+   * Attempts to clone the user's voice from the recordings, then navigates home.
+   * Voice cloning runs in the background — a failure is non-fatal and the user
+   * proceeds with the default voice instead.
+   */
+  async function finishSetup(recordedUris) {
+    const user = auth.currentUser;
+
+    if (user) {
+      // Show a loading indicator while the voice samples are uploaded and
+      // processed by ElevenLabs. This typically takes 10-30 seconds.
+      setIsCloningVoice(true);
+      try {
+        const validUris = recordedUris.filter(Boolean);
+        await cloneVoice(validUris, user.uid, user.displayName || 'User');
+      } catch (err) {
+        // Voice cloning failure is non-fatal — the app falls back to the
+        // default voice. Log the error but do not block the user.
+        console.warn('Voice cloning failed (non-fatal):', err.message);
+      } finally {
+        setIsCloningVoice(false);
+      }
+    }
+
     await setOnboardingComplete();
     navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
@@ -86,6 +114,18 @@ export default function SetupVoiceScreen({ navigation }) {
   async function handleSkip() {
     await setOnboardingComplete();
     navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+  }
+
+  // Show a full-screen loading state while the voice clone is being created.
+  if (isCloningVoice) {
+    return (
+      <LinearGradient colors={['#9FCFBD', '#2D6974']} style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator size="large" color="#FFFFFF" />
+        <Text style={styles.loadingTitle}>Creating your voice profile</Text>
+        <Text style={styles.loadingSubtitle}>This may take up to 30 seconds...</Text>
+      </LinearGradient>
+    );
   }
 
   return (
@@ -115,7 +155,7 @@ export default function SetupVoiceScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
         >
-          <Text style={styles.micIcon}>🎤</Text>
+          <Text style={styles.micIcon}>M</Text>
         </TouchableOpacity>
 
         {/* One dot per sentence; the current sentence is highlighted white. */}
@@ -216,7 +256,12 @@ const styles = StyleSheet.create({
   micBtnRecording: {
     backgroundColor: '#C0392B',
   },
-  micIcon: { fontSize: 38 },
+  // Placeholder text label for the mic button until a mic icon asset is added.
+  micIcon: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
 
   dotsRow: {
     flexDirection: 'row',
@@ -236,5 +281,27 @@ const styles = StyleSheet.create({
   },
   dotOther: {
     backgroundColor: '#1C4047',
+  },
+
+  // Voice cloning loading screen
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+    paddingHorizontal: 40,
+  },
+  loadingTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  loadingSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    letterSpacing: 0.3,
   },
 });

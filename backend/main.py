@@ -5,8 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import ALLOWED_ORIGINS
 from firebase_config import initialize_firebase
-from api.speech_routes import router as speech_router
 from api.audio_routes import router as audio_router
+from api.speech_routes import router as speech_router
+from api.voice_routes import router as voice_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +34,7 @@ def health_check():
 
 app.include_router(speech_router, prefix="/api")
 app.include_router(audio_router, prefix="/api")
+app.include_router(voice_router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
