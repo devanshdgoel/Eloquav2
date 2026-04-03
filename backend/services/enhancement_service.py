@@ -43,6 +43,7 @@ def generate_enhanced_speech(text: str, user_id: str = None) -> Path:
 
     payload = {
         "text": text,
+        "model_id": "eleven_v3",
         "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.85,

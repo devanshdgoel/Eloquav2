@@ -61,6 +61,7 @@ def create_cloned_voice(user_id: str, audio_paths: list[Path], user_name: str = 
     data = {
         "name": voice_name,
         "description": f"Cloned voice for Eloqua user {user_id}",
+        "remove_background_noise": "true",
     }
 
     try:
