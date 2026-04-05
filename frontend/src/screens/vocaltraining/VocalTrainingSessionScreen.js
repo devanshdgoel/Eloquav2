@@ -45,12 +45,12 @@ const PROGRESS_BAR_H = 8;
 
 // ── Session complete screen ───────────────────────────────────────────────────
 
-function SessionComplete({ navigation }) {
+function SessionComplete({ navigation, nodeIndex }) {
   return (
     <LinearGradient colors={['#E0ECDE', '#68B39F']} style={completeStyles.root}>
       <View style={completeStyles.content}>
         <View style={completeStyles.badge}>
-          <Text style={completeStyles.badgeText}>1</Text>
+          <Text style={completeStyles.badgeText}>{nodeIndex + 1}</Text>
         </View>
         <Text style={completeStyles.title}>Session Complete</Text>
         <Text style={completeStyles.subtitle}>
@@ -125,8 +125,9 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   const [isDone, setIsDone] = useState(false);
 
   // Animated progress bar width (0 → 1 represents 0% → 100%).
+  // Starts at 1/7 because the first exercise is already showing.
   // useNativeDriver must be false because width is a layout property.
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(1 / SESSION_EXERCISES.length)).current;
 
   function animateProgressTo(fraction) {
     Animated.timing(progressAnim, {
@@ -154,7 +155,7 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   }
 
   if (isDone) {
-    return <SessionComplete navigation={navigation} />;
+    return <SessionComplete navigation={navigation} nodeIndex={nodeIndex} />;
   }
 
   const { type } = SESSION_EXERCISES[exerciseIndex];

@@ -242,7 +242,11 @@ const btn = StyleSheet.create({
 
 function TitleScreen({ onNext, onExit }) {
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1C4047' }]}>
+    <LinearGradient
+      colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END}
+      style={StyleSheet.absoluteFillObject}
+    >
       <StatusBar barStyle="light-content" />
 
       <View style={ts.header}>
@@ -262,7 +266,7 @@ function TitleScreen({ onNext, onExit }) {
       </TouchableOpacity>
 
       <SessionBar fill={0.14} />
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -484,10 +488,10 @@ const vs = StyleSheet.create({
 // ── Screen 3: Drill ───────────────────────────────────────────────────────────
 
 const PHASE_LABELS = {
-  idle:   'Breath in',
-  inhale: 'Breath in',
+  idle:   'Breathe in',
+  inhale: 'Breathe in',
   hold:   'Hold',
-  exhale: 'Breath Out',
+  exhale: 'Breathe out',
   done:   'Well done',
 };
 
@@ -622,7 +626,6 @@ const ds = StyleSheet.create({
   bubbleArea: {
     flex: 1,
     justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden',
   },
   bottom: {
     alignItems: 'center',
@@ -641,7 +644,7 @@ export default function BreathingExercise({ onComplete, onExit }) {
   const [step, setStep] = useState(STEP_TITLE);
 
   if (step === STEP_TITLE) return <TitleScreen onNext={() => setStep(STEP_INFO)}  onExit={onExit} />;
-  if (step === STEP_INFO)  return <InfoScreen  onNext={() => setStep(STEP_VIDEO)} onExit={onExit} />;
-  if (step === STEP_VIDEO) return <VideoScreen onNext={() => setStep(STEP_DRILL)} onExit={onExit} />;
+  if (step === STEP_INFO)  return <InfoScreen  onNext={() => setStep(STEP_VIDEO)} onExit={() => setStep(STEP_TITLE)} />;
+  if (step === STEP_VIDEO) return <VideoScreen onNext={() => setStep(STEP_DRILL)} onExit={() => setStep(STEP_INFO)} />;
   return <DrillScreen onComplete={onComplete} onExit={onExit} />;
 }

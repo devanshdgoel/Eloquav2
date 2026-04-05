@@ -125,7 +125,7 @@ function MicBlob({ pulsing }) {
 }
 
 // ── Intro screen (Figma Type 33) ───────────────────────────────────────────────
-function IntroScreen({ onStart, progress }) {
+function IntroScreen({ onStart, onExit, progress }) {
   // progress = fraction 0–1 for the orange bar
   const barW = 314 * SC;
   const fillW = barW * progress;
@@ -134,11 +134,11 @@ function IntroScreen({ onStart, progress }) {
     <View style={styles.introRoot}>
       <StatusBar barStyle="light-content" />
 
-      {/* X exit — won't exit from intro, just visual; real exit happens in exercise */}
+      {/* X exit — exits the exercise from intro */}
       <View style={styles.introTopRow}>
-        <View style={styles.introXBtn}>
+        <TouchableOpacity style={styles.introXBtn} onPress={onExit}>
           <Text style={styles.introXText}>✕</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Title */}
@@ -154,10 +154,16 @@ function IntroScreen({ onStart, progress }) {
         </View>
       </View>
 
+      {/* Spacer pushes arrow button down */}
+      <View style={{ flex: 1 }} />
+
       {/* Arrow button */}
       <TouchableOpacity style={styles.introArrowBtn} onPress={onStart}>
         <Text style={styles.introArrowText}>→</Text>
       </TouchableOpacity>
+
+      {/* Gap between arrow and progress bar */}
+      <View style={{ height: 60 }} />
 
       {/* Bottom progress bar */}
       <View style={styles.introBarTrack}>
@@ -220,45 +226,38 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     }
   }
 
+  function onMeterUpdate(status) {
+    if (!status.isRecording || phaseRef.current !== 'speak') return;
+    const db  = status.metering ?? -160;
+    const vol = Math.max(0, Math.min(1, (db + 70) / 60));
+    if (vol > SPEAK_THRESHOLD) {
+      if (!holdTimerRef.current) {
+        holdTimerRef.current = setTimeout(() => {
+          holdTimerRef.current = null;
+          if (phaseRef.current === 'speak') handleSuccess();
+        }, MIN_SPEAK_MS);
+      }
+    } else {
+      if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    }
+  }
+
   async function startRecording() {
     try {
       const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) { handleWrong(); return; }
       await setRecordMode();
-      const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync({
-        android: {
-          extension: '.m4a',
-          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-          sampleRate: 44100, numberOfChannels: 1, bitRate: 128000,
+      const { recording } = await Audio.Recording.createAsync(
+        {
+          android: Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+          ios:     Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+          web:     {},
+          isMeteringEnabled: true,
         },
-        ios: {
-          extension: '.m4a',
-          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-          sampleRate: 44100, numberOfChannels: 1, bitRate: 128000,
-          linearPCMBitDepth: 16, linearPCMIsBigEndian: false, linearPCMIsFloat: false,
-        },
-        isMeteringEnabled: true,
-      });
-      rec.setOnRecordingStatusUpdate(status => {
-        if (!status.isRecording || phaseRef.current !== 'speak') return;
-        const db  = status.metering ?? -60;
-        const vol = Math.max(0, Math.min(1, (db + 70) / 60));
-        if (vol > SPEAK_THRESHOLD) {
-          if (!holdTimerRef.current) {
-            holdTimerRef.current = setTimeout(() => {
-              holdTimerRef.current = null;
-              if (phaseRef.current === 'speak') handleSuccess();
-            }, MIN_SPEAK_MS);
-          }
-        } else {
-          if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
-        }
-      });
-      await rec.startAsync();
-      recordingRef.current = rec;
+        onMeterUpdate,
+        80,
+      );
+      recordingRef.current = recording;
       // Timeout → wrong answer drawer
       maxTimerRef.current = setTimeout(() => {
         if (phaseRef.current === 'speak') handleWrong();
@@ -458,7 +457,7 @@ export default function FunctionalSpeechExercise({ onComplete, onExit }) {
   if (introSeen === null) return null;
 
   if (!introSeen || showIntro) {
-    return <IntroScreen onStart={handleIntroStart} progress={0} />;
+    return <IntroScreen onStart={handleIntroStart} onExit={onExit} progress={0} />;
   }
 
   return (
@@ -519,7 +518,6 @@ const styles = StyleSheet.create({
     width: 72 * SC, height: 72 * SC, borderRadius: 20 * SC,
     backgroundColor: C.tealMid,
     justifyContent: 'center', alignItems: 'center',
-    marginBottom: 'auto',
   },
   introArrowText: { color: C.white, fontSize: 28 * SC, fontWeight: '700' },
 
