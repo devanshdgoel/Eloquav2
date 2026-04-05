@@ -324,7 +324,7 @@ const dm = StyleSheet.create({
  *   'travel'  — jellyfish animating toward target hoop
  *   'done'    — all 5 hoops complete
  */
-function ExerciseScreen({ onComplete, onExit }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const [hoopIndex, setHoopIndex] = useState(0);
   const [doneCount, setDoneCount] = useState(0);
   const [phase,     setPhase]     = useState('breathe');
@@ -456,9 +456,9 @@ function ExerciseScreen({ onComplete, onExit }) {
           <Text style={ex.closeText}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        <View style={ex.helpCircle}>
+        <TouchableOpacity style={ex.helpCircle} onPress={onShowDemo}>
           <Text style={ex.helpText}>?</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* ── Progress pills ────────────────────────────────────────────── */}
@@ -607,5 +607,11 @@ export default function PitchGlidesExercise({ onComplete, onExit }) {
     );
   }
 
-  return <ExerciseScreen onComplete={onComplete} onExit={onExit} />;
+  return (
+    <ExerciseScreen
+      onComplete={onComplete}
+      onExit={onExit}
+      onShowDemo={() => { setShowDemo(true); setSlideIdx(0); }}
+    />
+  );
 }

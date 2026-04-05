@@ -581,7 +581,7 @@ const ds = StyleSheet.create({
 // Exercise screen (main game)
 // ─────────────────────────────────────────────────────────────────────────────────
 
-function ExerciseScreen({ onComplete, onExit }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const [phase, setPhase]           = useState('idle');
   const [roundIdx, setRoundIdx]     = useState(0);
   const [doneCount, setDoneCount]   = useState(0);
@@ -768,6 +768,11 @@ function ExerciseScreen({ onComplete, onExit }) {
         <Text style={ex.backText}>←</Text>
       </TouchableOpacity>
 
+      {/* ── Help / demo button ── */}
+      <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo}>
+        <Text style={ex.helpText}>?</Text>
+      </TouchableOpacity>
+
       {/* ── Progress pills ── */}
       <View style={ex.pillsWrap}>
         <ProgressPills doneCount={doneCount} />
@@ -811,6 +816,15 @@ const ex = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   backText: { color: WHITE, fontSize: 18, fontWeight: '600' },
+  helpBtn: {
+    position: 'absolute', top: 52, right: 20, zIndex: 20,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: ORANGE,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.45, shadowRadius: 6, elevation: 6,
+  },
+  helpText: { color: WHITE, fontSize: 17, fontWeight: '800' },
   pillsWrap: {
     position: 'absolute', top: 56, left: 0, right: 0, zIndex: 20,
   },
@@ -849,5 +863,11 @@ export default function LoudnessDrillsExercise({ onComplete, onExit }) {
 
   if (showDemo === null) return null;
   if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} />;
-  return <ExerciseScreen onComplete={onComplete} onExit={onExit} />;
+  return (
+    <ExerciseScreen
+      onComplete={onComplete}
+      onExit={onExit}
+      onShowDemo={() => setShowDemo(true)}
+    />
+  );
 }

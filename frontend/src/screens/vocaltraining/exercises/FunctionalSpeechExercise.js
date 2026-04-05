@@ -168,7 +168,7 @@ function IntroScreen({ onStart, progress }) {
 }
 
 // ── Main exercise screen ───────────────────────────────────────────────────────
-function ExerciseScreen({ onComplete, onExit }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const items   = useRef(buildItems()).current;
   const TOTAL   = items.length; // 5
 
@@ -362,7 +362,7 @@ function ExerciseScreen({ onComplete, onExit }) {
           <Text style={styles.exXText}>✕</Text>
         </TouchableOpacity>
         <Text style={styles.exRepeatLabel}>Repeat</Text>
-        <TouchableOpacity style={styles.exHelpBtn}>
+        <TouchableOpacity style={styles.exHelpBtn} onPress={onShowDemo}>
           <Text style={styles.exHelpText}>?</Text>
         </TouchableOpacity>
       </View>
@@ -442,8 +442,8 @@ function ExerciseScreen({ onComplete, onExit }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function FunctionalSpeechExercise({ onComplete, onExit }) {
-  const [introSeen, setIntroSeen] = useState(null);
-  const items = useRef(buildItems()).current;
+  const [introSeen,  setIntroSeen]  = useState(null);
+  const [showIntro,  setShowIntro]  = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(INTRO_KEY).then(v => setIntroSeen(v === 'true'));
@@ -452,15 +452,22 @@ export default function FunctionalSpeechExercise({ onComplete, onExit }) {
   const handleIntroStart = useCallback(async () => {
     await AsyncStorage.setItem(INTRO_KEY, 'true');
     setIntroSeen(true);
+    setShowIntro(false);
   }, []);
 
   if (introSeen === null) return null;
 
-  if (!introSeen) {
+  if (!introSeen || showIntro) {
     return <IntroScreen onStart={handleIntroStart} progress={0} />;
   }
 
-  return <ExerciseScreen onComplete={onComplete} onExit={onExit} />;
+  return (
+    <ExerciseScreen
+      onComplete={onComplete}
+      onExit={onExit}
+      onShowDemo={() => setShowIntro(true)}
+    />
+  );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
