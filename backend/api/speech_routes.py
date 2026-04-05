@@ -86,9 +86,16 @@ async def process_audio(
             "speed": 1.0,
         }
         profile = DEFAULT_PROFILE
-        logger.info("Using cloned voice for user %s", user_id[:8])
+        logger.info("Using cloned voice for user %s", user_id[:8] if user_id else "unknown")
     else:
         # No clone on file — fall back to automatic voice profile matching.
+        logger.info(
+            "No cloned voice for user %s — using profile matching. "
+            "(user_id received: %s, has_clone: %s)",
+            user_id[:8] if user_id else "none",
+            bool(user_id),
+            has_cloned_voice(user_id) if user_id else False,
+        )
         try:
             profile, voice_settings = analyze_voice(
                 str(audio_path), raw_transcript, audio_duration_s

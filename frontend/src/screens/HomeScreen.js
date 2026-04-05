@@ -7,6 +7,7 @@ import {
   StatusBar,
   Dimensions,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle, G, Text as SvgText } from 'react-native-svg';
@@ -124,6 +125,25 @@ export default function HomeScreen({ navigation }) {
   async function handleSignOut() {
     await signOut();
     navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+  }
+
+  function handleSettingsPress() {
+    Alert.alert(
+      'Settings',
+      null,
+      [
+        {
+          text: 'Setup Voice',
+          onPress: () => navigation.navigate('SetupVoice'),
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: handleSignOut,
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   }
 
   // Clamp current_node to a valid array index for rendering.
@@ -260,7 +280,7 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={styles.tabBtn}
-          onPress={handleSignOut}
+          onPress={handleSettingsPress}
           accessibilityLabel="Settings and sign out"
         >
           <Text style={styles.tabIcon}>⚙️</Text>
