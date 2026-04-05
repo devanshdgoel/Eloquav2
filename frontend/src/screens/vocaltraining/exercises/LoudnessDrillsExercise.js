@@ -763,19 +763,17 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
         {activeHole && <HoleCylinder hole={activeHole} isActive />}
       </View>
 
-      {/* ── Back button ── */}
-      <TouchableOpacity style={ex.backBtn} onPress={onExit}>
-        <Text style={ex.backText}>←</Text>
-      </TouchableOpacity>
-
-      {/* ── Help / demo button ── */}
-      <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo}>
-        <Text style={ex.helpText}>?</Text>
-      </TouchableOpacity>
-
-      {/* ── Progress pills ── */}
-      <View style={ex.pillsWrap}>
-        <ProgressPills doneCount={doneCount} />
+      {/* ── Header row: back | pills | help ── */}
+      <View style={ex.headerRow}>
+        <TouchableOpacity style={ex.backBtn} onPress={onExit}>
+          <Text style={ex.backText}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, paddingHorizontal: 8 }}>
+          <ProgressPills doneCount={doneCount} />
+        </View>
+        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo}>
+          <Text style={ex.helpText}>?</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Word card ── */}
@@ -808,8 +806,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
 }
 
 const ex = StyleSheet.create({
+  headerRow: {
+    position: 'absolute', top: 52, left: 16, right: 16, zIndex: 20,
+    flexDirection: 'row', alignItems: 'center',
+  },
   backBtn: {
-    position: 'absolute', top: 52, left: 20, zIndex: 20,
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
@@ -817,7 +818,6 @@ const ex = StyleSheet.create({
   },
   backText: { color: WHITE, fontSize: 18, fontWeight: '600' },
   helpBtn: {
-    position: 'absolute', top: 52, right: 20, zIndex: 20,
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
@@ -825,11 +825,8 @@ const ex = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 6, elevation: 6,
   },
   helpText: { color: WHITE, fontSize: 17, fontWeight: '800' },
-  pillsWrap: {
-    position: 'absolute', top: 56, left: 0, right: 0, zIndex: 20,
-  },
   cardWrap: {
-    position: 'absolute', top: 84, left: 0, right: 0, zIndex: 20,
+    position: 'absolute', top: 112, left: 0, right: 0, zIndex: 20,
   },
   strip: {
     position: 'absolute', bottom: 0, left: 0, right: 0, height: 68,

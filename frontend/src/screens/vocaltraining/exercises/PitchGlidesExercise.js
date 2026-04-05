@@ -339,8 +339,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const phaseRef      = useRef('breathe');
   const hoopIdxRef    = useRef(0);
 
-  useEffect(() => { phaseRef.current  = phase;     }, [phase]);
-  useEffect(() => { hoopIdxRef.current = hoopIndex; }, [hoopIndex]);
+  // Helpers that keep the ref and state in sync atomically (avoids stale
+  // closure bugs when the refs are read in async callbacks).
+  function setPhaseSync(p)  { phaseRef.current   = p; setPhase(p);     }
+  function setHoopSync(idx) { hoopIdxRef.current = idx; setHoopIndex(idx); }
 
   useEffect(() => {
     startBreathePause();
@@ -350,7 +352,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
 
   // ── Breathing pause (1.4 s) before mic opens ──────────────────────────────
   function startBreathePause() {
-    setPhase('breathe');
+    setPhaseSync('breathe');
     setMicActive(false);
     Animated.timing(volumeAnim, { toValue: 0, duration: 300, useNativeDriver: false }).start();
     setTimeout(startListening, 1400);
@@ -373,7 +375,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
       );
       recordingRef.current = recording;
       setMicActive(true);
-      setPhase('listen');
+      setPhaseSync('listen');
     } catch (err) {
       console.warn('PitchGlides mic error:', err);
     }
@@ -413,7 +415,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
 
   // ── Voice detected — animate jellyfish to target hoop ────────────────────
   async function handleVoiceDetected() {
-    setPhase('travel');
+    setPhaseSync('travel');
     await stopRecording();
 
     const target  = HOOPS[hoopIdxRef.current];
@@ -429,11 +431,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
       setDoneCount(next);
 
       if (next >= TOTAL_HOOPS) {
-        setPhase('done');
-        setHoopIndex(TOTAL_HOOPS);
+        setPhaseSync('done');
+        setHoopSync(TOTAL_HOOPS);
         setTimeout(onComplete, 1600);
       } else {
-        setHoopIndex(next);
+        setHoopSync(next);
         setTimeout(startBreathePause, 600);
       }
     });
