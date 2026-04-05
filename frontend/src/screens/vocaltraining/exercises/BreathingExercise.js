@@ -13,41 +13,33 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width: W, height: H } = Dimensions.get('window');
 
 // ── Steps ─────────────────────────────────────────────────────────────────────
-const STEP_TITLE = 0; // "Breathing" intro card — solid dark bg
-const STEP_INFO  = 1; // "Diaphragmatic Breathing" — gradient, large sphere
-const STEP_VIDEO = 2; // Video tutorial — gradient + overlay
-const STEP_DRILL = 3; // Animated breathing drill — gradient, cycling bubble
+const STEP_TITLE = 0;
+const STEP_INFO  = 1;
+const STEP_VIDEO = 2;
+const STEP_DRILL = 3;
 
-// ── Timing (ms) ───────────────────────────────────────────────────────────────
-const INHALE_S   = 4;
-const HOLD_S     = 2;
-const EXHALE_S   = 4;
-const INHALE_MS  = INHALE_S * 1000;
-const HOLD_MS    = HOLD_S   * 1000;
-const EXHALE_MS  = EXHALE_S * 1000;
-
+// ── Timing ────────────────────────────────────────────────────────────────────
+const INHALE_S  = 4;
+const HOLD_S    = 2;
+const EXHALE_S  = 4;
+const INHALE_MS = INHALE_S * 1000;
+const HOLD_MS   = HOLD_S   * 1000;
+const EXHALE_MS = EXHALE_S * 1000;
 const TOTAL_CYCLES = 3;
 
 // ── Bubble geometry ───────────────────────────────────────────────────────────
-// The bubble is a fixed 244×244 container; scale transform drives the size.
-// Small state (pre-start): 58 / 244 ≈ 0.24
-// Large state (inhale complete / exhale): scale 1.0
 const BUBBLE_BASE = 244;
-const SCALE_SMALL = 58 / BUBBLE_BASE;  // ≈ 0.24
-const SCALE_LARGE = 1.0;
+const SCALE_SMALL = 58 / BUBBLE_BASE;   // ≈ 0.24  (resting / idle)
+const SCALE_LARGE = 1.0;                // full size on inhale complete
+const BUBBLE_RISE = -(H * 0.55 + BUBBLE_BASE / 2);  // exhale: rise off screen top
 
-// Exhale: bubble rises from its resting centre to above the top of the screen.
-// BUBBLE_RISE is the translateY needed to push the 244px sphere fully off-screen.
-const BUBBLE_RISE = -(H * 0.55 + BUBBLE_BASE / 2);
-
-// ── Shared gradient (all screens except title) ────────────────────────────────
-// Approximates the Figma 264° gradient: teal-green top-right → near-black bottom-left.
+// ── Shared gradient ───────────────────────────────────────────────────────────
 const BG_GRADIENT  = ['#2D858B', '#37767A', '#0A1618'];
 const BG_LOCATIONS = [0.2, 0.44, 1.0];
 const BG_START     = { x: 1, y: 0.1 };
 const BG_END       = { x: 0, y: 0.9 };
 
-// ── Reusable header elements ──────────────────────────────────────────────────
+// ── Header buttons ────────────────────────────────────────────────────────────
 
 function CloseButton({ onPress }) {
   return (
@@ -67,67 +59,115 @@ function HelpButton() {
 
 const h = StyleSheet.create({
   closeBtn: {
-    width: 53, height: 53, borderRadius: 10,
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.10)',
     justifyContent: 'center', alignItems: 'center',
   },
-  closeText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  closeText: { color: '#FFFFFF', fontSize: 17, fontWeight: '600' },
   helpCircle: {
-    width: 39, height: 39, borderRadius: 20,
+    width: 38, height: 38, borderRadius: 19,
     backgroundColor: '#FFA940',
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.45, shadowRadius: 6, elevation: 6,
   },
-  helpText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+  helpText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
 });
 
-// ── Dark glassy sphere component ──────────────────────────────────────────────
-// Three layered circles recreate the dark glassy bubble from Figma:
-//   outer circle  — dark near-black teal with a teal glow shadow
-//   inner shadow  — mid-grey highlight floating upper-left
-//   specular dot  — small white dot, top-right (light reflection point)
+// ── Glass Bubble ──────────────────────────────────────────────────────────────
+// Two-layer design:
+//   Outer view  — carries the teal glow/shadow (no overflow clip so shadow shows)
+//   Inner view  — clips all highlight layers to the circular boundary
+//
+// The resulting look: a deep dark-navy sphere with a teal outer glow, a large
+// frosted-glass arc upper-left, a secondary bright streak, a specular pinpoint
+// top-right, and a faint teal caustic at the base.
 
 function GlassSphere({ size = BUBBLE_BASE }) {
   const r = size / 2;
-  const innerSize  = size * 0.37;
-  const innerR     = innerSize / 2;
-  const specSize   = size * 0.115;
-  const specR      = specSize / 2;
+
   return (
-    <View style={[gs.sphere, { width: size, height: size, borderRadius: r,
-      shadowRadius: size * 0.13 }]}>
-      {/* Upper-left glass reflection */}
-      <View style={[gs.inner, {
-        width: innerSize, height: innerSize, borderRadius: innerR,
-        top: size * 0.15, left: size * 0.22,
-      }]} />
-      {/* Specular highlight dot — top right */}
-      <View style={[gs.spec, {
-        width: specSize, height: specSize, borderRadius: specR,
-        top: size * 0.08, right: size * 0.21,
-      }]} />
+    // Outer: glow only — no clip
+    <View style={{
+      width: size, height: size, borderRadius: r,
+      shadowColor: '#1ED8E8',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.75,
+      shadowRadius: size * 0.26,
+      elevation: 22,
+    }}>
+      {/* Inner: clips all layers to circle */}
+      <View style={{
+        width: size, height: size, borderRadius: r,
+        backgroundColor: '#091D26',
+        overflow: 'hidden',
+      }}>
+
+        {/* Subtle inner teal tint — creates depth / liquid feel */}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.72, height: size * 0.72,
+          borderRadius: size * 0.36,
+          top: size * 0.14, left: size * 0.14,
+          backgroundColor: 'rgba(20,110,122,0.14)',
+        }} />
+
+        {/* Primary highlight arc — large frosted crescent, upper-left */}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.60, height: size * 0.30,
+          borderRadius: size * 0.18,
+          top: size * 0.10, left: size * 0.06,
+          backgroundColor: 'rgba(255,255,255,0.13)',
+          transform: [{ rotate: '-20deg' }],
+        }} />
+
+        {/* Secondary highlight — brighter, tighter, inside the arc */}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.32, height: size * 0.13,
+          borderRadius: size * 0.08,
+          top: size * 0.15, left: size * 0.10,
+          backgroundColor: 'rgba(200,245,252,0.24)',
+          transform: [{ rotate: '-14deg' }],
+        }} />
+
+        {/* Specular dot — bright pinpoint, top-right */}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.09, height: size * 0.09,
+          borderRadius: size * 0.045,
+          top: size * 0.10, right: size * 0.18,
+          backgroundColor: 'rgba(255,255,255,0.68)',
+        }} />
+
+        {/* Bottom caustic glow — faint teal reflection */}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.48, height: size * 0.20,
+          borderRadius: size * 0.15,
+          bottom: size * 0.08,
+          left: size * 0.26,
+          backgroundColor: 'rgba(30,210,230,0.10)',
+        }} />
+
+        {/* Inner rim ring — thin teal border inside the sphere */}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.88, height: size * 0.88,
+          borderRadius: size * 0.44,
+          top: size * 0.06, left: size * 0.06,
+          borderWidth: 1,
+          borderColor: 'rgba(80,220,232,0.13)',
+          backgroundColor: 'transparent',
+        }} />
+
+      </View>
     </View>
   );
 }
 
-const gs = StyleSheet.create({
-  sphere: {
-    backgroundColor: '#0D2028',
-    shadowColor: '#2D858B',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
-    elevation: 12,
-    overflow: 'visible',
-  },
-  inner: {
-    position: 'absolute',
-    backgroundColor: 'rgba(80,150,160,0.28)',
-  },
-  spec: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-});
-
-// ── Progress bar (session-level, shown on title card) ─────────────────────────
+// ── Progress bar — shown on TitleScreen ───────────────────────────────────────
 
 function SessionBar({ fill = 0.14 }) {
   return (
@@ -136,20 +176,16 @@ function SessionBar({ fill = 0.14 }) {
     </View>
   );
 }
-
 const sb = StyleSheet.create({
   track: {
     position: 'absolute', bottom: 28, left: 47,
-    width: 314, height: 12, borderRadius: 13,
-    backgroundColor: '#D9D9D9',
+    width: W - 94, height: 12, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  fill: {
-    height: '100%', borderRadius: 13,
-    backgroundColor: '#FE9C2D',
-  },
+  fill: { height: '100%', borderRadius: 13, backgroundColor: '#FE9C2D' },
 });
 
-// ── Cycle progress pills (3 pills, one per breathing cycle) ───────────────────
+// ── Cycle progress pills ──────────────────────────────────────────────────────
 
 function CyclePills({ currentCycle, phase }) {
   return (
@@ -171,19 +207,35 @@ function CyclePills({ currentCycle, phase }) {
     </View>
   );
 }
-
 const cp = StyleSheet.create({
-  row: {
-    flexDirection: 'row', gap: 6,
-    justifyContent: 'center',
-    position: 'absolute', bottom: 28,
-  },
+  row: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   pill: {
-    width: 100, height: 12, borderRadius: 43,
-    backgroundColor: '#D9D9D9',
+    width: 96, height: 10, borderRadius: 43,
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
-  pillActive: { backgroundColor: '#2D868B' },
-  pillDone:   { backgroundColor: '#1A5A62' },
+  pillActive: { backgroundColor: '#2D9BA2' },
+  pillDone:   { backgroundColor: '#1A6068' },
+});
+
+// ── Start / action button (shared style) ──────────────────────────────────────
+
+function StartButton({ onPress, label = 'Start  ▶' }) {
+  return (
+    <TouchableOpacity style={btn.wrap} onPress={onPress} activeOpacity={0.82}>
+      <Text style={btn.text}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+const btn = StyleSheet.create({
+  wrap: {
+    alignSelf: 'center',
+    backgroundColor: '#FE9C2D',
+    borderRadius: 14,
+    paddingHorizontal: 36, paddingVertical: 15,
+    shadowColor: '#FE9C2D', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  text: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', letterSpacing: 0.6 },
 });
 
 // ── Screen 0: Title card ──────────────────────────────────────────────────────
@@ -193,26 +245,22 @@ function TitleScreen({ onNext, onExit }) {
     <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1C4047' }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header row */}
       <View style={ts.header}>
         <CloseButton onPress={onExit} />
       </View>
 
-      {/* "Breathing" title */}
       <Text style={ts.title}>Breathing</Text>
 
-      {/* Resting sphere + timer */}
       <View style={ts.sphereArea}>
         <GlassSphere size={173} />
-        <Text style={ts.timer}>0:00</Text>
       </View>
 
-      {/* → proceed button */}
-      <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.85}>
+      <Text style={ts.timer}>0:00</Text>
+
+      <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8}>
         <Text style={ts.arrowText}>→</Text>
       </TouchableOpacity>
 
-      {/* Session progress bar */}
       <SessionBar fill={0.14} />
     </View>
   );
@@ -220,143 +268,155 @@ function TitleScreen({ onNext, onExit }) {
 
 const ts = StyleSheet.create({
   header: {
+    paddingTop: 52, paddingHorizontal: 18,
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 21, paddingHorizontal: 14,
   },
   title: {
     color: '#FFFFFF', fontSize: 64, fontWeight: '800',
     letterSpacing: 3.2, textAlign: 'center',
-    marginTop: 60,
+    marginTop: 48,
   },
   sphereArea: {
-    alignItems: 'center', marginTop: 56,
+    alignItems: 'center',
+    marginTop: 48,
   },
   timer: {
-    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
-    letterSpacing: 1.2, marginTop: 14,
+    color: 'rgba(255,255,255,0.7)', fontSize: 22, fontWeight: '600',
+    letterSpacing: 2, textAlign: 'center',
+    marginTop: 20,
   },
   arrowBtn: {
     alignSelf: 'center', marginTop: 48,
-    backgroundColor: '#37767A', borderRadius: 14,
-    width: 76, height: 64,
+    width: 76, height: 62,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
-  arrowText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
+  arrowText: { color: '#FFFFFF', fontSize: 26, fontWeight: '300' },
 });
 
-// ── Screen 1: Diaphragmatic Breathing info ────────────────────────────────────
+// ── Screen 1: Info ────────────────────────────────────────────────────────────
 
 function InfoScreen({ onNext, onExit }) {
   return (
-    <LinearGradient colors={BG_GRADIENT} locations={BG_LOCATIONS}
-      start={BG_START} end={BG_END} style={StyleSheet.absoluteFillObject}>
+    <LinearGradient
+      colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END}
+      style={StyleSheet.absoluteFillObject}
+    >
       <StatusBar barStyle="light-content" />
+
+      {/* Satellite bubbles — absolutely positioned behind everything */}
+      <View style={is.sat1}><GlassSphere size={82} /></View>
+      <View style={is.sat2}><GlassSphere size={48} /></View>
 
       {/* Header */}
       <View style={is.header}>
-        <TouchableOpacity style={is.backBtn} onPress={onExit}>
-          <Text style={is.backText}>←  Back</Text>
+        <TouchableOpacity style={is.backBtn} onPress={onExit} activeOpacity={0.8}>
+          <Text style={is.backText}>← Back</Text>
         </TouchableOpacity>
         <HelpButton />
       </View>
 
-      {/* Large sphere with title overlaid */}
+      {/* Main sphere + label */}
       <View style={is.sphereWrap}>
-        <GlassSphere size={319} />
+        <GlassSphere size={310} />
         <View style={is.sphereLabel}>
           <Text style={is.sphereTitle}>Diaphragmatic{'\n'}Breathing{'\n'}Technique</Text>
         </View>
       </View>
 
-      {/* Small satellite bubbles */}
-      <GlassSphere size={88} />
-      <View style={is.satelliteSmall}>
-        <GlassSphere size={51} />
-      </View>
-
       {/* Timer */}
       <Text style={is.timer}>0:10</Text>
 
-      {/* Start button */}
-      <TouchableOpacity style={is.startBtn} onPress={onNext} activeOpacity={0.85}>
-        <Text style={is.startBtnText}>Start  ▶</Text>
-      </TouchableOpacity>
+      {/* Start */}
+      <View style={{ marginTop: 20 }}>
+        <StartButton onPress={onNext} />
+      </View>
 
-      {/* Progress bar — teal fill */}
+      {/* Progress bar */}
       <View style={is.barTrack}>
-        <View style={[is.barFill, { width: 128 }]} />
+        <View style={[is.barFill, { width: '40%' }]} />
       </View>
     </LinearGradient>
   );
 }
 
 const is = StyleSheet.create({
+  // Satellite bubbles
+  sat1: {
+    position: 'absolute',
+    top: H * 0.13,
+    right: 14,
+  },
+  sat2: {
+    position: 'absolute',
+    top: H * 0.54,
+    left: 18,
+  },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 48, paddingHorizontal: 32, paddingBottom: 12,
+    paddingTop: 52, paddingHorizontal: 24, paddingBottom: 4,
   },
   backBtn: {
-    backgroundColor: '#37767A', borderRadius: 20,
-    paddingHorizontal: 18, paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 22, paddingHorizontal: 18, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
   },
-  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', letterSpacing: 0.3 },
   sphereWrap: {
-    alignSelf: 'center', marginTop: 12,
-    width: 319, height: 319, justifyContent: 'center', alignItems: 'center',
+    alignSelf: 'center', marginTop: 8,
+    width: 310, height: 310,
+    justifyContent: 'center', alignItems: 'center',
   },
   sphereLabel: {
     position: 'absolute',
     justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
   },
   sphereTitle: {
-    color: '#FFFFFF', fontSize: 36, fontWeight: '800',
-    letterSpacing: 1.8, textAlign: 'center', lineHeight: 44,
-  },
-  satelliteSmall: {
-    position: 'absolute', top: 70, right: 32,
+    color: '#FFFFFF', fontSize: 26, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center', lineHeight: 36,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   timer: {
-    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
-    letterSpacing: 1.2, textAlign: 'center', marginTop: 8,
+    color: 'rgba(255,255,255,0.7)', fontSize: 22, fontWeight: '600',
+    letterSpacing: 2, textAlign: 'center', marginTop: 14,
   },
-  startBtn: {
-    alignSelf: 'center', marginTop: 18,
-    backgroundColor: 'rgba(254,156,45,0.9)',
-    borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10,
-  },
-  startBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
   barTrack: {
     position: 'absolute', bottom: 28, left: 47,
-    width: 314, height: 12, borderRadius: 13,
-    backgroundColor: '#D9D9D9',
+    width: W - 94, height: 12, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  barFill: {
-    height: '100%', borderRadius: 13,
-    backgroundColor: '#24899B',
-  },
+  barFill: { height: '100%', borderRadius: 13, backgroundColor: '#2D9BA2' },
 });
 
 // ── Screen 2: Video placeholder ───────────────────────────────────────────────
 
 function VideoScreen({ onNext, onExit }) {
   return (
-    <LinearGradient colors={BG_GRADIENT} locations={BG_LOCATIONS}
-      start={BG_START} end={BG_END} style={StyleSheet.absoluteFillObject}>
+    <LinearGradient
+      colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END}
+      style={StyleSheet.absoluteFillObject}
+    >
       <StatusBar barStyle="light-content" />
 
-      {/* Dark overlay */}
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+      {/* Dark overlay — sits behind header/content via render order */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.38)' }]} />
 
       {/* Header */}
       <View style={vs.header}>
-        <TouchableOpacity style={vs.backBtn} onPress={onExit}>
-          <Text style={vs.backText}>←  Back</Text>
+        <TouchableOpacity style={vs.backBtn} onPress={onExit} activeOpacity={0.8}>
+          <Text style={vs.backText}>← Back</Text>
         </TouchableOpacity>
         <HelpButton />
       </View>
 
-      {/* Video container — rounded rectangle placeholder */}
+      {/* Video box */}
       <View style={vs.videoBox}>
         <View style={vs.playCircle}>
           <Text style={vs.playIcon}>▶</Text>
@@ -367,14 +427,14 @@ function VideoScreen({ onNext, onExit }) {
       {/* Timer */}
       <Text style={vs.timer}>0:10</Text>
 
-      {/* Start button */}
-      <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85}>
-        <Text style={vs.startBtnText}>Start  ▶</Text>
-      </TouchableOpacity>
+      {/* Start */}
+      <View style={{ marginTop: 18 }}>
+        <StartButton onPress={onNext} />
+      </View>
 
       {/* Progress bar */}
       <View style={vs.barTrack}>
-        <View style={[vs.barFill, { width: 128 }]} />
+        <View style={[vs.barFill, { width: '40%' }]} />
       </View>
     </LinearGradient>
   );
@@ -383,49 +443,45 @@ function VideoScreen({ onNext, onExit }) {
 const vs = StyleSheet.create({
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 48, paddingHorizontal: 32, paddingBottom: 12,
-    zIndex: 2,
+    paddingTop: 52, paddingHorizontal: 24, paddingBottom: 4,
   },
   backBtn: {
-    backgroundColor: '#37767A', borderRadius: 20,
-    paddingHorizontal: 18, paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 22, paddingHorizontal: 18, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
   },
-  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', letterSpacing: 0.3 },
   videoBox: {
-    alignSelf: 'center', marginTop: 8,
-    width: 314, height: 400, borderRadius: 35,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center', alignItems: 'center', gap: 14,
-    zIndex: 2,
+    alignSelf: 'center', marginTop: 16,
+    width: W - 52, height: H * 0.42, borderRadius: 32,
+    backgroundColor: 'rgba(5,18,24,0.6)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)',
+    justifyContent: 'center', alignItems: 'center', gap: 18,
   },
   playCircle: {
-    width: 64, height: 64, borderRadius: 32,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)',
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
     justifyContent: 'center', alignItems: 'center',
   },
-  playIcon: { color: '#FFFFFF', fontSize: 22, marginLeft: 4 },
-  videoCaption: { color: 'rgba(255,255,255,0.5)', fontSize: 13, letterSpacing: 0.5 },
+  playIcon: { color: '#FFFFFF', fontSize: 24, marginLeft: 5 },
+  videoCaption: {
+    color: 'rgba(255,255,255,0.40)', fontSize: 13, letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   timer: {
-    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
-    letterSpacing: 1.2, textAlign: 'center', marginTop: 12, zIndex: 2,
+    color: 'rgba(255,255,255,0.7)', fontSize: 22, fontWeight: '600',
+    letterSpacing: 2, textAlign: 'center', marginTop: 16,
   },
-  startBtn: {
-    alignSelf: 'center', marginTop: 16,
-    backgroundColor: 'rgba(254,156,45,0.9)',
-    borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10, zIndex: 2,
-  },
-  startBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
   barTrack: {
     position: 'absolute', bottom: 28, left: 47,
-    width: 314, height: 12, borderRadius: 13,
-    backgroundColor: '#D9D9D9', zIndex: 2,
+    width: W - 94, height: 12, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  barFill: { height: '100%', borderRadius: 13, backgroundColor: '#24899B' },
+  barFill: { height: '100%', borderRadius: 13, backgroundColor: '#2D9BA2' },
 });
 
 // ── Screen 3: Drill ───────────────────────────────────────────────────────────
-// Phases: idle → inhale → hold → exhale → (next cycle or complete)
 
 const PHASE_LABELS = {
   idle:   'Breath in',
@@ -471,7 +527,7 @@ function DrillScreen({ onComplete, onExit }) {
   function runCycle(index) {
     setCycleIndex(index);
 
-    // — Inhale —
+    // Inhale: bubble grows from small → large
     setPhase('inhale');
     startTimer(INHALE_S);
     bubbleScale.setValue(SCALE_SMALL);
@@ -480,41 +536,41 @@ function DrillScreen({ onComplete, onExit }) {
       toValue: SCALE_LARGE, duration: INHALE_MS, useNativeDriver: true,
     }).start();
 
-    // — Hold —
+    // Hold: bubble stays large
     schedule(() => {
       setPhase('hold');
       startTimer(HOLD_S);
     }, INHALE_MS);
 
-    // — Exhale —
+    // Exhale: bubble rises up and off screen
     schedule(() => {
       setPhase('exhale');
       startTimer(EXHALE_S);
-      // Bubble rises up and out of the screen (stays large, just translates up)
       Animated.timing(bubbleY, {
         toValue: BUBBLE_RISE, duration: EXHALE_MS, useNativeDriver: true,
       }).start();
     }, INHALE_MS + HOLD_MS);
 
-    // — Cycle end —
+    // Next cycle or complete
     schedule(() => {
       if (index < TOTAL_CYCLES - 1) {
         runCycle(index + 1);
       } else {
         setPhase('done');
-        schedule(onComplete, 1000);
+        schedule(onComplete, 1200);
       }
-    }, INHALE_MS + HOLD_MS + EXHALE_MS + 300);
+    }, INHALE_MS + HOLD_MS + EXHALE_MS + 400);
   }
 
-  // Format time as M:SS
   const mins = Math.floor(timeLeft / 60);
   const secs = String(timeLeft % 60).padStart(2, '0');
-  const timerDisplay = `${mins}:${secs}`;
 
   return (
-    <LinearGradient colors={BG_GRADIENT} locations={BG_LOCATIONS}
-      start={BG_START} end={BG_END} style={StyleSheet.absoluteFillObject}>
+    <LinearGradient
+      colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END}
+      style={StyleSheet.absoluteFillObject}
+    >
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
@@ -524,10 +580,10 @@ function DrillScreen({ onComplete, onExit }) {
         <HelpButton />
       </View>
 
-      {/* Phase title */}
+      {/* Phase label */}
       <Text style={ds.phaseTitle}>{PHASE_LABELS[phase]}</Text>
 
-      {/* Animated bubble — centred in the space below the title */}
+      {/* Animated bubble — centred in the available vertical space */}
       <View style={ds.bubbleArea}>
         <Animated.View style={{
           transform: [
@@ -539,18 +595,16 @@ function DrillScreen({ onComplete, onExit }) {
         </Animated.View>
       </View>
 
-      {/* Timer */}
-      <Text style={ds.timer}>{timerDisplay}</Text>
+      {/* Bottom section — timer, optional start button, cycle pills */}
+      <View style={ds.bottom}>
+        <Text style={ds.timer}>{`${mins}:${secs}`}</Text>
 
-      {/* Start button — only shown before the drill begins */}
-      {phase === 'idle' && (
-        <TouchableOpacity style={ds.startBtn} onPress={() => runCycle(0)} activeOpacity={0.85}>
-          <Text style={ds.startBtnText}>Start  ▶</Text>
-        </TouchableOpacity>
-      )}
+        {phase === 'idle' && (
+          <StartButton onPress={() => runCycle(0)} />
+        )}
 
-      {/* 3-cycle progress pills */}
-      <CyclePills currentCycle={cycleIndex} phase={phase} />
+        <CyclePills currentCycle={cycleIndex} phase={phase} />
+      </View>
     </LinearGradient>
   );
 }
@@ -558,31 +612,30 @@ function DrillScreen({ onComplete, onExit }) {
 const ds = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 21, paddingHorizontal: 14,
+    paddingTop: 52, paddingHorizontal: 18,
   },
   phaseTitle: {
     color: '#FFFFFF', fontSize: 64, fontWeight: '800',
     letterSpacing: 3.2, textAlign: 'center',
-    marginTop: 28, paddingHorizontal: 20,
+    marginTop: 16, paddingHorizontal: 16,
   },
   bubbleArea: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center', alignItems: 'center',
     overflow: 'hidden',
   },
+  bottom: {
+    alignItems: 'center',
+    paddingBottom: 36,
+    gap: 14,
+  },
   timer: {
-    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
-    letterSpacing: 1.2, textAlign: 'center',
-    marginBottom: 16,
+    color: 'rgba(255,255,255,0.75)', fontSize: 22, fontWeight: '600',
+    letterSpacing: 2,
   },
-  startBtn: {
-    alignSelf: 'center', marginBottom: 8,
-    backgroundColor: 'rgba(254,156,45,0.9)',
-    borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10,
-  },
-  startBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
 });
 
-// ── Root export ───────────────────────────────────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────────────────────
 
 export default function BreathingExercise({ onComplete, onExit }) {
   const [step, setStep] = useState(STEP_TITLE);
