@@ -12,624 +12,583 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-// ── Steps within the breathing exercise ──────────────────────────────────────
-const STEP_INTRO = 0; // "Breathing" title screen
-const STEP_INFO  = 1; // "Diaphragmatic Breathing" explanation
-const STEP_VIDEO = 2; // Instructional video placeholder
-const STEP_DRILL = 3; // Animated breathing drill (3 cycles)
+// ── Steps ─────────────────────────────────────────────────────────────────────
+const STEP_TITLE = 0; // "Breathing" intro card — solid dark bg
+const STEP_INFO  = 1; // "Diaphragmatic Breathing" — gradient, large sphere
+const STEP_VIDEO = 2; // Video tutorial — gradient + overlay
+const STEP_DRILL = 3; // Animated breathing drill — gradient, cycling bubble
 
-// ── Breathing drill timing (ms) ───────────────────────────────────────────────
-const INHALE_MS  = 4000;
-const HOLD_MS    = 2000;
-const EXHALE_MS  = 4000;
-const CYCLE_TOTAL_MS = INHALE_MS + HOLD_MS + EXHALE_MS + 300;
+// ── Timing (ms) ───────────────────────────────────────────────────────────────
+const INHALE_S   = 4;
+const HOLD_S     = 2;
+const EXHALE_S   = 4;
+const INHALE_MS  = INHALE_S * 1000;
+const HOLD_MS    = HOLD_S   * 1000;
+const EXHALE_MS  = EXHALE_S * 1000;
 
 const TOTAL_CYCLES = 3;
 
-// Maximum diameter of the bubble at full inhale
-const BUBBLE_MAX = 200;
+// ── Bubble geometry ───────────────────────────────────────────────────────────
+// The bubble is a fixed 244×244 container; scale transform drives the size.
+// Small state (pre-start): 58 / 244 ≈ 0.24
+// Large state (inhale complete / exhale): scale 1.0
+const BUBBLE_BASE = 244;
+const SCALE_SMALL = 58 / BUBBLE_BASE;  // ≈ 0.24
+const SCALE_LARGE = 1.0;
 
-// ── Shared header component ───────────────────────────────────────────────────
+// Exhale: bubble rises from its resting centre to above the top of the screen.
+// BUBBLE_RISE is the translateY needed to push the 244px sphere fully off-screen.
+const BUBBLE_RISE = -(H * 0.55 + BUBBLE_BASE / 2);
 
-function ExerciseHeader({ title, onExit }) {
+// ── Shared gradient (all screens except title) ────────────────────────────────
+// Approximates the Figma 264° gradient: teal-green top-right → near-black bottom-left.
+const BG_GRADIENT  = ['#2D858B', '#37767A', '#0A1618'];
+const BG_LOCATIONS = [0.2, 0.44, 1.0];
+const BG_START     = { x: 1, y: 0.1 };
+const BG_END       = { x: 0, y: 0.9 };
+
+// ── Reusable header elements ──────────────────────────────────────────────────
+
+function CloseButton({ onPress }) {
   return (
-    <View style={headerStyles.container}>
-      <TouchableOpacity
-        style={headerStyles.exitBtn}
-        onPress={onExit}
-        accessibilityRole="button"
-        accessibilityLabel="Exit exercise"
-      >
-        <Text style={headerStyles.exitText}>X</Text>
-      </TouchableOpacity>
-      <Text style={headerStyles.title}>{title}</Text>
-      <View style={headerStyles.spacer} />
+    <TouchableOpacity style={h.closeBtn} onPress={onPress} accessibilityLabel="Exit exercise">
+      <Text style={h.closeText}>✕</Text>
+    </TouchableOpacity>
+  );
+}
+
+function HelpButton() {
+  return (
+    <View style={h.helpCircle}>
+      <Text style={h.helpText}>?</Text>
     </View>
   );
 }
 
-const headerStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 52,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#2D6974',
+const h = StyleSheet.create({
+  closeBtn: {
+    width: 53, height: 53, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center',
   },
-  exitBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  closeText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  helpCircle: {
+    width: 39, height: 39, borderRadius: 20,
+    backgroundColor: '#FFA940',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  helpText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+});
+
+// ── Dark glassy sphere component ──────────────────────────────────────────────
+// Three layered circles recreate the dark glassy bubble from Figma:
+//   outer circle  — dark near-black teal with a teal glow shadow
+//   inner shadow  — mid-grey highlight floating upper-left
+//   specular dot  — small white dot, top-right (light reflection point)
+
+function GlassSphere({ size = BUBBLE_BASE }) {
+  const r = size / 2;
+  const innerSize  = size * 0.37;
+  const innerR     = innerSize / 2;
+  const specSize   = size * 0.115;
+  const specR      = specSize / 2;
+  return (
+    <View style={[gs.sphere, { width: size, height: size, borderRadius: r,
+      shadowRadius: size * 0.13 }]}>
+      {/* Upper-left glass reflection */}
+      <View style={[gs.inner, {
+        width: innerSize, height: innerSize, borderRadius: innerR,
+        top: size * 0.15, left: size * 0.22,
+      }]} />
+      {/* Specular highlight dot — top right */}
+      <View style={[gs.spec, {
+        width: specSize, height: specSize, borderRadius: specR,
+        top: size * 0.08, right: size * 0.21,
+      }]} />
+    </View>
+  );
+}
+
+const gs = StyleSheet.create({
+  sphere: {
+    backgroundColor: '#0D2028',
+    shadowColor: '#2D858B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    elevation: 12,
+    overflow: 'visible',
+  },
+  inner: {
+    position: 'absolute',
+    backgroundColor: 'rgba(80,150,160,0.28)',
+  },
+  spec: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+});
+
+// ── Progress bar (session-level, shown on title card) ─────────────────────────
+
+function SessionBar({ fill = 0.14 }) {
+  return (
+    <View style={sb.track}>
+      <View style={[sb.fill, { width: `${fill * 100}%` }]} />
+    </View>
+  );
+}
+
+const sb = StyleSheet.create({
+  track: {
+    position: 'absolute', bottom: 28, left: 47,
+    width: 314, height: 12, borderRadius: 13,
+    backgroundColor: '#D9D9D9',
+  },
+  fill: {
+    height: '100%', borderRadius: 13,
+    backgroundColor: '#FE9C2D',
+  },
+});
+
+// ── Cycle progress pills (3 pills, one per breathing cycle) ───────────────────
+
+function CyclePills({ currentCycle, phase }) {
+  return (
+    <View style={cp.row}>
+      {[0, 1, 2].map(i => {
+        const isActive = i === currentCycle && phase !== 'idle';
+        const isDone   = i < currentCycle;
+        return (
+          <View
+            key={i}
+            style={[
+              cp.pill,
+              isDone   && cp.pillDone,
+              isActive && cp.pillActive,
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+const cp = StyleSheet.create({
+  row: {
+    flexDirection: 'row', gap: 6,
     justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', bottom: 28,
   },
-  exitText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+  pill: {
+    width: 100, height: 12, borderRadius: 43,
+    backgroundColor: '#D9D9D9',
+  },
+  pillActive: { backgroundColor: '#2D868B' },
+  pillDone:   { backgroundColor: '#1A5A62' },
+});
+
+// ── Screen 0: Title card ──────────────────────────────────────────────────────
+
+function TitleScreen({ onNext, onExit }) {
+  return (
+    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1C4047' }]}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header row */}
+      <View style={ts.header}>
+        <CloseButton onPress={onExit} />
+      </View>
+
+      {/* "Breathing" title */}
+      <Text style={ts.title}>Breathing</Text>
+
+      {/* Resting sphere + timer */}
+      <View style={ts.sphereArea}>
+        <GlassSphere size={173} />
+        <Text style={ts.timer}>0:00</Text>
+      </View>
+
+      {/* → proceed button */}
+      <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.85}>
+        <Text style={ts.arrowText}>→</Text>
+      </TouchableOpacity>
+
+      {/* Session progress bar */}
+      <SessionBar fill={0.14} />
+    </View>
+  );
+}
+
+const ts = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: 21, paddingHorizontal: 14,
   },
   title: {
-    flex: 1,
-    textAlign: 'center',
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    color: '#FFFFFF', fontSize: 64, fontWeight: '800',
+    letterSpacing: 3.2, textAlign: 'center',
+    marginTop: 60,
   },
-  spacer: { width: 38 },
+  sphereArea: {
+    alignItems: 'center', marginTop: 56,
+  },
+  timer: {
+    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
+    letterSpacing: 1.2, marginTop: 14,
+  },
+  arrowBtn: {
+    alignSelf: 'center', marginTop: 48,
+    backgroundColor: '#37767A', borderRadius: 14,
+    width: 76, height: 64,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  arrowText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
 });
 
-// ── Step 0: Intro ─────────────────────────────────────────────────────────────
-
-function IntroScreen({ onNext, onExit }) {
-  return (
-    <View style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#2D6974', '#1C4047']} style={introStyles.header}>
-        <ExerciseHeader title="Breathing" onExit={onExit} />
-        <View style={introStyles.headerBody}>
-          <Text style={introStyles.sessionLabel}>Exercise 1 of 7</Text>
-          <Text style={introStyles.heroText}>Breathing</Text>
-          <Text style={introStyles.heroPara}>
-            Controlled breathing is the foundation of strong, clear speech. It
-            steadies your voice, reduces tension, and prepares your breath
-            support for the exercises ahead.
-          </Text>
-        </View>
-      </LinearGradient>
-
-      <View style={introStyles.body}>
-        <View style={introStyles.tipCard}>
-          <Text style={introStyles.tipTitle}>What to expect</Text>
-          <Text style={introStyles.tipText}>
-            3 gentle breathing cycles{'\n'}
-            Approx. 30 seconds{'\n'}
-            No equipment needed
-          </Text>
-        </View>
-      </View>
-
-      <View style={introStyles.footer}>
-        <TouchableOpacity
-          style={introStyles.startBtn}
-          onPress={onNext}
-          activeOpacity={0.85}
-        >
-          <Text style={introStyles.startBtnText}>Begin</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-const introStyles = StyleSheet.create({
-  header: { paddingBottom: 36 },
-  headerBody: { paddingHorizontal: 28, paddingTop: 8 },
-  sessionLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 13,
-    letterSpacing: 1,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  heroText: {
-    color: '#FFFFFF',
-    fontSize: 42,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  heroPara: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 16,
-    lineHeight: 24,
-    letterSpacing: 0.2,
-  },
-  body: {
-    flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 28,
-    backgroundColor: '#F7FAF8',
-  },
-  tipCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: 10,
-  },
-  tipTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1C4047',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  tipText: {
-    fontSize: 16,
-    color: '#2D6974',
-    lineHeight: 28,
-    letterSpacing: 0.2,
-  },
-  footer: {
-    backgroundColor: '#F7FAF8',
-    paddingHorizontal: 28,
-    paddingBottom: 32,
-    paddingTop: 16,
-  },
-  startBtn: {
-    backgroundColor: '#FFA940',
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-    shadowColor: '#FFA940',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  startBtnText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-});
-
-// ── Step 1: Info ──────────────────────────────────────────────────────────────
+// ── Screen 1: Diaphragmatic Breathing info ────────────────────────────────────
 
 function InfoScreen({ onNext, onExit }) {
   return (
-    <View style={{ flex: 1, backgroundColor: '#F7FAF8' }}>
+    <LinearGradient colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END} style={StyleSheet.absoluteFillObject}>
       <StatusBar barStyle="light-content" />
-      <ExerciseHeader title="Diaphragmatic Breathing" onExit={onExit} />
 
-      <View style={infoStyles.body}>
-        <Text style={infoStyles.title}>Diaphragmatic{'\n'}Breathing</Text>
-        <Text style={infoStyles.para}>
-          Diaphragmatic breathing — also called belly breathing — uses the
-          diaphragm fully rather than shallow chest muscles. For people with
-          Parkinson's, this technique directly strengthens breath support,
-          which is the single biggest driver of louder, clearer speech.
-        </Text>
-
-        <View style={infoStyles.divider} />
-
-        <Text style={infoStyles.instructionTitle}>How to do it</Text>
-        {[
-          'Sit upright with your shoulders relaxed.',
-          'Place one hand lightly on your belly.',
-          'Breathe in slowly through your nose — your belly should rise.',
-          'Breathe out through pursed lips — belly falls gently.',
-          'Keep your chest as still as possible throughout.',
-        ].map((step, i) => (
-          <View key={i} style={infoStyles.step}>
-            <View style={infoStyles.stepNum}>
-              <Text style={infoStyles.stepNumText}>{i + 1}</Text>
-            </View>
-            <Text style={infoStyles.stepText}>{step}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={infoStyles.footer}>
-        <TouchableOpacity
-          style={infoStyles.nextBtn}
-          onPress={onNext}
-          activeOpacity={0.85}
-        >
-          <Text style={infoStyles.nextBtnText}>Continue</Text>
+      {/* Header */}
+      <View style={is.header}>
+        <TouchableOpacity style={is.backBtn} onPress={onExit}>
+          <Text style={is.backText}>←  Back</Text>
         </TouchableOpacity>
+        <HelpButton />
       </View>
-    </View>
-  );
-}
 
-const infoStyles = StyleSheet.create({
-  body: {
-    flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 24,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#1C4047',
-    letterSpacing: 0.3,
-    marginBottom: 16,
-    lineHeight: 38,
-  },
-  para: {
-    fontSize: 16,
-    color: '#2D6974',
-    lineHeight: 26,
-    letterSpacing: 0.2,
-    marginBottom: 20,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(44,105,116,0.15)',
-    marginBottom: 20,
-  },
-  instructionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1C4047',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 16,
-  },
-  step: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-    gap: 14,
-  },
-  stepNum: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#2D6974',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 1,
-    flexShrink: 0,
-  },
-  stepNumText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  stepText: { fontSize: 15, color: '#1C4047', lineHeight: 22, flex: 1 },
-  footer: {
-    paddingHorizontal: 28,
-    paddingBottom: 32,
-    paddingTop: 16,
-    backgroundColor: '#F7FAF8',
-  },
-  nextBtn: {
-    backgroundColor: '#1C4047',
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  nextBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-});
-
-// ── Step 2: Video placeholder ─────────────────────────────────────────────────
-
-function VideoScreen({ onNext, onExit }) {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#F7FAF8' }}>
-      <StatusBar barStyle="light-content" />
-      <ExerciseHeader title="Watch First" onExit={onExit} />
-
-      <View style={videoStyles.body}>
-        <Text style={videoStyles.title}>See it in action</Text>
-        <Text style={videoStyles.subtitle}>
-          Watch this short demonstration before your first practice round.
-        </Text>
-
-        {/* Video placeholder — replace with a real <Video> component when asset is ready */}
-        <View style={videoStyles.videoBox}>
-          <View style={videoStyles.playCircle}>
-            <Text style={videoStyles.playIcon}>▶</Text>
-          </View>
-          <Text style={videoStyles.videoCaption}>Video coming soon</Text>
+      {/* Large sphere with title overlaid */}
+      <View style={is.sphereWrap}>
+        <GlassSphere size={319} />
+        <View style={is.sphereLabel}>
+          <Text style={is.sphereTitle}>Diaphragmatic{'\n'}Breathing{'\n'}Technique</Text>
         </View>
       </View>
 
-      <View style={videoStyles.footer}>
-        <TouchableOpacity
-          style={videoStyles.nextBtn}
-          onPress={onNext}
-          activeOpacity={0.85}
-        >
-          <Text style={videoStyles.nextBtnText}>Start Exercise</Text>
-        </TouchableOpacity>
+      {/* Small satellite bubbles */}
+      <GlassSphere size={88} />
+      <View style={is.satelliteSmall}>
+        <GlassSphere size={51} />
       </View>
-    </View>
+
+      {/* Timer */}
+      <Text style={is.timer}>0:10</Text>
+
+      {/* Start button */}
+      <TouchableOpacity style={is.startBtn} onPress={onNext} activeOpacity={0.85}>
+        <Text style={is.startBtnText}>Start  ▶</Text>
+      </TouchableOpacity>
+
+      {/* Progress bar — teal fill */}
+      <View style={is.barTrack}>
+        <View style={[is.barFill, { width: 128 }]} />
+      </View>
+    </LinearGradient>
   );
 }
 
-const videoStyles = StyleSheet.create({
-  body: {
-    flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 24,
+const is = StyleSheet.create({
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 48, paddingHorizontal: 32, paddingBottom: 12,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1C4047',
-    marginBottom: 8,
+  backBtn: {
+    backgroundColor: '#37767A', borderRadius: 20,
+    paddingHorizontal: 18, paddingVertical: 10,
   },
-  subtitle: {
-    fontSize: 15,
-    color: '#2D6974',
-    lineHeight: 22,
-    marginBottom: 28,
+  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  sphereWrap: {
+    alignSelf: 'center', marginTop: 12,
+    width: 319, height: 319, justifyContent: 'center', alignItems: 'center',
   },
-  videoBox: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#1C4047',
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
+  sphereLabel: {
+    position: 'absolute',
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  playCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  sphereTitle: {
+    color: '#FFFFFF', fontSize: 36, fontWeight: '800',
+    letterSpacing: 1.8, textAlign: 'center', lineHeight: 44,
   },
-  playIcon: { color: '#FFFFFF', fontSize: 22, marginLeft: 4 },
-  videoCaption: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    letterSpacing: 0.5,
+  satelliteSmall: {
+    position: 'absolute', top: 70, right: 32,
   },
-  footer: {
-    paddingHorizontal: 28,
-    paddingBottom: 32,
-    paddingTop: 16,
-    backgroundColor: '#F7FAF8',
+  timer: {
+    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
+    letterSpacing: 1.2, textAlign: 'center', marginTop: 8,
   },
-  nextBtn: {
-    backgroundColor: '#FFA940',
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-    shadowColor: '#FFA940',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
+  startBtn: {
+    alignSelf: 'center', marginTop: 18,
+    backgroundColor: 'rgba(254,156,45,0.9)',
+    borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10,
   },
-  nextBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  startBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  barTrack: {
+    position: 'absolute', bottom: 28, left: 47,
+    width: 314, height: 12, borderRadius: 13,
+    backgroundColor: '#D9D9D9',
+  },
+  barFill: {
+    height: '100%', borderRadius: 13,
+    backgroundColor: '#24899B',
+  },
 });
 
-// ── Step 3: Breathing drill ───────────────────────────────────────────────────
+// ── Screen 2: Video placeholder ───────────────────────────────────────────────
 
-// Phase labels shown to the user during each part of the cycle.
+function VideoScreen({ onNext, onExit }) {
+  return (
+    <LinearGradient colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END} style={StyleSheet.absoluteFillObject}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Dark overlay */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+
+      {/* Header */}
+      <View style={vs.header}>
+        <TouchableOpacity style={vs.backBtn} onPress={onExit}>
+          <Text style={vs.backText}>←  Back</Text>
+        </TouchableOpacity>
+        <HelpButton />
+      </View>
+
+      {/* Video container — rounded rectangle placeholder */}
+      <View style={vs.videoBox}>
+        <View style={vs.playCircle}>
+          <Text style={vs.playIcon}>▶</Text>
+        </View>
+        <Text style={vs.videoCaption}>Video coming soon</Text>
+      </View>
+
+      {/* Timer */}
+      <Text style={vs.timer}>0:10</Text>
+
+      {/* Start button */}
+      <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85}>
+        <Text style={vs.startBtnText}>Start  ▶</Text>
+      </TouchableOpacity>
+
+      {/* Progress bar */}
+      <View style={vs.barTrack}>
+        <View style={[vs.barFill, { width: 128 }]} />
+      </View>
+    </LinearGradient>
+  );
+}
+
+const vs = StyleSheet.create({
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 48, paddingHorizontal: 32, paddingBottom: 12,
+    zIndex: 2,
+  },
+  backBtn: {
+    backgroundColor: '#37767A', borderRadius: 20,
+    paddingHorizontal: 18, paddingVertical: 10,
+  },
+  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  videoBox: {
+    alignSelf: 'center', marginTop: 8,
+    width: 314, height: 400, borderRadius: 35,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center', alignItems: 'center', gap: 14,
+    zIndex: 2,
+  },
+  playCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  playIcon: { color: '#FFFFFF', fontSize: 22, marginLeft: 4 },
+  videoCaption: { color: 'rgba(255,255,255,0.5)', fontSize: 13, letterSpacing: 0.5 },
+  timer: {
+    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
+    letterSpacing: 1.2, textAlign: 'center', marginTop: 12, zIndex: 2,
+  },
+  startBtn: {
+    alignSelf: 'center', marginTop: 16,
+    backgroundColor: 'rgba(254,156,45,0.9)',
+    borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10, zIndex: 2,
+  },
+  startBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  barTrack: {
+    position: 'absolute', bottom: 28, left: 47,
+    width: 314, height: 12, borderRadius: 13,
+    backgroundColor: '#D9D9D9', zIndex: 2,
+  },
+  barFill: { height: '100%', borderRadius: 13, backgroundColor: '#24899B' },
+});
+
+// ── Screen 3: Drill ───────────────────────────────────────────────────────────
+// Phases: idle → inhale → hold → exhale → (next cycle or complete)
+
 const PHASE_LABELS = {
-  inhale: 'Breathe In',
+  idle:   'Breath in',
+  inhale: 'Breath in',
   hold:   'Hold',
-  exhale: 'Breathe Out',
+  exhale: 'Breath Out',
   done:   'Well done',
 };
 
 function DrillScreen({ onComplete, onExit }) {
-  const [phase, setPhase] = useState('inhale');
-  const [currentCycle, setCurrentCycle] = useState(0);
+  const [phase, setPhase]           = useState('idle');
+  const [cycleIndex, setCycleIndex] = useState(0);
+  const [timeLeft, setTimeLeft]     = useState(INHALE_S);
 
-  // Animated values for the bubble
-  const scale         = useRef(new Animated.Value(0.25)).current;
-  const floatY        = useRef(new Animated.Value(0)).current;
-  const bubbleOpacity = useRef(new Animated.Value(0)).current;
-
-  // Keeps references to scheduled timeouts so they can be cancelled on unmount.
-  const timerRefs = useRef([]);
+  const bubbleScale = useRef(new Animated.Value(SCALE_SMALL)).current;
+  const bubbleY     = useRef(new Animated.Value(0)).current;
+  const timerRef    = useRef(null);
+  const taskRefs    = useRef([]);
 
   useEffect(() => {
-    runCycle(0);
-    return () => timerRefs.current.forEach(clearTimeout);
+    return () => {
+      taskRefs.current.forEach(clearTimeout);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, []);
 
   function schedule(fn, delay) {
     const id = setTimeout(fn, delay);
-    timerRefs.current.push(id);
+    taskRefs.current.push(id);
   }
 
-  function runCycle(cycleIndex) {
-    setCurrentCycle(cycleIndex);
+  function startTimer(seconds) {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setTimeLeft(seconds);
+    timerRef.current = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+  }
+
+  function runCycle(index) {
+    setCycleIndex(index);
+
+    // — Inhale —
     setPhase('inhale');
+    startTimer(INHALE_S);
+    bubbleScale.setValue(SCALE_SMALL);
+    bubbleY.setValue(0);
+    Animated.timing(bubbleScale, {
+      toValue: SCALE_LARGE, duration: INHALE_MS, useNativeDriver: true,
+    }).start();
 
-    // Reset bubble to starting state (small, invisible, centred).
-    scale.setValue(0.25);
-    floatY.setValue(0);
-    bubbleOpacity.setValue(0);
+    // — Hold —
+    schedule(() => {
+      setPhase('hold');
+      startTimer(HOLD_S);
+    }, INHALE_MS);
 
-    // Bubble fades in and expands during inhale.
-    Animated.parallel([
-      Animated.timing(bubbleOpacity, {
-        toValue: 1, duration: 400, useNativeDriver: true,
-      }),
-      Animated.timing(scale, {
-        toValue: 1, duration: INHALE_MS, useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Switch to Hold phase after inhale completes.
-    schedule(() => setPhase('hold'), INHALE_MS);
-
-    // Start exhale: bubble shrinks and floats upward.
+    // — Exhale —
     schedule(() => {
       setPhase('exhale');
-      Animated.parallel([
-        Animated.timing(scale, {
-          toValue: 0.25, duration: EXHALE_MS, useNativeDriver: true,
-        }),
-        Animated.timing(floatY, {
-          toValue: -(H * 0.22), duration: EXHALE_MS, useNativeDriver: true,
-        }),
-        Animated.timing(bubbleOpacity, {
-          toValue: 0, duration: EXHALE_MS - 400, useNativeDriver: true,
-        }),
-      ]).start();
+      startTimer(EXHALE_S);
+      // Bubble rises up and out of the screen (stays large, just translates up)
+      Animated.timing(bubbleY, {
+        toValue: BUBBLE_RISE, duration: EXHALE_MS, useNativeDriver: true,
+      }).start();
     }, INHALE_MS + HOLD_MS);
 
-    // After the full cycle, either start the next or finish.
+    // — Cycle end —
     schedule(() => {
-      if (cycleIndex < TOTAL_CYCLES - 1) {
-        runCycle(cycleIndex + 1);
+      if (index < TOTAL_CYCLES - 1) {
+        runCycle(index + 1);
       } else {
         setPhase('done');
-        schedule(onComplete, 1200);
+        schedule(onComplete, 1000);
       }
-    }, CYCLE_TOTAL_MS);
+    }, INHALE_MS + HOLD_MS + EXHALE_MS + 300);
   }
 
-  return (
-    <View style={{ flex: 1, backgroundColor: '#F7FAF8' }}>
-      <StatusBar barStyle="light-content" />
-      <ExerciseHeader title="Breathe" onExit={onExit} />
+  // Format time as M:SS
+  const mins = Math.floor(timeLeft / 60);
+  const secs = String(timeLeft % 60).padStart(2, '0');
+  const timerDisplay = `${mins}:${secs}`;
 
-      {/* Instruction text */}
-      <View style={drillStyles.instructionArea}>
-        <Text style={drillStyles.instructionText}>
-          {PHASE_LABELS[phase]}
-        </Text>
+  return (
+    <LinearGradient colors={BG_GRADIENT} locations={BG_LOCATIONS}
+      start={BG_START} end={BG_END} style={StyleSheet.absoluteFillObject}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header */}
+      <View style={ds.header}>
+        <CloseButton onPress={onExit} />
+        <View style={{ flex: 1 }} />
+        <HelpButton />
       </View>
 
-      {/* Animated bubble */}
-      <View style={drillStyles.bubbleArea}>
-        <Animated.View
-          style={[
-            drillStyles.bubbleWrap,
-            {
-              opacity: bubbleOpacity,
-              transform: [{ scale }, { translateY: floatY }],
-            },
-          ]}
-        >
-          {/* Three concentric rings give the bubble depth and softness */}
-          <View style={drillStyles.ringOuter} />
-          <View style={drillStyles.ringMid} />
-          <View style={drillStyles.ringInner} />
+      {/* Phase title */}
+      <Text style={ds.phaseTitle}>{PHASE_LABELS[phase]}</Text>
+
+      {/* Animated bubble — centred in the space below the title */}
+      <View style={ds.bubbleArea}>
+        <Animated.View style={{
+          transform: [
+            { scale: bubbleScale },
+            { translateY: bubbleY },
+          ],
+        }}>
+          <GlassSphere size={BUBBLE_BASE} />
         </Animated.View>
       </View>
 
-      {/* Cycle progress bars — one bar per breathing cycle */}
-      <View style={drillStyles.cycleRow}>
-        {Array.from({ length: TOTAL_CYCLES }, (_, i) => (
-          <View
-            key={i}
-            style={[
-              drillStyles.cycleBar,
-              i < currentCycle                               && drillStyles.cycleBarDone,
-              i === currentCycle && phase !== 'done'         && drillStyles.cycleBarActive,
-            ]}
-          />
-        ))}
-      </View>
-    </View>
+      {/* Timer */}
+      <Text style={ds.timer}>{timerDisplay}</Text>
+
+      {/* Start button — only shown before the drill begins */}
+      {phase === 'idle' && (
+        <TouchableOpacity style={ds.startBtn} onPress={() => runCycle(0)} activeOpacity={0.85}>
+          <Text style={ds.startBtnText}>Start  ▶</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 3-cycle progress pills */}
+      <CyclePills currentCycle={cycleIndex} phase={phase} />
+    </LinearGradient>
   );
 }
 
-const RING_OUTER = BUBBLE_MAX;
-const RING_MID   = Math.round(BUBBLE_MAX * 0.78);
-const RING_INNER = Math.round(BUBBLE_MAX * 0.55);
-
-const drillStyles = StyleSheet.create({
-  instructionArea: {
-    paddingTop: 36,
-    alignItems: 'center',
+const ds = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: 21, paddingHorizontal: 14,
   },
-  instructionText: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#1C4047',
-    letterSpacing: 0.5,
-    textAlign: 'center',
+  phaseTitle: {
+    color: '#FFFFFF', fontSize: 64, fontWeight: '800',
+    letterSpacing: 3.2, textAlign: 'center',
+    marginTop: 28, paddingHorizontal: 20,
   },
-
   bubbleArea: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    overflow: 'hidden',
   },
-  bubbleWrap: {
-    width: RING_OUTER,
-    height: RING_OUTER,
-    justifyContent: 'center',
-    alignItems: 'center',
+  timer: {
+    color: '#FFFFFF', fontSize: 24, fontWeight: '700',
+    letterSpacing: 1.2, textAlign: 'center',
+    marginBottom: 16,
   },
-  ringOuter: {
-    position: 'absolute',
-    width: RING_OUTER,
-    height: RING_OUTER,
-    borderRadius: RING_OUTER / 2,
-    backgroundColor: 'rgba(104,179,159,0.18)',
+  startBtn: {
+    alignSelf: 'center', marginBottom: 8,
+    backgroundColor: 'rgba(254,156,45,0.9)',
+    borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10,
   },
-  ringMid: {
-    position: 'absolute',
-    width: RING_MID,
-    height: RING_MID,
-    borderRadius: RING_MID / 2,
-    backgroundColor: 'rgba(104,179,159,0.35)',
-  },
-  ringInner: {
-    position: 'absolute',
-    width: RING_INNER,
-    height: RING_INNER,
-    borderRadius: RING_INNER / 2,
-    backgroundColor: '#2D6974',
-    opacity: 0.85,
-  },
-
-  cycleRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    paddingBottom: 36,
-  },
-  cycleBar: {
-    width: 60,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(44,105,116,0.2)',
-  },
-  cycleBarActive: {
-    backgroundColor: '#FFA940',
-  },
-  cycleBarDone: {
-    backgroundColor: '#2D6974',
-  },
+  startBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
 });
 
-// ── Main BreathingExercise export ─────────────────────────────────────────────
+// ── Root export ───────────────────────────────────────────────────────────────
 
 export default function BreathingExercise({ onComplete, onExit }) {
-  const [step, setStep] = useState(STEP_INTRO);
+  const [step, setStep] = useState(STEP_TITLE);
 
-  if (step === STEP_INTRO) {
-    return <IntroScreen onNext={() => setStep(STEP_INFO)} onExit={onExit} />;
-  }
-  if (step === STEP_INFO) {
-    return <InfoScreen onNext={() => setStep(STEP_VIDEO)} onExit={onExit} />;
-  }
-  if (step === STEP_VIDEO) {
-    return <VideoScreen onNext={() => setStep(STEP_DRILL)} onExit={onExit} />;
-  }
+  if (step === STEP_TITLE) return <TitleScreen onNext={() => setStep(STEP_INFO)}  onExit={onExit} />;
+  if (step === STEP_INFO)  return <InfoScreen  onNext={() => setStep(STEP_VIDEO)} onExit={onExit} />;
+  if (step === STEP_VIDEO) return <VideoScreen onNext={() => setStep(STEP_DRILL)} onExit={onExit} />;
   return <DrillScreen onComplete={onComplete} onExit={onExit} />;
 }
