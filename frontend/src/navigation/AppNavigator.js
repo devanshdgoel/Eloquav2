@@ -24,6 +24,7 @@ import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SpeechEnhancementScreen from '../screens/SpeechEnhancementScreen';
 import SpeechDemoScreen from '../screens/SpeechDemoScreen';
+import VocalTrainingSessionScreen from '../screens/vocaltraining/VocalTrainingSessionScreen';
 
 const Stack = createStackNavigator();
 
@@ -59,6 +60,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
         <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
+        <Stack.Screen name="VocalTrainingSession" component={VocalTrainingSessionScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

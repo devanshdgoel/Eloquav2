@@ -194,7 +194,13 @@ export default function HomeScreen({ navigation }) {
             const r        = isActive ? R_ACTIVE : R_OTHER;
 
             return (
-              <G key={i}>
+              <G
+                key={i}
+                onPress={isActive
+                  ? () => navigation.navigate('VocalTrainingSession', { nodeIndex: i })
+                  : undefined
+                }
+              >
                 {/* Node fill colour varies by completion state */}
                 <Circle
                   cx={def.cx}
