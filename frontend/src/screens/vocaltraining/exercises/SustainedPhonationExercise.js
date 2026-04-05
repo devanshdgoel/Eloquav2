@@ -428,7 +428,7 @@ function BreathCue({ phase }) {
 // ─────────────────────────────────────────────────────────────────────────────────
 // Exercise Screen
 // ─────────────────────────────────────────────────────────────────────────────────
-function ExerciseScreen({ onComplete, onExit }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const [phase, setPhase]         = useState('idle');   // idle | breathe | phonating | rest | done
   const [round, setRound]         = useState(1);
   const [bars, setBars]           = useState(Array(BARS_COUNT).fill(0.03));
@@ -449,8 +449,7 @@ function ExerciseScreen({ onComplete, onExit }) {
   function setPhaseS(p) { phaseRef.current = p; setPhase(p); }
 
   useEffect(() => {
-    const t = setTimeout(startBreath, 600);
-    return () => { clearTimeout(t); stopAll(); };
+    return () => { stopAll(); };
   }, []);
 
   // ── Phase: breathe ────────────────────────────────────────────────────────────
@@ -576,10 +575,16 @@ function ExerciseScreen({ onComplete, onExit }) {
       <StatusBar barStyle="dark-content" />
       <LinearGradient colors={GRAD} style={StyleSheet.absoluteFillObject} />
 
-      {/* Back button */}
-      <TouchableOpacity style={ex.backBtn} onPress={onExit}>
-        <Text style={ex.backText}>←</Text>
-      </TouchableOpacity>
+      {/* Header row: back | help */}
+      <View style={ex.headerRow}>
+        <TouchableOpacity style={ex.backBtn} onPress={onExit}>
+          <Text style={ex.backText}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo}>
+          <Text style={ex.helpText}>?</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Round indicator */}
       <View style={ex.roundRow}>
@@ -594,7 +599,8 @@ function ExerciseScreen({ onComplete, onExit }) {
 
       {/* Phase label */}
       <Text style={ex.phaseLabel}>
-        {phase === 'breathe'    ? 'Breathe In...'
+        {phase === 'idle'       ? 'Ready to begin?'
+         : phase === 'breathe'  ? 'Breathe In...'
          : phase === 'phonating' ? 'Say  AH  — hold it!'
          : phase === 'rest'      ? (roundResult !== null ? (roundResult >= TARGET_S ? '✓ Great hold!' : 'Keep going!') : 'Rest...')
          : phase === 'done'      ? 'Well done!'
@@ -624,6 +630,13 @@ function ExerciseScreen({ onComplete, onExit }) {
         </View>
       </View>
 
+      {/* Start button — shown only in idle phase */}
+      {phase === 'idle' && (
+        <TouchableOpacity style={ex.startBtn} onPress={() => startBreath()} activeOpacity={0.85}>
+          <Text style={ex.startText}>Start  ▶</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Live waveform panel */}
       <View style={{ alignItems: 'center', marginTop: 16 }}>
         <LiveWaveform bars={bars} panelH={180} />
@@ -643,15 +656,34 @@ function ExerciseScreen({ onComplete, onExit }) {
 }
 
 const ex = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: 52, paddingHorizontal: 18, zIndex: 10,
+  },
   backBtn: {
-    position: 'absolute', top: 48, left: 18, zIndex: 10,
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: `${DARK_TEAL}20`,
     borderWidth: 1.5, borderColor: `${DARK_TEAL}30`,
     justifyContent: 'center', alignItems: 'center',
   },
   backText:  { color: DARK_TEAL, fontSize: 18, fontWeight: '700' },
-  roundRow:  { flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 52, zIndex: 5 },
+  helpBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: ORANGE,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.45, shadowRadius: 6, elevation: 6,
+  },
+  helpText: { color: WHITE, fontSize: 17, fontWeight: '800' },
+  startBtn: {
+    alignSelf: 'center', marginTop: 24,
+    backgroundColor: ORANGE, borderRadius: 14,
+    paddingHorizontal: 36, paddingVertical: 15,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  startText: { color: WHITE, fontSize: 18, fontWeight: '700', letterSpacing: 0.6 },
+  roundRow:  { flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 12, zIndex: 5 },
   roundPill: {
     width: 40, height: 40, borderRadius: 20,
     borderWidth: 2, borderColor: `${DARK_TEAL}40`,
@@ -701,5 +733,11 @@ export default function SustainedPhonationExercise({ onComplete, onExit }) {
 
   if (showDemo === null) return null;
   if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} />;
-  return <ExerciseScreen onComplete={onComplete} onExit={onExit} />;
+  return (
+    <ExerciseScreen
+      onComplete={onComplete}
+      onExit={onExit}
+      onShowDemo={() => setShowDemo(true)}
+    />
+  );
 }
