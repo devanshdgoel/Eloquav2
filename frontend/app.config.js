@@ -33,7 +33,16 @@ module.exports = {
       favicon: './assets/favicon.png',
     },
     scheme: 'eloqua',
+    runtimeVersion: {
+      policy: 'sdkVersion',
+    },
+    updates: {
+      url: 'https://u.expo.dev/f4bb8d13-0817-4c35-af80-dd6c71b42002',
+    },
     extra: {
+      eas: {
+        projectId: 'f4bb8d13-0817-4c35-af80-dd6c71b42002',
+      },
       apiBaseUrl: process.env.API_BASE_URL || 'https://eloqua-backend.onrender.com',
 
       googleWebClientId:     process.env.GOOGLE_WEB_CLIENT_ID     || '',
