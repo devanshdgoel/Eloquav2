@@ -6,8 +6,8 @@
 
 module.exports = {
   expo: {
-    name: 'frontend',
-    slug: 'frontend',
+    name: 'Eloqua',
+    slug: 'eloqua',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
@@ -23,6 +23,7 @@ module.exports = {
       bundleIdentifier: 'com.eloqua.app',
     },
     android: {
+      package: 'com.eloqua.app',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#ffffff',
@@ -33,24 +34,18 @@ module.exports = {
     },
     scheme: 'eloqua',
     extra: {
-      // Backend URL — leave blank in development so env.js auto-detects the
-      // local machine IP. Set to the production Railway URL for builds.
-      apiBaseUrl: process.env.API_BASE_URL || '',
+      apiBaseUrl: process.env.API_BASE_URL || 'https://eloqua-backend.onrender.com',
 
-      // Google OAuth client IDs — obtained from Google Cloud Console.
-      // See the Google Sign-In setup notes for instructions.
       googleWebClientId:     process.env.GOOGLE_WEB_CLIENT_ID     || '',
       googleIosClientId:     process.env.GOOGLE_IOS_CLIENT_ID     || '',
       googleAndroidClientId: process.env.GOOGLE_ANDROID_CLIENT_ID || '',
 
-      // Firebase project config — all values come from the .env file.
-      // Never hardcode these; .env is gitignored.
-      firebaseApiKey:            process.env.FIREBASE_API_KEY,
-      firebaseAuthDomain:        process.env.FIREBASE_AUTH_DOMAIN,
-      firebaseProjectId:         process.env.FIREBASE_PROJECT_ID,
-      firebaseStorageBucket:     process.env.FIREBASE_STORAGE_BUCKET,
-      firebaseMessagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-      firebaseAppId:             process.env.FIREBASE_APP_ID,
+      firebaseApiKey:            process.env.FIREBASE_API_KEY            || 'AIzaSyD5ChGuQ3qolrj5oapkSMKEIAvbayTliOY',
+      firebaseAuthDomain:        process.env.FIREBASE_AUTH_DOMAIN        || 'eloqua-f714f.firebaseapp.com',
+      firebaseProjectId:         process.env.FIREBASE_PROJECT_ID         || 'eloqua-f714f',
+      firebaseStorageBucket:     process.env.FIREBASE_STORAGE_BUCKET     || 'eloqua-f714f.firebasestorage.app',
+      firebaseMessagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '301157330813',
+      firebaseAppId:             process.env.FIREBASE_APP_ID             || '1:301157330813:web:c68054749712b345aee614',
     },
   },
 };
