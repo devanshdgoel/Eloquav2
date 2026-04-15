@@ -1,8 +1,5 @@
 firebase-admin==6.8.0
 annotated-doc==0.0.4
-librosa==0.10.2
-numpy==1.26.4
-soundfile==0.12.1
 annotated-types==0.7.0
 anyio==4.12.1
 certifi==2026.1.4

@@ -14,8 +14,6 @@ High (>220Hz) Rachel             Bella              Elli
 import logging
 from dataclasses import dataclass, asdict
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 
@@ -110,6 +108,7 @@ def analyze_voice(audio_path: str, transcript: str, audio_duration_s: float) -> 
     mean_rms   = 0.045   # default mid energy
 
     try:
+        import numpy as np  # noqa: PLC0415
         import librosa  # noqa: PLC0415
 
         y, sr = librosa.load(audio_path, sr=None, mono=True)
