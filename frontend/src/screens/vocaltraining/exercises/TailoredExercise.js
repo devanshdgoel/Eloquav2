@@ -8,15 +8,13 @@
 import React, { useRef } from 'react';
 
 import SustainedPhonationExercise from './SustainedPhonationExercise';
-import PitchGlidesExercise        from './PitchGlidesExercise';
+import DolphinVowelsExercise      from './DolphinVowelsExercise';
 import LoudnessDrillsExercise     from './LoudnessDrillsExercise';
-import FunctionalSpeechExercise   from './FunctionalSpeechExercise';
 
 const EXERCISES = [
   SustainedPhonationExercise,
-  PitchGlidesExercise,
+  DolphinVowelsExercise,
   LoudnessDrillsExercise,
-  FunctionalSpeechExercise,
 ];
 
 export default function TailoredExercise({ onComplete, onExit }) {

@@ -9,12 +9,14 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { completeSession } from '../../services/progressService';
+import { getUserProfile } from '../../utils/storage';
 
 import BreathingExercise       from './exercises/BreathingExercise';
 import SustainedPhonation      from './exercises/SustainedPhonationExercise';
-import PitchGlides             from './exercises/PitchGlidesExercise';
+import DolphinVowels           from './exercises/DolphinVowelsExercise';
 import LoudnessDrills          from './exercises/LoudnessDrillsExercise';
 import TailoredExercise        from './exercises/TailoredExercise';
+import MidpointScreen        from './exercises/MidpointScreen';
 import FunctionalSpeech        from './exercises/FunctionalSpeechExercise';
 
 const { width: W } = Dimensions.get('window');
@@ -25,8 +27,9 @@ const { width: W } = Dimensions.get('window');
 const SESSION_EXERCISES = [
   { type: 'breathing',   label: 'Breathing' },
   { type: 'phonation',   label: 'Sustained Phonation' },
-  { type: 'pitchGlides', label: 'Pitch Glides' },
+  { type: 'pitchGlides', label: 'Dolphin Vowels' },
   { type: 'loudness',    label: 'Loudness Drills' },
+  { type: 'midpoint',    label: 'Halfway There' },
   { type: 'breathing',   label: 'Breathing' },
   { type: 'tailored',    label: 'Tailored Exercise' },
   { type: 'speech',      label: 'Functional Speech' },
@@ -35,8 +38,9 @@ const SESSION_EXERCISES = [
 const EXERCISE_MAP = {
   breathing:   BreathingExercise,
   phonation:   SustainedPhonation,
-  pitchGlides: PitchGlides,
+  pitchGlides: DolphinVowels,
   loudness:    LoudnessDrills,
+  midpoint:    MidpointScreen,
   tailored:    TailoredExercise,
   speech:      FunctionalSpeech,
 };
@@ -125,9 +129,9 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   const [isDone, setIsDone] = useState(false);
 
   // Animated progress bar width (0 → 1 represents 0% → 100%).
-  // Starts at 1/7 because the first exercise is already showing.
+  // Starts at 0; bar fills as each exercise is completed.
   // useNativeDriver must be false because width is a layout property.
-  const progressAnim = useRef(new Animated.Value(1 / SESSION_EXERCISES.length)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   function animateProgressTo(fraction) {
     Animated.timing(progressAnim, {
@@ -144,11 +148,18 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     if (nextIndex >= SESSION_EXERCISES.length) {
       // All exercises finished — award the streak point.
       try {
-        await completeSession();
+        const result = await completeSession();
+        const profile = await getUserProfile();
+        const userName = profile?.name ?? '';
+        // Navigate to streak celebration — replace so back goes to Home
+        navigation.replace('StreakCelebration', {
+          streakDays: result.streak_days,
+          userName,
+        });
       } catch {
-        // Fail silently; the UI still moves to the completion screen.
+        // Fail silently; fall back to simple completion screen
+        setIsDone(true);
       }
-      setIsDone(true);
     } else {
       setExerciseIndex(nextIndex);
     }
@@ -170,6 +181,17 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
           onExit={() => navigation.goBack()}
           exerciseIndex={exerciseIndex}
           totalExercises={SESSION_EXERCISES.length}
+        />
+        {/*
+          Prototype skip — hold bottom-right corner 2 s to advance.
+          Rendered as the LAST child of exerciseArea so it is always on
+          top of the exercise content without needing zIndex hacks.
+        */}
+        <TouchableOpacity
+          style={styles.skipZone}
+          onLongPress={handleExerciseComplete}
+          delayLongPress={2000}
+          activeOpacity={1}
         />
       </View>
 
@@ -193,6 +215,14 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  skipZone: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 100,
+    height: 100,
+    opacity: 0,
+  },
   exerciseArea: {
     flex: 1,
     // Leave room so content is never hidden behind the progress bar.

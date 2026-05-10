@@ -1,8 +1,33 @@
-import React from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Animated, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { signInAnonymously } from 'firebase/auth';
+import { auth } from '../../config/firebase';
+import { setOnboardingComplete } from '../../utils/storage';
 import { colors } from '../../theme';
 
 export default function SplashButtons({ buttonsOpacity, orTextOpacity, waveLogoOpacity, navigation }) {
+  const [guestLoading, setGuestLoading] = useState(false);
+
+  async function handleGuestSignIn() {
+    if (guestLoading) return;
+    setGuestLoading(true);
+    try {
+      // Try Firebase anonymous auth first (enables Firestore for guests).
+      // Falls back to local-only guest mode if anonymous auth is disabled.
+      await setOnboardingComplete();
+      try {
+        await signInAnonymously(auth);
+      } catch (authErr) {
+        // Anonymous auth not enabled — continue as local guest
+        console.warn('Anonymous auth unavailable, continuing as local guest:', authErr.code);
+      }
+      navigation.replace('Home');
+    } catch (e) {
+      setGuestLoading(false);
+      Alert.alert('Sign in failed', e?.message ?? 'Something went wrong. Please try again.');
+    }
+  }
+
   return (
     <>
       <Animated.View style={[styles.buttonsContainer, { opacity: buttonsOpacity }]}>
@@ -27,27 +52,22 @@ export default function SplashButtons({ buttonsOpacity, orTextOpacity, waveLogoO
         >
           <Text style={styles.createAccountButtonText}>Create new account</Text>
         </TouchableOpacity>
-
-        <Animated.Text style={[styles.orText, { opacity: orTextOpacity }]}>
-          or
-        </Animated.Text>
-
-        <TouchableOpacity
-          style={styles.demoButton}
-          onPress={() => navigation.navigate('SpeechDemo')}
-          accessibilityRole="button"
-          accessibilityLabel="Try the demo without an account"
-        >
-          <Text style={styles.demoButtonText}>🎙 Try Demo</Text>
-        </TouchableOpacity>
       </Animated.View>
 
-      <Animated.Image
-        source={require('../../../assets/images/wave-logo.png')}
-        style={[styles.waveLogo, { opacity: waveLogoOpacity }]}
-        resizeMode="contain"
-        accessibilityLabel="Eloqua wave logo"
-      />
+      {/* Wave logo — tap to enter as guest */}
+      <Animated.View style={[styles.waveLogo, { opacity: waveLogoOpacity }]}>
+        <TouchableOpacity onPress={handleGuestSignIn} activeOpacity={0.7} accessibilityLabel="Continue as guest">
+          {guestLoading
+            ? <ActivityIndicator color={colors.splash.text} style={{ width: 100, height: 60 }} />
+            : <Animated.Image
+                source={require('../../../assets/images/wave-logo.png')}
+                style={{ width: 100, height: 60 }}
+                resizeMode="contain"
+                accessible={false}
+              />
+          }
+        </TouchableOpacity>
+      </Animated.View>
     </>
   );
 }
@@ -99,27 +119,10 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '500',
   },
-  demoButton: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.5)',
-    paddingVertical: 14,
-    borderRadius: 30,
-    width: '100%',
-    maxWidth: 320,
-    alignItems: 'center',
-  },
-  demoButtonText: {
-    color: colors.splash.text,
-    fontSize: 17,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-  },
   waveLogo: {
     position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 100,
-    height: 60,
+    bottom: 12,
+    right: 12,
+    padding: 8,          // expand tap area
   },
 });

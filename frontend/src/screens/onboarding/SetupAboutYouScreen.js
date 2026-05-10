@@ -98,7 +98,7 @@ export default function SetupAboutYouScreen({ navigation }) {
           </View>
 
           {/* Age Range */}
-          <Text style={styles.label}>How old are you?</Text>
+          <Text style={styles.label}>How old are you? <Text style={styles.optional}>(optional)</Text></Text>
           <TouchableOpacity
             style={styles.selectCard}
             onPress={() => setAgeModalVisible(true)}
@@ -107,9 +107,9 @@ export default function SetupAboutYouScreen({ navigation }) {
             accessibilityRole="button"
           >
             <Text style={[styles.selectText, !age && styles.selectPlaceholder]}>
-              {age || 'Select'}
+              {age || 'Select age range'}
             </Text>
-            <Text style={styles.chevron}>v</Text>
+            <Text style={styles.chevron}>▾</Text>
           </TouchableOpacity>
 
           {/* Progress dots */}
@@ -239,9 +239,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    alignSelf: 'flex-start',
-    minWidth: 160,
     marginBottom: 40,
+  },
+  optional: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(28,64,71,0.55)',
   },
   selectText: {
     fontSize: 18,

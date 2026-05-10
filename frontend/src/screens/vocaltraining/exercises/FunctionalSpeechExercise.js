@@ -23,6 +23,9 @@ import {
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { auth } from '../../../config/firebase';
+import CantDoNow from '../../../components/CantDoNow';
+import { API_BASE_URL } from '../../../config/env';
 
 const { width: W, height: H } = Dimensions.get('window');
 const SC = W / 402;
@@ -44,8 +47,10 @@ const INTRO_KEY       = '@eloqua_functional_speech_demo_seen';
 const HEAR_DELAY_MS   = 350;   // wait before TTS fires on new item
 const AUTO_SPEAK_MS   = 2800;  // auto-open mic after hearing
 const MAX_RECORD_MS   = 5000;  // mic timeout → wrong-answer drawer
-const SPEAK_THRESHOLD = 0.26;
 const MIN_SPEAK_MS    = 220;
+const CALIBRATION_MS  = 1500;
+const MIN_THRESHOLD   = 0.28;
+const MAX_THRESHOLD   = 0.70;
 const SUCCESS_HOLD_MS = 700;
 
 // ── Word banks ─────────────────────────────────────────────────────────────────
@@ -80,7 +85,7 @@ function shuffle(arr) {
 
 function buildItems() {
   return [
-    ...shuffle(WORDS).slice(0, 2).map(t => ({ text: t, level: 'word' })),
+    ...shuffle(WORDS).slice(0, 1).map(t => ({ text: t, level: 'word' })),
     ...shuffle(PHRASES).slice(0, 2).map(t => ({ text: t, level: 'phrase' })),
     ...shuffle(SENTENCES).slice(0, 1).map(t => ({ text: t, level: 'sentence' })),
   ];
@@ -134,28 +139,27 @@ function IntroScreen({ onStart, onExit, progress }) {
     <View style={styles.introRoot}>
       <StatusBar barStyle="light-content" />
 
-      {/* X exit — exits the exercise from intro */}
+      {/* X exit */}
       <View style={styles.introTopRow}>
         <TouchableOpacity style={styles.introXBtn} onPress={onExit}>
           <Text style={styles.introXText}>✕</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Title */}
-      <Text style={styles.introTitle}>Functional{'\n'}Speech</Text>
+      {/* Centred content */}
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={styles.introTitle}>Functional{'\n'}Speech</Text>
 
-      {/* Speech bubbles (Figma: two overlapping speech bubbles) */}
-      <View style={styles.bubblesWrap}>
-        <View style={styles.bubbleLarge}>
-          <Text style={styles.bubbleDots}>• • •</Text>
-        </View>
-        <View style={styles.bubbleSmall}>
-          <Text style={styles.bubbleDots}>• • •</Text>
+        {/* Speech bubbles */}
+        <View style={styles.bubblesWrap}>
+          <View style={styles.bubbleLarge}>
+            <Text style={styles.bubbleDots}>• • •</Text>
+          </View>
+          <View style={styles.bubbleSmall}>
+            <Text style={styles.bubbleDots}>• • •</Text>
+          </View>
         </View>
       </View>
-
-      {/* Spacer pushes arrow button down */}
-      <View style={{ flex: 1 }} />
 
       {/* Arrow button */}
       <TouchableOpacity style={styles.introArrowBtn} onPress={onStart}>
@@ -174,7 +178,7 @@ function IntroScreen({ onStart, onExit, progress }) {
 }
 
 // ── Main exercise screen ───────────────────────────────────────────────────────
-function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
   const items   = useRef(buildItems()).current;
   const TOTAL   = items.length; // 5
 
@@ -182,15 +186,48 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const [phase, setPhase]               = useState('hear'); // 'hear' | 'speak' | 'wrong' | 'success'
   const [drawerVisible, setDrawerVisible] = useState(false);
 
-  const phaseRef      = useRef('hear');
-  const itemIdxRef    = useRef(0);
-  const recordingRef  = useRef(null);
-  const holdTimerRef  = useRef(null);
-  const hearTimerRef  = useRef(null);
-  const maxTimerRef   = useRef(null);
+  const phaseRef          = useRef('hear');
+  const itemIdxRef        = useRef(0);
+  const recordingRef      = useRef(null);
+  const holdTimerRef      = useRef(null);
+  const hearTimerRef      = useRef(null);
+  const maxTimerRef       = useRef(null);
+  const adaptiveThreshRef = useRef(MIN_THRESHOLD);
+  const calibrateTimerRef = useRef(null);
   const drawerAnim    = useRef(new Animated.Value(0)).current;  // 0=hidden 1=shown
   const cardScale     = useRef(new Animated.Value(0.88)).current;
   const successOpac   = useRef(new Animated.Value(0)).current;
+
+  // Idle encouragement
+  const idleTimerRef  = useRef(null);
+  const idleOpacity   = useRef(new Animated.Value(0)).current;
+  const [idleMsg, setIdleMsg] = useState('');
+  const IDLE_MESSAGES = [
+    "Come on, you've got this! 💪",
+    "Take a breath and give it a go!",
+    "You're doing great. Try speaking now!",
+    "Whenever you're ready, say it out loud!",
+    "A little louder. You can do it!",
+  ];
+  const idleMsgIdxRef = useRef(0);
+
+  function startIdleTimer() {
+    clearIdleTimer();
+    idleTimerRef.current = setTimeout(() => {
+      const msg = IDLE_MESSAGES[idleMsgIdxRef.current % IDLE_MESSAGES.length];
+      idleMsgIdxRef.current += 1;
+      setIdleMsg(msg);
+      Animated.timing(idleOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      setTimeout(() => {
+        Animated.timing(idleOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => setIdleMsg(''));
+      }, 3000);
+    }, 7000);
+  }
+
+  function clearIdleTimer() {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    Animated.timing(idleOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setIdleMsg(''));
+  }
 
   const item       = items[displayIdx];
   const barFraction = (displayIdx) / TOTAL;
@@ -220,17 +257,19 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     clearTimeout(holdTimerRef.current);
     clearTimeout(maxTimerRef.current);
     holdTimerRef.current = null;
-    if (recordingRef.current) {
-      try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
-      recordingRef.current = null;
+    maxTimerRef.current = null;
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (rec) {
+      try { await rec.stopAndUnloadAsync(); } catch (_) {}
     }
   }
 
   function onMeterUpdate(status) {
-    if (!status.isRecording || phaseRef.current !== 'speak') return;
+    if (!status.isRecording || (phaseRef.current !== 'speak')) return;
     const db  = status.metering ?? -160;
     const vol = Math.max(0, Math.min(1, (db + 70) / 60));
-    if (vol > SPEAK_THRESHOLD) {
+    if (vol > adaptiveThreshRef.current) {
       if (!holdTimerRef.current) {
         holdTimerRef.current = setTimeout(() => {
           holdTimerRef.current = null;
@@ -274,11 +313,17 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     setPhase('hear');
     cardScale.setValue(0.86);
     Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start();
-    // Play TTS
+    // Play TTS — use enhanced voice for more natural speech
     setTimeout(async () => {
       if (phaseRef.current !== 'hear') return;
       await setPlaybackMode();
-      Speech.speak(it.text, { language: 'en-US', rate: 0.82 });
+      Speech.speak(it.text, {
+        language: 'en-GB',          // British English tends to sound more natural
+        rate: 0.80,                 // Slightly slower for elderly users
+        pitch: 1.05,                // Slightly warmer pitch
+        // iOS: prefer enhanced quality voice
+        voice: 'com.apple.voice.enhanced.en-GB.Daniel',
+      });
     }, HEAR_DELAY_MS);
     // Auto-open mic
     hearTimerRef.current = setTimeout(() => {
@@ -291,26 +336,100 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     try { Speech.stop(); } catch (_) {}
     phaseRef.current = 'speak';
     setPhase('speak');
+    startIdleTimer();
     await stopRecording();
     await startRecording();
   }
 
-  function handleSuccess() {
-    if (phaseRef.current === 'success') return;
+  async function handleSuccess() {
+    if (phaseRef.current === 'success' || phaseRef.current === 'checking') return;
+    clearIdleTimer();
     clearTimeout(hearTimerRef.current);
+    clearTimeout(maxTimerRef.current);
+    phaseRef.current = 'checking';
+    setPhase('checking');
+
+    // Stop recording and get URI for STT
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    let uri = null;
+    if (rec) {
+      try { await rec.stopAndUnloadAsync(); uri = rec.getURI(); } catch (_) {}
+    }
+
+    await checkTranscript(uri);
+  }
+
+  async function checkTranscript(uri) {
+    const targetText = items[itemIdxRef.current].text;
+
+    // No audio — be lenient for short words
+    if (!uri) { doAdvance(); return; }
+
+    try {
+      const form = new FormData();
+      form.append('file', { uri, type: 'audio/m4a', name: 'speech.m4a' });
+      const uid = auth.currentUser?.uid;
+      if (uid) form.append('user_id', uid);
+      const res = await fetch(`${API_BASE_URL}/api/process-audio`, { method: 'POST', body: form });
+      const data = await res.json();
+      const transcript = (data.raw_transcript || data.cleaned_transcript || '').toLowerCase().trim();
+
+      if (textMatches(transcript, targetText)) {
+        doAdvance();
+      } else {
+        // Transcript didn't match — show wrong drawer for retry
+        phaseRef.current = 'wrong';
+        setPhase('wrong');
+        showDrawer();
+      }
+    } catch (_) {
+      // Network/API error — be lenient, advance
+      doAdvance();
+    }
+  }
+
+  function textMatches(transcript, target) {
+    if (!transcript) return true; // lenient: no transcript → assume ok
+    const t = target.toLowerCase();
+    // Exact or partial match
+    if (transcript.includes(t)) return true;
+    // Word-level partial: at least half the target words appear
+    const targetWords = t.split(/\s+/);
+    const matchCount = targetWords.filter(w => transcript.includes(w)).length;
+    if (targetWords.length === 1) {
+      // Single word — allow common STT variants
+      const ALTS = {
+        'hello': ['hello', 'helo', 'hallow', 'yellow'],
+        'please': ['please', 'pleas', 'plies'],
+        'thanks': ['thanks', 'tanks', 'thank'],
+        'water': ['water', 'wader', 'wider'],
+        'help': ['help', 'held', 'hell'],
+        'sorry': ['sorry', 'sori', 'story'],
+        'okay': ['okay', 'ok ', 'o k'],
+        'yes': ['yes', 'yep', 'yeah', 'yea'],
+        'stop': ['stop', 'top', 'stomp'],
+        'good': ['good', 'god ', 'got'],
+      };
+      return (ALTS[t] || [t]).some(alt => transcript.includes(alt));
+    }
+    return matchCount >= Math.ceil(targetWords.length * 0.5);
+  }
+
+  function doAdvance() {
     phaseRef.current = 'success';
     setPhase('success');
-    stopRecording();
     successOpac.setValue(0);
     Animated.sequence([
       Animated.timing(successOpac, { toValue: 1, duration: 130, useNativeDriver: true }),
-      Animated.delay(300),
+      Animated.delay(400),
       Animated.timing(successOpac, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start(() => advance());
+    ]).start(advance);
   }
 
   function handleWrong() {
-    if (phaseRef.current === 'success' || phaseRef.current === 'wrong') return;
+    if (phaseRef.current === 'success' || phaseRef.current === 'wrong' || phaseRef.current === 'checking') return;
+    clearIdleTimer();
     clearTimeout(hearTimerRef.current);
     phaseRef.current = 'wrong';
     setPhase('wrong');
@@ -332,13 +451,51 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     });
   }
 
+  // ── Ambient calibration then start ────────────────────────────────────────
+  async function calibrateAmbient() {
+    const ambientSamples = [];
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        {
+          android: Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+          ios:     Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+          web:     {},
+          isMeteringEnabled: true,
+        },
+        (status) => {
+          if (!status.isRecording) return;
+          const db  = status.metering ?? -160;
+          const vol = Math.min(1, Math.max(0, (db + 70) / 60));
+          ambientSamples.push(vol);
+        },
+        80,
+      );
+      calibrateTimerRef.current = setTimeout(async () => {
+        calibrateTimerRef.current = null;
+        if (ambientSamples.length > 0) {
+          const sorted = [...ambientSamples].sort((a, b) => a - b);
+          const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? MIN_THRESHOLD;
+          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, p90 * 1.6 + 0.12));
+        }
+        try { await recording.stopAndUnloadAsync(); } catch (_) {}
+        loadItem(0);
+      }, CALIBRATION_MS);
+    } catch (_) {
+      adaptiveThreshRef.current = MIN_THRESHOLD;
+      loadItem(0);
+    }
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadItem(0);
+    calibrateAmbient();
     return () => {
+      if (calibrateTimerRef.current) clearTimeout(calibrateTimerRef.current);
       clearTimeout(hearTimerRef.current);
       clearTimeout(holdTimerRef.current);
       clearTimeout(maxTimerRef.current);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       stopRecording();
       try { Speech.stop(); } catch (_) {}
     };
@@ -371,7 +528,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
         style={styles.speakerBtn}
         onPress={async () => {
           await setPlaybackMode();
-          Speech.speak(item.text, { language: 'en-US', rate: 0.82 });
+          Speech.speak(item.text, { language: 'en-GB', rate: 0.80, pitch: 1.05, voice: 'com.apple.voice.enhanced.en-GB.Daniel' });
         }}
         accessibilityLabel="Tap to hear the word"
       >
@@ -395,16 +552,19 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
 
       {/* ── Phase indicator ── */}
       <Text style={styles.phaseHint}>
-        {phase === 'hear'    ? 'Listen…'           :
-         phase === 'speak'   ? 'Say it now!'        :
-         phase === 'success' ? '✓ Great!'           :
-                               'Try again…'}
+        {phase === 'hear'     ? 'Listen carefully…'  :
+         phase === 'speak'    ? 'Say it now, loud!'  :
+         phase === 'checking' ? 'Checking…'          :
+         phase === 'success'  ? 'Well done!'         :
+                                'Give it another try…'}
       </Text>
 
-      {/* ── Mic blob ── */}
-      <View style={styles.blobArea}>
-        <MicBlob pulsing={phase === 'speak'} />
-      </View>
+      {/* ── Mic blob (shown during hear/speak/checking phases) ── */}
+      {(phase === 'hear' || phase === 'speak' || phase === 'checking') && (
+        <View style={styles.blobArea}>
+          <MicBlob pulsing={phase === 'speak'} />
+        </View>
+      )}
 
       {/* ── "Speak" tap shortcut during hear phase ── */}
       {phase === 'hear' && (
@@ -412,6 +572,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
           <Text style={styles.readyBtnText}>I'm ready →</Text>
         </TouchableOpacity>
       )}
+
+      {/* ── Can't do now ── */}
+      <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 8 * SC }} />
 
       {/* ── Bottom progress bar ── */}
       <View style={styles.barTrack}>
@@ -435,38 +598,26 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
         pointerEvents="none"
         style={[styles.successFlash, { opacity: successOpac }]}
       />
+
+      {/* ── Idle encouragement overlay ── */}
+      {!!idleMsg && (
+        <Animated.View pointerEvents="none" style={[styles.idleOverlay, { opacity: idleOpacity }]}>
+          <Text style={styles.idleText}>{idleMsg}</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function FunctionalSpeechExercise({ onComplete, onExit }) {
-  const [introSeen,  setIntroSeen]  = useState(null);
-  const [showIntro,  setShowIntro]  = useState(false);
+  // TODO (production): read INTRO_KEY from AsyncStorage to show only once.
+  // For testing, always show the intro first.
+  const [showIntro, setShowIntro] = useState(true);
 
-  useEffect(() => {
-    AsyncStorage.getItem(INTRO_KEY).then(v => setIntroSeen(v === 'true'));
-  }, []);
-
-  const handleIntroStart = useCallback(async () => {
-    await AsyncStorage.setItem(INTRO_KEY, 'true');
-    setIntroSeen(true);
-    setShowIntro(false);
-  }, []);
-
-  if (introSeen === null) return null;
-
-  if (!introSeen || showIntro) {
-    return <IntroScreen onStart={handleIntroStart} onExit={onExit} progress={0} />;
-  }
-
-  return (
-    <ExerciseScreen
-      onComplete={onComplete}
-      onExit={onExit}
-      onShowDemo={() => setShowIntro(true)}
-    />
-  );
+  return showIntro
+    ? <IntroScreen onStart={() => setShowIntro(false)} onExit={onExit} progress={0} />
+    : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onComplete} />;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -481,10 +632,13 @@ const styles = StyleSheet.create({
     paddingTop: 52 * SC, marginBottom: 40 * SC,
   },
   introXBtn: {
-    width: 48 * SC, height: 48 * SC, borderRadius: 10 * SC,
-    backgroundColor: C.teal, justifyContent: 'center', alignItems: 'center',
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  introXText: { color: C.white, fontSize: 18 * SC, fontWeight: '700' },
+  introXText: { color: C.white, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+
   introTitle: {
     color: C.white, fontSize: 56 * SC, fontWeight: '900',
     letterSpacing: 2, lineHeight: 66 * SC, marginBottom: 36 * SC,
@@ -515,11 +669,12 @@ const styles = StyleSheet.create({
 
   introArrowBtn: {
     alignSelf: 'center',
-    width: 72 * SC, height: 72 * SC, borderRadius: 20 * SC,
-    backgroundColor: C.tealMid,
+    width: 80, height: 64, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
-  introArrowText: { color: C.white, fontSize: 28 * SC, fontWeight: '700' },
+  introArrowText: { color: C.white, fontSize: 26, fontWeight: '300' },
 
   introBarTrack: {
     position: 'absolute', bottom: 28 * SC,
@@ -541,19 +696,23 @@ const styles = StyleSheet.create({
     marginBottom: 10 * SC,
   },
   exXBtn: {
-    width: 48 * SC, height: 48 * SC, borderRadius: 10 * SC,
-    backgroundColor: C.teal, justifyContent: 'center', alignItems: 'center',
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  exXText: { color: C.white, fontSize: 18 * SC, fontWeight: '700' },
+  exXText: { color: C.white, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
   exRepeatLabel: {
     flex: 1, color: C.white, fontSize: 26 * SC, fontWeight: '800',
     letterSpacing: 1, marginLeft: 14 * SC,
   },
   exHelpBtn: {
-    width: 48 * SC, height: 48 * SC, borderRadius: 24 * SC,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: C.orange, justifyContent: 'center', alignItems: 'center',
+    shadowColor: C.orange, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
   },
-  exHelpText: { color: C.white, fontSize: 22 * SC, fontWeight: '800' },
+  exHelpText: { color: C.white, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 
   speakerBtn: {
     alignSelf: 'center', marginTop: 14 * SC, marginBottom: 8 * SC,
@@ -655,5 +814,18 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(76,175,80,0.2)',
     zIndex: 99,
+  },
+
+  // Idle encouragement overlay
+  idleOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 36 * SC,
+    zIndex: 100,
+  },
+  idleText: {
+    color: C.white, fontSize: 24 * SC, fontWeight: '800',
+    textAlign: 'center', lineHeight: 34 * SC, letterSpacing: 0.3,
   },
 });

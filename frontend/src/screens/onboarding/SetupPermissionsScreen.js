@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, Linking, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 
@@ -12,7 +12,10 @@ export default function SetupPermissionsScreen({ navigation }) {
       Alert.alert(
         'Microphone Required',
         'Eloqua needs microphone access to analyse your speech. Please enable it in Settings.',
-        [{ text: 'OK' }]
+        [
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          { text: 'Not Now', style: 'cancel' },
+        ]
       );
     }
   }
@@ -41,6 +44,7 @@ export default function SetupPermissionsScreen({ navigation }) {
         source={require('../../../assets/images/wave-logo.png')}
         style={styles.waveLogo}
         resizeMode="contain"
+        accessible={false}
       />
     </LinearGradient>
   );

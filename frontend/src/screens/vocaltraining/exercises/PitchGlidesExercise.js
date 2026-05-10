@@ -1,22 +1,21 @@
 /**
- * PitchGlidesExercise — LSVT-inspired pitch-glide vocal training.
+ * PitchGlidesExercise — dolphin-through-hoops pitch training.
  *
- * Clinical rationale (LSVT LOUD):
- *   - Patients with Hypokinetic Dysarthria (Parkinson's) have reduced vocal
- *     loudness and a compressed pitch range, producing monotone speech.
- *   - This exercise targets both: "UH" phonation requires a loud, sustained
- *     vowel; the five hoops are arranged low→high encouraging full-range
- *     pitch excursion (the "pitch glide" component of LSVT LOUD).
- *   - Real-time loudness biofeedback (vertical bar + jellyfish movement) makes
- *     the abstract goal of "speak louder and higher" concrete and motivating.
+ * Flow: Title (Pitch1) → Tutorial (Pitch2–4) → Exercise (Pitch5–8)
  *
- * Flow:
- *   1. First visit only → 3 demo/instruction slides (mint gradient).
- *   2. Main exercise: say "UH" 5 times; each triggers the jellyfish to swim
- *      upward through the next hoop (low pitch → high pitch, zigzag layout).
- *   3. Completion calls onComplete() to advance the session.
+ * Exercise mechanics:
+ *   - 1.5 s calibration: user says "ahh" at their natural low pitch.
+ *     The median of detected pitches becomes the baseline (low Hz).
+ *   - The dolphin's position is controlled continuously by current pitch:
+ *       level=0 (low pitch) → lower-left hoop position
+ *       level=1 (high pitch) → upper-right hoop position
+ *   - Rounds alternate targets: low → high → low → high (TOTAL_HOOPS times).
+ *   - Holding pitch in the target zone for HOLD_MS completes a hoop.
+ *   - Vertical orange volume bar on the left mirrors loudness.
+ *   - Dual-colour progress bar at top: orange (done) + teal (remaining).
+ *
+ * Requires EAS / custom dev client (react-native-pitch-detector is a native module).
  */
-
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -26,594 +25,622 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Audio } from 'expo-av';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, { Line, Circle } from 'react-native-svg';
+import PitchDetector from 'react-native-pitch-detector';
+import Svg, { Ellipse, Path } from 'react-native-svg';
+import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-// ── Config ─────────────────────────────────────────────────────────────────────
-const DEMO_KEY        = '@eloqua_pitch_glides_demo_seen';
-const TOTAL_HOOPS     = 5;
-const SPEAK_THRESHOLD = 0.28;  // normalised 0–1 volume for phonation detection
-const MIN_SPEAK_MS    = 380;   // must exceed threshold for this long (ms)
-const TRAVEL_MS       = 950;   // jellyfish travel animation duration (ms)
+// ── Scale helpers (Figma frame: 402 × 874) ──────────────────────────────────
+const FW = 402;
+const FH = 874;
+const fs = x => (x * W) / FW;
+const fv = y => (y * H) / FH;
 
-// ── Layout ─────────────────────────────────────────────────────────────────────
-const HEADER_H = 256;                          // header + pills + prompt card
-const BOTTOM_H = 78;                           // mic-status strip
-const SCENE_H  = H - HEADER_H - BOTTOM_H;
+// ── Config ────────────────────────────────────────────────────────────────────
+const TOTAL_HOOPS    = 4;    // hoops to fly through (alternating low ↔ high)
+const CALIBRATION_MS = 1500;
+const HOLD_MS        = 700;  // ms to hold pitch in target zone to complete hoop
+const PITCH_RANGE_HZ = 100;  // span in Hz from baseline low to top of scale
+const MIN_VALID_HZ   = 70;   // Hz — below this = no voice
+const MAX_VALID_HZ   = 500;  // Hz — above this = noise / falsetto
+const DEFAULT_BASE   = 130;  // Hz fallback when calibration gathers no samples
+const TARGET_LO      = 0.22; // normalised level that counts as "at low hoop"
+const TARGET_HI      = 0.78; // normalised level that counts as "at high hoop"
 
-const HOOP_W  = 84;
-const HOOP_H  = 46;
-const JELLY   = 62;   // jellyfish bounding-box size
-const BAR_H   = Math.round(SCENE_H * 0.56);
+// ── Colours ──────────────────────────────────────────────────────────────────
+const TEAL_DARK  = '#1C4047';
+const TEAL_MID   = '#2D6974';
+const ORANGE     = '#FE9C2D';
+const WHITE      = '#FFFFFF';
+const GREEN_HOOP = '#45B013';
 
-// Hoops: xF/yF as fractions of W/SCENE_H for the hoop's top-left corner.
-// Ordered low-pitch (bottom-right) → high-pitch (top-right) in a zigzag.
-const HOOP_DEFS = [
-  { id: 0, xF: 0.60, yF: 0.80 },
-  { id: 1, xF: 0.10, yF: 0.60 },
-  { id: 2, xF: 0.58, yF: 0.41 },
-  { id: 3, xF: 0.08, yF: 0.22 },
-  { id: 4, xF: 0.56, yF: 0.05 },
-];
+// ── Hoop geometry (Figma Pitch2: Ellipse94 & Ellipse95) ─────────────────────
+// Ellipse94 lower-left: center (74, 564) in 402×874 Figma space
+// Ellipse95 upper-right: center (305, 362) in 402×874 Figma space
+const HOOP_W  = fs(102);
+const HOOP_H  = fv(135);
+const HOOP_LL = { x: W * (74  / FW), y: H * (564 / FH) };
+const HOOP_UR = { x: W * (305 / FW), y: H * (362 / FH) };
 
-const HOOPS = HOOP_DEFS.map(d => ({
-  id:   d.id,
-  left: d.xF * W,
-  top:  d.yF * SCENE_H,
-}));
+// ── Vertical volume bar geometry (Figma Pitch8) ──────────────────────────────
+const VBAR_LEFT = fs(35);
+const VBAR_TOP  = fv(245);
+const VBAR_W    = fs(25);
+const VBAR_H    = fv(507);
 
-// Jellyfish starting position: bottom-centre of the scene
-const J0_LEFT = W / 2 - JELLY / 2;
-const J0_TOP  = SCENE_H - JELLY - 8;
+// ── Dolphin image size ───────────────────────────────────────────────────────
+const DOLPH_W = fs(130);
+const DOLPH_H = fv(90);
 
-const ORANGE   = '#FE9C2D';
-const TEAL_BG  = '#1C4047';
-
-// ── Shared sub-components ──────────────────────────────────────────────────────
-
-/** 3D teal cylinder representing a pitch-target hoop. */
-function Hoop({ done, active }) {
-  const topC  = done ? '#52C41A' : active ? ORANGE   : '#3DAAB5';
-  const bodyC = done ? '#3A9012' : active ? '#D08020' : '#2D8A94';
-  const botC  = done ? '#287010' : active ? '#A86012' : '#1A6870';
-  const holeC = '#0C1C22';
-  const topH  = HOOP_H * 0.42;
-
-  return (
-    <View style={{ width: HOOP_W, height: HOOP_H }}>
-      <View style={{ position: 'absolute', left: 0, right: 0, top: topH * 0.5, bottom: topH * 0.5, backgroundColor: bodyC }} />
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: topH, borderRadius: HOOP_W / 2, backgroundColor: botC }} />
-      <View style={{ position: 'absolute', left: 0, right: 0, top: 0,    height: topH, borderRadius: HOOP_W / 2, backgroundColor: topC }} />
-      <View style={{ position: 'absolute', left: HOOP_W * 0.15, right: HOOP_W * 0.15, top: topH * 0.10, height: topH * 0.75, borderRadius: HOOP_W, backgroundColor: holeC }} />
-      {active && !done && (
-        <View style={{ position: 'absolute', top: -5, bottom: -5, left: -5, right: -5, borderRadius: HOOP_W / 2 + 5, borderWidth: 2.5, borderColor: 'rgba(254,156,45,0.55)' }} />
-      )}
-    </View>
-  );
-}
-
-/** Dark oval shadow beneath each hoop ("hole in the floor" illusion). */
-function HoleShadow({ left, top }) {
-  return (
-    <View style={{
-      position: 'absolute',
-      left:   left  - HOOP_W * 0.18,
-      top:    top   + HOOP_H * 0.66,
-      width:  HOOP_W * 1.36,
-      height: HOOP_H * 0.54,
-      borderRadius: HOOP_W,
-      backgroundColor: 'rgba(0,0,0,0.40)',
-    }} />
-  );
-}
-
-/** Pink jellyfish drawn entirely with React Native views. */
-function Jellyfish({ glowing }) {
-  const domeH = JELLY * 0.55;
-  return (
-    <View style={{ width: JELLY, height: JELLY, alignItems: 'center' }}>
-      {glowing && (
-        <View style={{
-          position: 'absolute',
-          width:  JELLY * 1.8, height: JELLY * 1.8,
-          borderRadius: JELLY * 0.9,
-          backgroundColor: 'rgba(210,140,195,0.22)',
-          top:  -JELLY * 0.4, left: -JELLY * 0.4,
-        }} />
-      )}
-      {/* Dome */}
-      <View style={{
-        width: JELLY * 0.86, height: domeH,
-        borderTopLeftRadius: JELLY * 0.43, borderTopRightRadius: JELLY * 0.43,
-        backgroundColor: '#CFA0C5', overflow: 'hidden',
-      }}>
-        <View style={{ position: 'absolute', width: JELLY * 0.20, height: JELLY * 0.14, borderRadius: JELLY * 0.07, top: JELLY * 0.08, left: JELLY * 0.11, backgroundColor: 'rgba(255,255,255,0.52)' }} />
-        <View style={{ position: 'absolute', width: JELLY * 0.10, height: JELLY * 0.09, borderRadius: JELLY * 0.05, top: JELLY * 0.06, left: JELLY * 0.36, backgroundColor: 'rgba(255,255,255,0.38)' }} />
-      </View>
-      {/* Tentacles */}
-      <View style={{ flexDirection: 'row', gap: 3.5, paddingHorizontal: 7, marginTop: 2 }}>
-        {[0.65, 0.85, 1.0, 1.0, 0.85, 0.65].map((h, i) => (
-          <View key={i} style={{ width: 3, height: JELLY * 0.30 * h, borderRadius: 2, backgroundColor: 'rgba(185,125,170,0.70)' }} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-/** Vertical loudness bar with target-zone marker. */
-function VolumeBar({ volumeAnim }) {
-  return (
-    <View style={{ alignItems: 'center', gap: 6 }}>
-      <Text style={vb.lbl}>LOUD</Text>
-      <View style={{ width: 22, height: BAR_H, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.30)', overflow: 'hidden' }}>
-        {/* Target zone */}
-        <View style={{ position: 'absolute', bottom: '38%', left: 0, right: 0, height: BAR_H * 0.22, backgroundColor: 'rgba(254,156,45,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: '60%', left: 0, right: 0, height: 2, backgroundColor: 'rgba(254,156,45,0.55)' }} />
-        {/* Live fill */}
-        <Animated.View style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, borderRadius: 11,
-          backgroundColor: ORANGE,
-          height: volumeAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-        }} />
-      </View>
-      <Text style={vb.lbl}>SOFT</Text>
-    </View>
-  );
-}
-const vb = StyleSheet.create({ lbl: { color: 'rgba(255,255,255,0.45)', fontSize: 9, fontWeight: '700', letterSpacing: 0.9 } });
-
-/** 5 green/grey progress pills. */
-function ProgressPills({ doneCount }) {
-  return (
-    <View style={{ flexDirection: 'row', gap: 5, justifyContent: 'center' }}>
-      {Array.from({ length: TOTAL_HOOPS }, (_, i) => (
-        <View key={i} style={{ width: 54, height: 10, borderRadius: 24, backgroundColor: i < doneCount ? '#45B013' : 'rgba(255,255,255,0.26)' }} />
-      ))}
-    </View>
-  );
-}
-
-// ── Demo slides ────────────────────────────────────────────────────────────────
-
+// ── Tutorial slides ──────────────────────────────────────────────────────────
 const SLIDES = [
   {
-    num:   '1',
-    title: 'Pitch Glides',
-    body:  'Help the jellyfish swim through every hoop by saying "UH"! Each hoop is higher than the last — let your voice glide up.',
-    tip:   'Look at where the hoops are — the higher up, the higher your pitch target.',
+    dolphinX: W * (74  / FW),
+    dolphinY: H * (503 / FH),
+    instruction: '1.  A dolphin appears\nin the water',
   },
   {
-    num:   '2',
-    title: 'Big, Loud Voice!',
-    body:  'Take a deep breath, then say "UH" as loud and as long as you comfortably can. Fill the room with your voice!',
-    tip:   'LSVT LOUD: aim for maximum effort every single time you speak.',
+    dolphinX: W * (228 / FW),
+    dolphinY: H * (422 / FH),
+    instruction: "2.  Say \u2018ahh\u2019 continuously\u2014your pitch moves the dolphin",
   },
   {
-    num:   '3',
-    title: "Let's Glide!",
-    body:  'Each "UH" sends the jellyfish to the next hoop — higher each time. Take a full breath between every attempt.',
-    tip:   'Breathe in between each "UH" to focus your energy on a perfectly loud sound.',
+    dolphinX: W * (280 / FW),
+    dolphinY: H * (396 / FH),
+    instruction: '3.  Glide your pitch\nlow \u2192 high to reach each hoop',
   },
 ];
 
-// Zigzag diagram positions used in the demo illustration
-const DEMO_PTS = [
-  { x: W * 0.62, y: 24 },
-  { x: W * 0.20, y: 78 },
-  { x: W * 0.60, y: 130 },
-  { x: W * 0.18, y: 182 },
-  { x: W * 0.58, y: 234 },
-];
+// ── FadeIn wrapper ────────────────────────────────────────────────────────────
+function FadeIn({ children, duration = 300 }) {
+  const op = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(op, { toValue: 1, duration, useNativeDriver: true }).start();
+  }, []);
+  return <Animated.View style={{ flex: 1, opacity: op }}>{children}</Animated.View>;
+}
 
-function DemoSlide({ idx, onNext, onBack, onSkip }) {
-  const s      = SLIDES[idx];
-  const isLast = idx === SLIDES.length - 1;
-
+// ── Bottom wave ───────────────────────────────────────────────────────────────
+function BottomWave() {
+  const wh = fv(120);
   return (
-    <LinearGradient
-      colors={['#E0ECDE', '#68B39F', '#2D6974']}
-      locations={[0, 0.52, 1]}
-      start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-      style={StyleSheet.absoluteFillObject}
-    >
-      <StatusBar barStyle="dark-content" />
-
-      {/* Header */}
-      <View style={dm.header}>
-        <View style={dm.numCircle}>
-          <Text style={dm.numText}>{s.num}</Text>
-        </View>
-        <TouchableOpacity style={dm.skipBtn} onPress={onSkip}>
-          <Text style={dm.skipText}>Skip</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={dm.title}>{s.title}</Text>
-      <Text style={dm.body}>{s.body}</Text>
-
-      {/* Illustration: zigzag numbered hoops + mini jellyfish */}
-      <View style={{ height: 286, marginTop: 6 }}>
-        <Svg width={W} height={286} style={StyleSheet.absoluteFillObject}>
-          {DEMO_PTS.slice(1).map((pt, i) => {
-            const prev = DEMO_PTS[i];
-            return (
-              <Line
-                key={i}
-                x1={prev.x + 22} y1={prev.y + 22}
-                x2={pt.x   + 22} y2={pt.y   + 22}
-                stroke="rgba(44,105,116,0.45)"
-                strokeWidth={2}
-                strokeDasharray="6,5"
-              />
-            );
-          })}
-          {DEMO_PTS.map((pt, i) => (
-            <Circle key={i} cx={pt.x + 22} cy={pt.y + 22} r={22} fill="rgba(45,105,116,0.20)" stroke="rgba(44,105,116,0.55)" strokeWidth={2} />
-          ))}
-        </Svg>
-        {/* Hoop numbers */}
-        {DEMO_PTS.map((pt, i) => (
-          <Text key={i} style={[dm.hoopNum, { position: 'absolute', left: pt.x + 8, top: pt.y + 8 }]}>
-            {i + 1}
-          </Text>
-        ))}
-        {/* Mini jellyfish at start */}
-        <View style={{ position: 'absolute', left: W * 0.62 - JELLY * 0.3, top: 258 }}>
-          <Jellyfish glowing={false} />
-        </View>
-      </View>
-
-      {/* Top Tip */}
-      <View style={dm.tip}>
-        <Text style={dm.tipTitle}>Top Tip</Text>
-        <Text style={dm.tipBody}>{s.tip}</Text>
-      </View>
-
-      {/* Navigation */}
-      <View style={dm.nav}>
-        {idx > 0
-          ? <TouchableOpacity style={dm.navBtn} onPress={onBack}><Text style={dm.navIcon}>←</Text></TouchableOpacity>
-          : <View style={dm.navBtn} />
-        }
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          {SLIDES.map((_, i) => (
-            <View key={i} style={[dm.dot, i === idx && dm.dotActive]} />
-          ))}
-        </View>
-        <TouchableOpacity style={[dm.navBtn, dm.navBtnGo]} onPress={onNext}>
-          <Text style={[dm.navIcon, { color: '#fff' }]}>{isLast ? '▶' : '→'}</Text>
-        </TouchableOpacity>
-      </View>
-    </LinearGradient>
+    <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: wh, overflow: 'hidden' }}>
+      <Svg width={W} height={wh}>
+        <Path
+          d={`M0 ${wh*0.44} Q${W*0.25} ${wh*0.10} ${W*0.50} ${wh*0.38} Q${W*0.75} ${wh*0.65} ${W} ${wh*0.32} L${W} ${wh} L0 ${wh} Z`}
+          fill="rgba(45,105,116,0.50)"
+        />
+        <Path
+          d={`M0 ${wh*0.60} Q${W*0.30} ${wh*0.34} ${W*0.55} ${wh*0.56} Q${W*0.80} ${wh*0.78} ${W} ${wh*0.52} L${W} ${wh} L0 ${wh} Z`}
+          fill="rgba(45,105,116,0.85)"
+        />
+      </Svg>
+    </View>
   );
 }
 
-const dm = StyleSheet.create({
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 52, paddingHorizontal: 24, paddingBottom: 4,
+// ── Dual-colour horizontal progress bar ──────────────────────────────────────
+function DualProgressBar({ done, total }) {
+  const barLeft  = fs(81);
+  const barWidth = fs(256);
+  const fillW    = barWidth * (done / total);
+  return (
+    <View style={{
+      position: 'absolute', top: fv(192), left: barLeft,
+      width: barWidth, height: 25, borderRadius: 10,
+      backgroundColor: TEAL_MID, overflow: 'hidden', zIndex: 25,
+    }}>
+      {fillW > 0 && (
+        <View style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: fillW, backgroundColor: ORANGE, borderRadius: 10,
+        }} />
+      )}
+    </View>
+  );
+}
+
+// ── Hoop ellipse ─────────────────────────────────────────────────────────────
+function HoopEllipse({ state }) {
+  // state: 'target' (bright mint) | 'dim'
+  const w = HOOP_W, h = HOOP_H;
+  const rx = w / 2 - 3, ry = h / 2 - 3;
+  const cx = w / 2, cy = h / 2;
+  const isTarget = state === 'target';
+  return (
+    <Svg width={w} height={h}>
+      <Ellipse
+        cx={cx} cy={cy} rx={rx} ry={ry}
+        stroke={isTarget ? 'rgba(195,222,206,0.92)' : 'rgba(195,222,206,0.26)'}
+        strokeWidth={isTarget ? 3.5 : 2.5}
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+// ── Shared button styles ──────────────────────────────────────────────────────
+const BTN_SZ = Math.round(fs(53));
+const bs = StyleSheet.create({
+  close: {
+    width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.26)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  numCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: TEAL_BG, justifyContent: 'center', alignItems: 'center' },
-  numText:   { color: '#fff', fontSize: 26, fontWeight: '800' },
-  skipBtn:   { backgroundColor: ORANGE, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8 },
-  skipText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
-  title: { color: TEAL_BG, fontSize: 30, fontWeight: '800', letterSpacing: 0.6, textAlign: 'center', marginTop: 14, paddingHorizontal: 24 },
-  body:  { color: TEAL_BG, fontSize: 15, lineHeight: 23, letterSpacing: 0.3, textAlign: 'center', marginTop: 8,  paddingHorizontal: 32 },
-  hoopNum: { fontSize: 20, fontWeight: '800', color: TEAL_BG, width: 44, textAlign: 'center' },
-  tip:      { marginHorizontal: 28, borderRadius: 12, borderWidth: 1.5, borderColor: '#2D6974', backgroundColor: '#fff', padding: 16 },
-  tipTitle: { fontSize: 18, fontWeight: '800', color: TEAL_BG, marginBottom: 5 },
-  tipBody:  { fontSize: 13, color: '#2D6974', lineHeight: 19, letterSpacing: 0.3 },
-  nav:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, paddingTop: 22 },
-  navBtn:   { width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(44,105,116,0.15)', justifyContent: 'center', alignItems: 'center' },
-  navBtnGo: { backgroundColor: '#2D6974' },
-  navIcon:  { fontSize: 22, color: TEAL_BG, fontWeight: '600' },
-  dot:      { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(44,105,116,0.28)' },
-  dotActive:{ backgroundColor: TEAL_BG, width: 28, borderRadius: 5 },
+  closeText: {
+    color: WHITE, fontSize: 20, fontWeight: '700',
+    includeFontPadding: false, textAlign: 'center', lineHeight: 20,
+  },
+  back: {
+    width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14,
+    backgroundColor: TEAL_MID,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  backText: {
+    color: WHITE, fontSize: 24, fontWeight: '700',
+    includeFontPadding: false, textAlign: 'center', lineHeight: 24,
+  },
+  question: {
+    width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2,
+    backgroundColor: ORANGE,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  questionText: {
+    color: WHITE, fontSize: 22, fontWeight: '900',
+    includeFontPadding: false, textAlign: 'center', lineHeight: 22,
+  },
 });
 
-// ── Exercise screen ────────────────────────────────────────────────────────────
-/**
- * phase:
- *   'breathe' — brief pause between attempts ("take a breath")
- *   'listen'  — microphone active; waiting for "UH"
- *   'travel'  — jellyfish animating toward target hoop
- *   'done'    — all 5 hoops complete
- */
-function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
-  const [hoopIndex, setHoopIndex] = useState(0);
-  const [doneCount, setDoneCount] = useState(0);
-  const [phase,     setPhase]     = useState('breathe');
-  const [micActive, setMicActive] = useState(false);
+// ══════════════════════════════════════════════════════════════════════════════
+// Title screen  (Pitch1)
+// ══════════════════════════════════════════════════════════════════════════════
+function TitleScreen({ onNext, onExit }) {
+  return (
+    <FadeIn>
+      <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
+        <StatusBar barStyle="light-content" />
 
-  const jellyfishLeft = useRef(new Animated.Value(J0_LEFT)).current;
-  const jellyfishTop  = useRef(new Animated.Value(J0_TOP)).current;
-  const volumeAnim    = useRef(new Animated.Value(0)).current;
+        <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 20 }}>
+          <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}
+            accessibilityRole="button" accessibilityLabel="Exit exercise">
+            <Text style={bs.closeText}>✕</Text>
+          </TouchableOpacity>
+        </View>
 
-  const recordingRef  = useRef(null);
-  const speakTimerRef = useRef(null);
-  const phaseRef      = useRef('breathe');
-  const hoopIdxRef    = useRef(0);
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: fv(30) }}>
+          <Text style={tts.title}>Pitch{'\n'}Glides</Text>
 
-  // Helpers that keep the ref and state in sync atomically (avoids stale
-  // closure bugs when the refs are read in async callbacks).
-  function setPhaseSync(p)  { phaseRef.current   = p; setPhase(p);     }
-  function setHoopSync(idx) { hoopIdxRef.current = idx; setHoopIndex(idx); }
+          <View style={{ marginTop: fv(24), alignItems: 'center' }}>
+            <View style={{ position: 'absolute', right: -fs(22), top: fv(8) }}>
+              <Svg width={fs(88)} height={fv(112)}>
+                <Ellipse
+                  cx={fs(44)} cy={fv(56)}
+                  rx={fs(40)} ry={fv(52)}
+                  stroke={GREEN_HOOP} strokeWidth={4} fill="none"
+                />
+              </Svg>
+            </View>
+            <Image
+              source={require('../../../../assets/images/Dolphin2.png')}
+              style={{ width: fs(130), height: fv(90), resizeMode: 'contain' }}
+            />
+          </View>
+        </View>
 
-  useEffect(() => {
-    startBreathePause();
-    return () => { stopRecording(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        <TouchableOpacity style={tts.arrowBtn} onPress={onNext} activeOpacity={0.82}
+          accessibilityRole="button" accessibilityLabel="Start exercise">
+          <Text style={tts.arrowText}>→</Text>
+        </TouchableOpacity>
 
-  // ── Breathing pause (1.4 s) before mic opens ──────────────────────────────
-  function startBreathePause() {
-    setPhaseSync('breathe');
-    setMicActive(false);
-    Animated.timing(volumeAnim, { toValue: 0, duration: 300, useNativeDriver: false }).start();
-    setTimeout(startListening, 1400);
-  }
+        <View style={{
+          position: 'absolute', bottom: fv(29), left: fs(47),
+          width: fs(314), height: 12, borderRadius: 13,
+          backgroundColor: 'rgba(255,255,255,0.18)',
+        }}>
+          <View style={{ width: fs(128), height: '100%', borderRadius: 13, backgroundColor: ORANGE }} />
+        </View>
+      </View>
+    </FadeIn>
+  );
+}
 
-  // ── Open microphone ───────────────────────────────────────────────────────
-  async function startListening() {
-    if (phaseRef.current === 'travel' || phaseRef.current === 'done') return;
-    try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        {
-          android: Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
-          ios:     Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
-          web:     {},
-          isMeteringEnabled: true,
-        },
-        onMeterUpdate,
-        80,
-      );
-      recordingRef.current = recording;
-      setMicActive(true);
-      setPhaseSync('listen');
-    } catch (err) {
-      console.warn('PitchGlides mic error:', err);
-    }
-  }
+const tts = StyleSheet.create({
+  title: {
+    color: WHITE, fontSize: Math.round(fs(64)), fontWeight: '800',
+    letterSpacing: 3.2, textAlign: 'center', lineHeight: Math.round(fs(74)),
+  },
+  arrowBtn: {
+    alignSelf: 'center',
+    width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14,
+    backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center',
+    marginBottom: fv(86),
+  },
+  arrowText: {
+    color: WHITE, fontSize: 26, fontWeight: '700',
+    includeFontPadding: false, lineHeight: 26, textAlign: 'center',
+  },
+});
 
-  // ── Volume metering callback ───────────────────────────────────────────────
-  function onMeterUpdate(status) {
-    if (!status.isRecording || phaseRef.current !== 'listen') return;
+// ══════════════════════════════════════════════════════════════════════════════
+// Tutorial screen  (Pitch2–4)
+// ══════════════════════════════════════════════════════════════════════════════
+function TutorialScreen({ onFinish, onExit }) {
+  const [slideIdx, setSlideIdx] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
-    const db  = status.metering ?? -160;
-    const vol = Math.min(1, Math.max(0, (db + 70) / 60));
-    Animated.timing(volumeAnim, { toValue: vol, duration: 80, useNativeDriver: false }).start();
-
-    if (vol >= SPEAK_THRESHOLD) {
-      if (!speakTimerRef.current) {
-        speakTimerRef.current = setTimeout(() => {
-          speakTimerRef.current = null;
-          if (phaseRef.current === 'listen') handleVoiceDetected();
-        }, MIN_SPEAK_MS);
-      }
-    } else {
-      if (speakTimerRef.current) {
-        clearTimeout(speakTimerRef.current);
-        speakTimerRef.current = null;
-      }
-    }
-  }
-
-  // ── Stop recording ────────────────────────────────────────────────────────
-  async function stopRecording() {
-    if (speakTimerRef.current) { clearTimeout(speakTimerRef.current); speakTimerRef.current = null; }
-    if (!recordingRef.current) return;
-    try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
-    recordingRef.current = null;
-    setMicActive(false);
-  }
-
-  // ── Voice detected — animate jellyfish to target hoop ────────────────────
-  async function handleVoiceDetected() {
-    setPhaseSync('travel');
-    await stopRecording();
-
-    const target  = HOOPS[hoopIdxRef.current];
-    // Centre jellyfish horizontally on hoop, hover just above the top rim
-    const destL   = target.left + HOOP_W / 2 - JELLY / 2;
-    const destT   = target.top  - JELLY * 0.55;
-
-    Animated.parallel([
-      Animated.timing(jellyfishLeft, { toValue: destL, duration: TRAVEL_MS, useNativeDriver: false }),
-      Animated.timing(jellyfishTop,  { toValue: destT, duration: TRAVEL_MS, useNativeDriver: false }),
-    ]).start(() => {
-      const next = hoopIdxRef.current + 1;
-      setDoneCount(next);
-
-      if (next >= TOTAL_HOOPS) {
-        setPhaseSync('done');
-        setHoopSync(TOTAL_HOOPS);
-        setTimeout(onComplete, 1600);
-      } else {
-        setHoopSync(next);
-        setTimeout(startBreathePause, 600);
-      }
+  function go(next) {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => {
+      setSlideIdx(next);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 230, useNativeDriver: true }).start();
     });
   }
 
-  const promptActive = phase === 'listen';
-  const phaseLabel   =
-    phase === 'breathe' ? 'Take a deep breath…' :
-    phase === 'listen'  ? 'Say "UH" — loud!' :
-    phase === 'travel'  ? 'Great — keep going!' :
-                          'Well done! 🎉';
+  function goNext() { if (slideIdx < SLIDES.length - 1) go(slideIdx + 1); else onFinish(); }
+  function goBack()  { if (slideIdx > 0) go(slideIdx - 1); else onExit(); }
+
+  const s = SLIDES[slideIdx];
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: TEAL_BG }]}>
-      <StatusBar barStyle="light-content" />
+    <FadeIn>
+      <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
+        <StatusBar barStyle="light-content" />
 
-      {/* ── Header ───────────────────────────────────────────────────── */}
-      <View style={ex.header}>
-        <TouchableOpacity style={ex.closeBtn} onPress={onExit}>
-          <Text style={ex.closeText}>←</Text>
-        </TouchableOpacity>
-        <View style={{ flex: 1 }} />
-        <TouchableOpacity style={ex.helpCircle} onPress={onShowDemo}>
-          <Text style={ex.helpText}>?</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Progress pills ────────────────────────────────────────────── */}
-      <View style={{ marginTop: 12 }}>
-        <ProgressPills doneCount={doneCount} />
-      </View>
-
-      {/* ── "UH" prompt card ─────────────────────────────────────────── */}
-      <View style={[ex.promptCard, promptActive && ex.promptCardActive]}>
-        <Text style={ex.promptText}>UH</Text>
-      </View>
-
-      {/* ── Underwater scene ─────────────────────────────────────────── */}
-      <View style={ex.scene}>
-
-        {/* Decorative seabed circles */}
-        <View style={[ex.dec, { width: 160, height: 72,  left: W * 0.40, top: SCENE_H * 0.38 }]} />
-        <View style={[ex.dec, { width: 120, height: 54,  left: W * 0.00, top: SCENE_H * 0.52 }]} />
-        <View style={[ex.dec, { width: 200, height: 82,  left: W * 0.28, top: SCENE_H * 0.70 }]} />
-        <View style={[ex.dec, { width: 140, height: 58,  left: W * 0.48, top: SCENE_H * 0.16 }]} />
-        <View style={[ex.dec, { width: 100, height: 42,  left: W * 0.06, top: SCENE_H * 0.30 }]} />
-
-        {/* Hole shadows */}
-        {HOOPS.map(h => <HoleShadow key={h.id} left={h.left} top={h.top} />)}
-
-        {/* Hoops */}
-        {HOOPS.map(h => (
-          <View key={h.id} style={{ position: 'absolute', left: h.left, top: h.top }}>
-            <Hoop done={h.id < doneCount} active={h.id === hoopIndex && phase !== 'done'} />
-          </View>
-        ))}
-
-        {/* Vertical loudness bar — left side */}
-        <View style={[ex.barWrap, { top: (SCENE_H - BAR_H) / 2 - 18 }]}>
-          <VolumeBar volumeAnim={volumeAnim} />
+        <BottomWave />
+        <View style={StyleSheet.absoluteFill}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)' }} />
         </View>
 
-        {/* Jellyfish */}
-        <Animated.View style={{ position: 'absolute', left: jellyfishLeft, top: jellyfishTop }}>
-          <Jellyfish glowing={phase === 'travel'} />
+        <View style={{ position: 'absolute', top: fv(25), left: fs(23), zIndex: 30 }}>
+          <TouchableOpacity style={bs.back} onPress={goBack} activeOpacity={0.8}
+            accessibilityRole="button" accessibilityLabel="Go back">
+            <Text style={bs.backText}>←</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ position: 'absolute', top: fv(30), right: fs(23), zIndex: 30 }}>
+          <TouchableOpacity style={bs.question} onPress={goNext} activeOpacity={0.85}
+            accessibilityRole="button" accessibilityLabel="Continue">
+            <Text style={bs.questionText}>?</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={tus.ahhText}>{'"ahh"'}</Text>
+        <DualProgressBar done={slideIdx} total={SLIDES.length} />
+
+        {/* Lower-left hoop (dim) */}
+        <View style={{
+          position: 'absolute',
+          left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2, zIndex: 12,
+        }}>
+          <HoopEllipse state="dim" />
+        </View>
+
+        {/* Upper-right hoop (target) */}
+        <View style={{
+          position: 'absolute',
+          left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2, zIndex: 12,
+        }}>
+          <HoopEllipse state="target" />
+        </View>
+
+        {/* Dolphin at slide-specific position */}
+        <Animated.View style={{
+          position: 'absolute',
+          left: s.dolphinX - DOLPH_W / 2, top: s.dolphinY - DOLPH_H / 2,
+          opacity: fadeAnim, zIndex: 15,
+        }}>
+          <Image
+            source={require('../../../../assets/images/Dolphin2.png')}
+            style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }}
+          />
         </Animated.View>
 
+        <Animated.Text style={[tus.instruction, { opacity: fadeAnim }]}>
+          {s.instruction}
+        </Animated.Text>
+
+        <TouchableOpacity
+          style={{ position: 'absolute', bottom: fv(40), right: fs(40), zIndex: 30, ...tus.nextBtn }}
+          onPress={goNext} activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={slideIdx < SLIDES.length - 1 ? 'Next' : 'Start exercise'}>
+          <Text style={tus.nextText}>{slideIdx < SLIDES.length - 1 ? '→' : '✓'}</Text>
+        </TouchableOpacity>
+      </View>
+    </FadeIn>
+  );
+}
+
+const tus = StyleSheet.create({
+  ahhText: {
+    position: 'absolute', top: fv(137), left: 0, right: 0, zIndex: 25,
+    color: WHITE, fontSize: Math.round(fs(34)), fontWeight: '800',
+    letterSpacing: 1.7, textAlign: 'center',
+  },
+  instruction: {
+    position: 'absolute', bottom: fv(100), left: fs(24), right: fs(24), zIndex: 20,
+    color: WHITE, fontSize: Math.round(fs(28)), fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center', lineHeight: Math.round(fs(40)),
+  },
+  nextBtn: {
+    width: Math.round(fs(64)), height: Math.round(fv(56)), borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  nextText: {
+    color: WHITE, fontSize: 22,
+    includeFontPadding: false, lineHeight: 22, textAlign: 'center',
+  },
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Exercise screen  (Pitch5–8) — pitch-controlled dolphin
+// ══════════════════════════════════════════════════════════════════════════════
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
+  const [hoopsDone, setHoopsDone] = useState(0);
+  const [phase,     setPhase]     = useState('calibrating'); // calibrating|listening|done
+  const [pitchHz,   setPitchHz]   = useState(0);
+  const [dbLevel,   setDbLevel]   = useState(0); // 0–1 for volume bar
+
+  // Refs that are safe to use inside PitchDetector callback (no stale closures)
+  const hoopsDoneRef   = useRef(0);
+  const phaseRef       = useRef('calibrating');
+  const basePitchRef   = useRef(null);   // Hz — set after calibration
+  const calibSampRef   = useRef([]);     // raw Hz collected during calibration
+  const holdTimerRef   = useRef(null);   // setTimeout for hoop completion
+  const inTargetRef    = useRef(false);  // are we currently in the target zone?
+
+  // Animated values
+  // pitchAnim: 0 = lower-left hoop, 1 = upper-right hoop
+  const pitchAnim  = useRef(new Animated.Value(0)).current;
+  const volBarAnim = useRef(new Animated.Value(0)).current;
+
+  // Derived animated positions for dolphin
+  const dolphinX = pitchAnim.interpolate({
+    inputRange: [0, 1], outputRange: [HOOP_LL.x, HOOP_UR.x],
+  });
+  const dolphinY = pitchAnim.interpolate({
+    inputRange: [0, 1], outputRange: [HOOP_LL.y, HOOP_UR.y],
+  });
+
+  useEffect(() => {
+    let calibTimer;
+
+    PitchDetector.start(onPitchData);
+    calibTimer = setTimeout(finishCalibration, CALIBRATION_MS);
+
+    return () => {
+      clearTimeout(calibTimer);
+      clearHoldTimer();
+      PitchDetector.stop();
+    };
+  }, []);
+
+  // ── Normalise pitch Hz → 0–1 level ───────────────────────────────────────
+  function normalisePitch(hz) {
+    const base = basePitchRef.current ?? DEFAULT_BASE;
+    return Math.max(0, Math.min(1, (hz - base) / PITCH_RANGE_HZ));
+  }
+
+  // ── Finish calibration: compute median baseline ───────────────────────────
+  function finishCalibration() {
+    const samples = calibSampRef.current;
+    if (samples.length > 0) {
+      const sorted = [...samples].sort((a, b) => a - b);
+      basePitchRef.current = sorted[Math.floor(sorted.length / 2)];
+    } else {
+      basePitchRef.current = DEFAULT_BASE;
+    }
+    calibSampRef.current = [];
+    phaseRef.current = 'listening';
+    setPhase('listening');
+  }
+
+  // ── PitchDetector callback (called frequently on native thread) ───────────
+  function onPitchData({ tone, db }) {
+    // tone: Hz (negative or 0 = no pitch), db: dB
+    const hz = typeof tone === 'number' ? tone : 0;
+    const validPitch = hz >= MIN_VALID_HZ && hz <= MAX_VALID_HZ;
+
+    // Volume bar from dB (typically −160 to 0 dB)
+    const vol = Math.min(1, Math.max(0, ((db ?? -160) + 70) / 60));
+    setDbLevel(vol);
+    Animated.timing(volBarAnim, { toValue: vol, duration: 80, useNativeDriver: false }).start();
+
+    if (phaseRef.current === 'calibrating') {
+      if (validPitch) calibSampRef.current.push(hz);
+      return;
+    }
+
+    if (phaseRef.current !== 'listening') return;
+
+    if (!validPitch) {
+      // No voice — reset hold timer, keep dolphin where it is
+      clearHoldTimer();
+      inTargetRef.current = false;
+      return;
+    }
+
+    // Update dolphin position
+    const level = normalisePitch(hz);
+    setPitchHz(Math.round(hz));
+    Animated.timing(pitchAnim, { toValue: level, duration: 100, useNativeDriver: false }).start();
+
+    // Target: even hoopsDone → target high (UR), odd → target low (LL)
+    const targetHigh = hoopsDoneRef.current % 2 === 0;
+    const inZone = targetHigh ? level >= TARGET_HI : level <= TARGET_LO;
+
+    if (inZone && !inTargetRef.current) {
+      // Just entered target zone — start hold timer
+      inTargetRef.current = true;
+      holdTimerRef.current = setTimeout(completeHoop, HOLD_MS);
+    } else if (!inZone && inTargetRef.current) {
+      // Left target zone — cancel
+      inTargetRef.current = false;
+      clearHoldTimer();
+    }
+  }
+
+  function clearHoldTimer() {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+  }
+
+  // ── Hoop completed ─────────────────────────────────────────────────────────
+  function completeHoop() {
+    holdTimerRef.current = null;
+    inTargetRef.current  = false;
+
+    const next = hoopsDoneRef.current + 1;
+    hoopsDoneRef.current = next;
+    setHoopsDone(next);
+
+    if (next >= TOTAL_HOOPS) {
+      phaseRef.current = 'done';
+      setPhase('done');
+      setTimeout(onComplete, 1400);
+    }
+  }
+
+  // ── Hoop display states ────────────────────────────────────────────────────
+  // Even hoopsDone → target is UR, odd → target is LL
+  const targetIsUR = hoopsDone % 2 === 0;
+  const llState    = phase === 'done' ? 'target' : (targetIsUR ? 'dim'    : 'target');
+  const urState    = phase === 'done' ? 'target' : (targetIsUR ? 'target' : 'dim');
+
+  // ── Prompt text ────────────────────────────────────────────────────────────
+  const promptText =
+    phase === 'done'        ? 'Amazing!'             :
+    phase === 'calibrating' ? 'Say "ahh" to start...' :
+    pitchHz > 0             ? `${pitchHz} Hz`         :
+    "Say 'ahh'...";
+
+  const promptBig = phase === 'done' || (phase === 'listening' && pitchHz > 0);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
+      <StatusBar barStyle="light-content" />
+
+      <BottomWave />
+
+      {/* Header */}
+      <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 30 }}>
+        <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}
+          accessibilityRole="button" accessibilityLabel="Exit exercise">
+          <Text style={bs.closeText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ position: 'absolute', top: fv(20), right: fs(14), zIndex: 30 }}>
+        <TouchableOpacity style={bs.question} onPress={onShowDemo} activeOpacity={0.85}
+          accessibilityRole="button" accessibilityLabel="Show instructions">
+          <Text style={bs.questionText}>?</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* ── Bottom mic status strip ───────────────────────────────────── */}
-      <View style={ex.bottom}>
-        <View style={[ex.micDot, micActive && ex.micDotOn]} />
-        <Text style={ex.bottomLbl}>{phaseLabel}</Text>
+      {/* Prompt — shows Hz when speaking */}
+      <Text style={[exs.prompt, promptBig && exs.promptBig]}>
+        {promptText}
+      </Text>
+
+      {/* Progress bar */}
+      <DualProgressBar done={hoopsDone} total={TOTAL_HOOPS} />
+
+      {/* Lower-left hoop */}
+      <View style={{
+        position: 'absolute',
+        left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2,
+      }}>
+        <HoopEllipse state={llState} />
+      </View>
+
+      {/* Upper-right hoop */}
+      <View style={{
+        position: 'absolute',
+        left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2,
+      }}>
+        <HoopEllipse state={urState} />
+      </View>
+
+      {/* Dolphin — position driven by pitchAnim */}
+      <Animated.View style={{
+        position: 'absolute',
+        transform: [
+          { translateX: Animated.subtract(dolphinX, DOLPH_W / 2) },
+          { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) },
+        ],
+        zIndex: 10,
+      }}>
+        <Image
+          source={require('../../../../assets/images/Dolphin2.png')}
+          style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }}
+        />
+      </Animated.View>
+
+      {/* Vertical volume bar */}
+      <View style={{
+        position: 'absolute',
+        left: VBAR_LEFT, top: VBAR_TOP,
+        width: VBAR_W, height: VBAR_H,
+        borderRadius: VBAR_W / 2,
+        backgroundColor: TEAL_MID,
+        overflow: 'hidden', justifyContent: 'flex-end',
+      }}>
+        <Animated.View style={{
+          width: '100%',
+          height: volBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+          backgroundColor: ORANGE,
+          borderRadius: VBAR_W / 2,
+        }} />
+      </View>
+
+      {/* Can't do now */}
+      <View style={{ position: 'absolute', bottom: fv(16), left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
+        <CantDoNow onSkip={onSkip} onEnd={onExit} />
       </View>
     </View>
   );
 }
 
-const ex = StyleSheet.create({
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingTop: 52, paddingHorizontal: 20,
+const exs = StyleSheet.create({
+  prompt: {
+    position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25,
+    color: WHITE, fontSize: Math.round(fs(30)), fontWeight: '800',
+    letterSpacing: 1.5, textAlign: 'center',
   },
-  closeBtn: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    justifyContent: 'center', alignItems: 'center',
+  promptBig: {
+    top: fv(137),
+    fontSize: Math.round(fs(34)),
+    letterSpacing: 1.7,
   },
-  closeText: { color: '#fff', fontSize: 20, fontWeight: '600' },
-  helpCircle: {
-    width: 38, height: 38, borderRadius: 19, backgroundColor: ORANGE,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: ORANGE, shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.45, shadowRadius: 6, elevation: 6,
-  },
-  helpText: { color: '#fff', fontSize: 17, fontWeight: '800' },
-
-  promptCard: {
-    marginTop: 14, marginHorizontal: 28, height: 82, borderRadius: 60,
-    backgroundColor: '#fff',
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10, shadowRadius: 5, elevation: 4,
-    borderWidth: 3.5, borderColor: 'transparent',
-  },
-  promptCardActive: {
-    borderColor: ORANGE,
-    shadowColor: ORANGE, shadowOpacity: 0.38, shadowRadius: 12, elevation: 8,
-  },
-  promptText: {
-    color: '#1F4850', fontSize: 54, fontWeight: '800',
-    letterSpacing: 4, lineHeight: 62,
-  },
-
-  scene: {
-    position: 'absolute',
-    top: HEADER_H, left: 0, right: 0, height: SCENE_H,
-    overflow: 'hidden',
-  },
-  dec: {
-    position: 'absolute', borderRadius: 200,
-    backgroundColor: 'rgba(255,255,255,0.034)',
-  },
-  barWrap: {
-    position: 'absolute', left: 14,
-  },
-
-  bottom: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: BOTTOM_H,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-  },
-  micDot:  { width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.28)' },
-  micDotOn: {
-    backgroundColor: '#45B013',
-    shadowColor: '#45B013', shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85, shadowRadius: 6, elevation: 4,
-  },
-  bottomLbl: { color: 'rgba(255,255,255,0.75)', fontSize: 15, fontWeight: '600', letterSpacing: 0.4 },
 });
 
-// ── Root ───────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// Root
+// ══════════════════════════════════════════════════════════════════════════════
+const STEP_TITLE    = 0;
+const STEP_TUTORIAL = 1;
+const STEP_EXERCISE = 2;
 
 export default function PitchGlidesExercise({ onComplete, onExit }) {
-  const [ready,     setReady]     = useState(false);
-  const [showDemo,  setShowDemo]  = useState(false);
-  const [slideIdx,  setSlideIdx]  = useState(0);
+  const [step, setStep] = useState(STEP_TITLE);
 
-  useEffect(() => {
-    AsyncStorage.getItem(DEMO_KEY).then(val => {
-      setShowDemo(!val);
-      setReady(true);
-    });
-  }, []);
-
-  async function finishDemo() {
-    await AsyncStorage.setItem(DEMO_KEY, '1');
-    setShowDemo(false);
+  if (step === STEP_TITLE) {
+    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} />;
   }
-
-  if (!ready) return null;
-
-  if (showDemo) {
-    return (
-      <DemoSlide
-        idx={slideIdx}
-        onNext={() => slideIdx < SLIDES.length - 1 ? setSlideIdx(slideIdx + 1) : finishDemo()}
-        onBack={() => setSlideIdx(Math.max(0, slideIdx - 1))}
-        onSkip={finishDemo}
-      />
-    );
+  if (step === STEP_TUTORIAL) {
+    return <TutorialScreen onFinish={() => setStep(STEP_EXERCISE)} onExit={() => setStep(STEP_TITLE)} />;
   }
-
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
-      onShowDemo={() => { setShowDemo(true); setSlideIdx(0); }}
+      onShowDemo={() => setStep(STEP_TUTORIAL)}
+      onSkip={onComplete}
     />
   );
 }

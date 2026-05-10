@@ -23,6 +23,10 @@ export async function saveUserProfile(profile) {
 }
 
 export async function getUserProfile() {
-  const value = await AsyncStorage.getItem(USER_PROFILE_KEY);
-  return value ? JSON.parse(value) : null;
+  try {
+    const value = await AsyncStorage.getItem(USER_PROFILE_KEY);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
 }

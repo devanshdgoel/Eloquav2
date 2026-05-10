@@ -25,17 +25,21 @@ import {
   Dimensions,
   StatusBar,
   StyleSheet,
+  ImageBackground,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
 
 // ── Config ──────────────────────────────────────────────────────────────────────
 const DEMO_KEY        = '@eloqua_loudness_drills_demo_seen';
-const TOTAL_ROUNDS    = 5;
-const SPEAK_THRESHOLD = 0.30;  // normalised vol (0–1) for phonation detection
+const TOTAL_ROUNDS    = 8;
 const MIN_SPEAK_MS    = 280;   // must sustain threshold for this long (ms)
+const CALIBRATION_MS  = 1500;  // ambient noise sampling window
+const MIN_THRESHOLD   = 0.30;
+const MAX_THRESHOLD   = 0.70;
 const TIMER_MS        = 3500;  // countdown per round (ms)
 const RISE_MS         = 700;   // jellyfish rising animation (ms)
 const WHACK_MS        = 480;   // jellyfish whack-fly animation (ms)
@@ -60,19 +64,22 @@ const ROUNDS = [
   { word: 'OOH',  tip: 'Project from your chest!' },
   { word: 'HEY',  tip: 'Nice and loud!' },
   { word: 'LOUD', tip: "You've got this!" },
+  { word: 'ONE',  tip: 'Send it across the room!' },
+  { word: 'GO',   tip: 'Big voice — push it out!' },
+  { word: 'YEAH', tip: 'Loud and proud!' },
 ];
 
-// ── Hole geometry (calibrated from Figma 402×874 frame) ─────────────────────────
-const B_CYL_W = 136;  // base cylinder width  (sz = 1.0)
-const B_CYL_H = 52;   // base cylinder body height
-const B_RIM_H = 20;   // base rim ellipse height
+// ── Hole geometry (calibrated to WhackAMoleBG.png, 402×874 Figma frame) ────────
+const B_CYL_W = 130;  // base cylinder rim width  (sz = 1.0)
+const B_CYL_H = 52;   // base cylinder body height (unused – drawn in BG image)
+const B_RIM_H = 22;   // base rim ellipse height
 
+// Three holes that line up with the cylinders painted in WhackAMoleBG.png.
+// xF / yF are centre-of-rim fractions; sz scales width & rim height.
 const HOLE_DEFS = [
-  { id: 0, xF: 0.25, yF: 0.71, sz: 1.00 }, // bottom-left  (closest, big)
-  { id: 1, xF: 0.79, yF: 0.61, sz: 0.76 }, // mid-right
-  { id: 2, xF: 0.42, yF: 0.56, sz: 0.88 }, // centre
-  { id: 3, xF: 0.75, yF: 0.49, sz: 0.56 }, // far-right   (small)
-  { id: 4, xF: 0.20, yF: 0.52, sz: 0.66 }, // far-left    (small)
+  { id: 0, xF: 0.225, yF: 0.475, sz: 1.00 }, // large cylinder – left
+  { id: 1, xF: 0.838, yF: 0.518, sz: 0.60 }, // small ring – right
+  { id: 2, xF: 0.268, yF: 0.635, sz: 0.87 }, // medium cylinder – bottom-left
 ];
 
 const HOLES = HOLE_DEFS.map(({ id, xF, yF, sz }) => ({
@@ -90,67 +97,6 @@ const JELLY_BASE = 92;
 // ─────────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────────
-
-/** Floor shadow cast beneath each cylinder. Drawn first (deepest z). */
-function HoleShadow({ hole }) {
-  const { cx, cy, cylW, cylH, rimH } = hole;
-  const sW = cylW * 1.55;
-  const sH = sW * 0.36;
-  return (
-    <View pointerEvents="none" style={{
-      position: 'absolute',
-      left:   cx - sW / 2,
-      top:    cy + cylH + rimH * 0.15,
-      width:  sW,
-      height: sH,
-      borderRadius: sW / 2,
-      backgroundColor: 'rgba(0,0,0,0.60)',
-    }} />
-  );
-}
-
-/** Teal cylinder + rim + inner dark hole. Drawn after jellyfish when active. */
-function HoleCylinder({ hole, isActive }) {
-  const { cx, cy, cylW, cylH, rimH, sz } = hole;
-  const innerW = cylW * 0.74;
-  const innerH = innerW * 0.38;
-  const rimCol = isActive ? CYL_HIGH : CYL_FILL;
-  return (
-    <View pointerEvents="none">
-      <View style={{
-        position: 'absolute',
-        left: cx - cylW / 2, top: cy,
-        width: cylW, height: cylH,
-        backgroundColor: CYL_FILL,
-        borderBottomLeftRadius:  5 * sz,
-        borderBottomRightRadius: 5 * sz,
-      }} />
-      <View style={{
-        position: 'absolute',
-        left: cx - cylW / 2, top: cy - rimH / 2,
-        width: cylW, height: rimH,
-        borderRadius: cylW / 2,
-        backgroundColor: rimCol,
-      }} />
-      <View style={{
-        position: 'absolute',
-        left: cx - innerW / 2, top: cy - innerH / 2,
-        width: innerW, height: innerH,
-        borderRadius: innerW / 2,
-        backgroundColor: HOLE_DARK,
-      }} />
-    </View>
-  );
-}
-
-function HoleFull({ hole }) {
-  return (
-    <>
-      <HoleShadow hole={hole} />
-      <HoleCylinder hole={hole} isActive={false} />
-    </>
-  );
-}
 
 /**
  * Pink jellyfish — dome + tentacles + glow halo.
@@ -244,55 +190,45 @@ function Jellyfish({ hole, riseAnim, scaleAnim, opacityAnim }) {
   );
 }
 
-/** Pill card showing the word to say. Orange border + timer fill when active. */
-function WordCard({ word, tip, timerAnim, isActive }) {
-  const CARD_W = W - 96;
+/** Pill card showing the word to say. 10px orange border + timer fill when active (matches LD3/LD5 Figma). */
+function WordCard({ word, timerAnim, isActive }) {
+  const CARD_W = W - 100;
   const CARD_H = 110;
   return (
-    <View style={{ alignSelf: 'center', width: CARD_W, height: CARD_H }}>
-      {isActive && (
-        <View style={{
-          position: 'absolute',
-          left: -5, right: -5, top: -5, bottom: -5,
-          borderRadius: (CARD_H + 10) / 2,
-          borderWidth: 5, borderColor: ORANGE,
-          shadowColor: ORANGE, shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
-        }} />
-      )}
+    <View style={{ alignSelf: 'center' }}>
+      {/* Thick orange border ring — always shown, matches Figma */}
       <View style={{
-        flex: 1, backgroundColor: WHITE,
-        borderRadius: CARD_H / 2,
-        justifyContent: 'center', alignItems: 'center',
-        overflow: 'hidden',
+        borderWidth: 10, borderColor: ORANGE,
+        borderRadius: (CARD_H + 20) / 2,
+        shadowColor: ORANGE, shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: isActive ? 0.55 : 0.20, shadowRadius: 12, elevation: isActive ? 10 : 4,
       }}>
-        {isActive && (
-          <Animated.View style={{
-            position: 'absolute',
-            left: 0, top: 0, bottom: 0,
-            width: timerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, CARD_W] }),
-            backgroundColor: 'rgba(254,156,45,0.13)',
-          }} />
-        )}
-        <Text style={{ fontSize: 52, fontWeight: '800', color: WORD_COL, letterSpacing: 3 }}>
-          {word}
-        </Text>
-      </View>
-      {isActive && tip ? (
-        <Text style={{
-          textAlign: 'center', color: 'rgba(255,255,255,0.60)',
-          fontSize: 13, marginTop: 6, letterSpacing: 0.4,
+        <View style={{
+          width: CARD_W, height: CARD_H, backgroundColor: WHITE,
+          borderRadius: CARD_H / 2,
+          justifyContent: 'center', alignItems: 'center',
+          overflow: 'hidden',
         }}>
-          {tip}
-        </Text>
-      ) : null}
+          {/* Timer fill sweeps left→right while waiting */}
+          {isActive && (
+            <Animated.View style={{
+              position: 'absolute', left: 0, top: 0, bottom: 0,
+              width: timerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, CARD_W] }),
+              backgroundColor: 'rgba(254,156,45,0.15)',
+            }} />
+          )}
+          <Text style={{ fontSize: 56, fontWeight: '800', color: WORD_COL, letterSpacing: 3 }}>
+            {word}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-/** Five pills — green when done, grey when pending. */
+/** Eight pills — green when done, grey when pending. */
 function ProgressPills({ doneCount }) {
-  const pillW = (W - 96) / TOTAL_ROUNDS - 8;
+  const pillW = (W - 96) / TOTAL_ROUNDS - 6;
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
       {Array.from({ length: TOTAL_ROUNDS }, (_, i) => (
@@ -305,33 +241,7 @@ function ProgressPills({ doneCount }) {
   );
 }
 
-/** Subtle underwater depth ovals in the background. */
-function UnderwaterBg() {
-  const ovals = [
-    { x: 0.58, y: 0.40, w: 119, h: 22 },
-    { x: 0.15, y: 0.44, w:  93, h: 26 },
-    { x: 0.68, y: 0.46, w: 112, h: 28 },
-    { x: 0.62, y: 0.35, w:  43, h:  8 },
-    { x: 0.90, y: 0.37, w:  43, h:  8 },
-    { x: 0.41, y: 0.38, w: 104, h: 17 },
-    { x: 0.26, y: 0.61, w: 138, h: 53 },
-    { x: 0.57, y: 0.68, w: 138, h: 75 },
-    { x: 0.32, y: 0.50, w: 228, h: 58 },
-  ];
-  return (
-    <>
-      {ovals.map((o, i) => (
-        <View key={i} pointerEvents="none" style={{
-          position: 'absolute',
-          left: W * o.x - o.w / 2, top: H * o.y - o.h / 2,
-          width: o.w, height: o.h,
-          borderRadius: o.w / 2,
-          backgroundColor: 'rgba(68,147,160,0.16)',
-        }} />
-      ))}
-    </>
-  );
-}
+const BG_IMAGE = require('../../../../assets/images/WhackAMoleBG.png');
 
 // ── Demo jellyfish (title screen — teal/mint variant) ────────────────────────────
 function DemoJellyfish({ size = 100 }) {
@@ -378,9 +288,9 @@ function DemoJellyfish({ size = 100 }) {
 
 const DEMO_SLIDES = [
   { type: 'title' },
-  { type: 'instr', num: '1', text: 'A jellyfish appears\nfrom a hole', wordActive: false, showJelly: false },
-  { type: 'instr', num: '2', text: 'Say the word before\nthe timer runs out',  wordActive: true,  showJelly: false },
-  { type: 'instr', num: '3', text: 'Jellyfish rises!\nWhack it with your voice', wordActive: true,  showJelly: true  },
+  { type: 'instr', num: '1', text: 'A jellyfish appears', wordActive: false, showJelly: false },
+  { type: 'instr', num: '2', text: 'Say the word before the timer runs out', wordActive: true, showJelly: false },
+  { type: 'instr', num: '3', text: 'Jellyfish rises', wordActive: true, showJelly: true },
 ];
 
 function DemoScreen({ onFinish, onExit }) {
@@ -407,157 +317,162 @@ function DemoScreen({ onFinish, onExit }) {
     else onExit();
   }
 
+  const isTitle = s.type === 'title';
+
+  // ── Title slide: solid dark teal bg (matches LD1 Figma) ──────────────────
+  if (isTitle) {
+    return (
+      <View style={{ flex: 1, backgroundColor: BG }}>
+        <StatusBar barStyle="light-content" />
+
+        <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
+          <TouchableOpacity style={ds.backBtn} onPress={back}>
+            <Text style={ds.arrowText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={ds.bigTitle}>{'Loudness\nDrills'}</Text>
+
+          {/* Jellyfish + hole illustration */}
+          <View style={{ alignItems: 'center', marginTop: 32 }}>
+            <View style={{
+              position: 'absolute', width: 180, height: 180,
+              borderRadius: 90, backgroundColor: 'rgba(68,147,160,0.12)',
+              top: -20, alignSelf: 'center',
+            }} />
+            <DemoJellyfish size={120} />
+            {/* Hole shadow / ellipse beneath */}
+            <View style={{
+              width: 140, height: 38, borderRadius: 70, marginTop: 4,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+            }} />
+          </View>
+        </View>
+
+        {/* Arrow → to advance to instructions */}
+        <TouchableOpacity style={ds.forwardBtn} onPress={next} activeOpacity={0.82}>
+          <Text style={ds.arrowText}>→</Text>
+        </TouchableOpacity>
+
+        {/* Session progress bar — matches LD1 bottom bar */}
+        <View style={ds.sessionBar}>
+          <View style={ds.sessionBarFill} />
+        </View>
+      </View>
+    );
+  }
+
+  // ── Instruction slides: game BG + dark overlay (LD2/LD3/LD4) ─────────────
   return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
+    <ImageBackground source={BG_IMAGE} style={{ flex: 1 }} resizeMode="cover">
+      {/* Dark overlay — 0.82 matches Figma */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.82)' }]} />
       <StatusBar barStyle="light-content" />
 
-      {/* ── Title slide ─── */}
-      {s.type === 'title' && (
-        <>
-          <TouchableOpacity style={ds.backBtn} onPress={back}>
-            <Text style={ds.arrowText}>←</Text>
-          </TouchableOpacity>
-
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 36 }}>
-            <Text style={ds.bigTitle}>{'Loudness\nDrills'}</Text>
-
-            {/* Jellyfish illustration */}
-            <View style={{ alignItems: 'center' }}>
-              {/* Teal glow */}
-              <View style={{
-                position: 'absolute', width: 170, height: 170,
-                borderRadius: 85, backgroundColor: 'rgba(80,180,190,0.10)',
-                top: -20, alignSelf: 'center',
-              }} />
-              <DemoJellyfish size={110} />
-              {/* Shadow oval */}
-              <View style={{
-                width: 130, height: 36, borderRadius: 65, marginTop: 6,
-                backgroundColor: 'rgba(0,0,0,0.45)',
-              }} />
-            </View>
-
-            <Text style={ds.subText}>Speak as loudly as you can!</Text>
-
-            <TouchableOpacity style={ds.forwardBtn} onPress={next}>
-              <Text style={ds.arrowText}>→</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={ds.dots}>
-            {DEMO_SLIDES.map((_, i) => (
-              <View key={i} style={[ds.dot, i === slide && ds.dotActive]} />
-            ))}
-          </View>
-        </>
+      {/* Jellyfish rising on slide 3 (LD4) */}
+      {s.showJelly && (
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <Jellyfish
+            hole={demoHole}
+            riseAnim={demoRiseAnim}
+            scaleAnim={demoScale}
+            opacityAnim={demoOpac}
+          />
+        </View>
       )}
 
-      {/* ── Instruction slides ─── */}
-      {s.type === 'instr' && (
-        <>
-          {/* Game scene in background */}
-          <View style={StyleSheet.absoluteFillObject}>
-            <UnderwaterBg />
-            {HOLES.map(h => <HoleFull key={h.id} hole={h} />)}
-            {s.showJelly && (
-              <>
-                <HoleShadow hole={demoHole} />
-                <Jellyfish
-                  hole={demoHole}
-                  riseAnim={demoRiseAnim}
-                  scaleAnim={demoScale}
-                  opacityAnim={demoOpac}
-                />
-                <HoleCylinder hole={demoHole} isActive />
-              </>
-            )}
-          </View>
-
-          {/* Dark overlay */}
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.80)' }]} />
-
-          {/* Word card */}
-          <View style={{ position: 'absolute', top: 80, left: 0, right: 0, zIndex: 5 }}>
-            <View style={{ alignSelf: 'center', width: CARD_W, height: CARD_H }}>
-              {s.wordActive && (
-                <View style={{
-                  position: 'absolute', left: -5, right: -5, top: -5, bottom: -5,
-                  borderRadius: (CARD_H + 10) / 2,
-                  borderWidth: 5, borderColor: ORANGE,
-                }} />
-              )}
+      {/* Word card — slides 2 & 3 (LD3, LD4) */}
+      {s.wordActive && (
+        <View style={{ position: 'absolute', top: 108, left: 0, right: 0, zIndex: 5 }}>
+          <View style={{ alignSelf: 'center', width: CARD_W }}>
+            <View style={{
+              borderWidth: 10, borderColor: ORANGE, borderRadius: (CARD_H + 20) / 2,
+            }}>
               <View style={{
-                flex: 1, backgroundColor: WHITE,
+                height: CARD_H, backgroundColor: WHITE,
                 borderRadius: CARD_H / 2,
                 justifyContent: 'center', alignItems: 'center',
               }}>
-                <Text style={{ fontSize: 52, fontWeight: '800', color: WORD_COL, letterSpacing: 3 }}>
+                <Text style={{ fontSize: 56, fontWeight: '800', color: WORD_COL, letterSpacing: 3 }}>
                   UH
                 </Text>
               </View>
             </View>
           </View>
-
-          {/* Instruction text */}
-          <View style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            justifyContent: 'center', alignItems: 'center',
-            paddingHorizontal: 32, zIndex: 5,
-          }}>
-            <Text style={ds.instrNum}>{s.num}.</Text>
-            <Text style={ds.instrText}>{s.text}</Text>
-          </View>
-
-          {/* Nav row */}
-          <View style={ds.navRow}>
-            <TouchableOpacity style={ds.navBtn} onPress={back}>
-              <Text style={ds.arrowText}>←</Text>
-            </TouchableOpacity>
-            <View style={ds.dots}>
-              {DEMO_SLIDES.map((_, i) => (
-                <View key={i} style={[ds.dot, i === slide && ds.dotActive]} />
-              ))}
-            </View>
-            <TouchableOpacity style={[ds.navBtn, ds.navNext]} onPress={next}>
-              <Text style={ds.arrowText}>{slide === DEMO_SLIDES.length - 1 ? 'Go!' : '→'}</Text>
-            </TouchableOpacity>
-          </View>
-        </>
+        </View>
       )}
-    </View>
+
+      {/* Numbered instruction — centered in screen */}
+      <View style={{
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        justifyContent: 'center', alignItems: 'center',
+        paddingHorizontal: 36, zIndex: 5,
+      }}>
+        <Text style={ds.instrNum}>{s.num}.</Text>
+        <Text style={ds.instrText}>{s.text}</Text>
+      </View>
+
+      {/* Nav row */}
+      <View style={ds.navRow}>
+        <TouchableOpacity style={ds.navBtn} onPress={back}>
+          <Text style={ds.arrowText}>←</Text>
+        </TouchableOpacity>
+        <View style={ds.dots}>
+          {DEMO_SLIDES.filter(sl => sl.type === 'instr').map((_, i) => (
+            <View key={i} style={[ds.dot, (slide - 1) === i && ds.dotActive]} />
+          ))}
+        </View>
+        <TouchableOpacity style={[ds.navBtn, ds.navNext]} onPress={next}>
+          <Text style={ds.arrowText}>{slide === DEMO_SLIDES.length - 1 ? 'Go!' : '→'}</Text>
+        </TouchableOpacity>
+      </View>
+    </ImageBackground>
   );
 }
 
 const ds = StyleSheet.create({
   backBtn: {
-    position: 'absolute', top: 52, left: 20, zIndex: 10,
-    width: 48, height: 48, borderRadius: 12,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
     justifyContent: 'center', alignItems: 'center',
   },
   bigTitle: {
-    fontSize: 62, fontWeight: '800', color: WHITE,
-    textAlign: 'center', letterSpacing: 3.2, lineHeight: 70,
-  },
-  subText: {
-    fontSize: 17, color: 'rgba(255,255,255,0.65)',
-    textAlign: 'center', letterSpacing: 0.4,
+    fontSize: 56, fontWeight: '800', color: WHITE,
+    textAlign: 'center', letterSpacing: 2.5, lineHeight: 66,
   },
   forwardBtn: {
-    width: 64, height: 64, borderRadius: 16,
-    backgroundColor: '#2D6974',
+    alignSelf: 'center',
+    width: 80, height: 64, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.30, shadowRadius: 6, elevation: 6,
+    marginBottom: 60,
+  },
+  // Session progress bar at the bottom of the title screen (matches LD1)
+  sessionBar: {
+    position: 'absolute', bottom: 28, left: 47,
+    width: W - 94, height: 12, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  sessionBarFill: {
+    width: '42%', height: '100%', borderRadius: 13,
+    backgroundColor: ORANGE,
   },
   instrNum: {
-    fontSize: 34, fontWeight: '800', color: WHITE,
-    letterSpacing: 1.6, marginBottom: 8,
+    fontSize: 38, fontWeight: '800', color: WHITE,
+    letterSpacing: 1.8, marginBottom: 10,
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   instrText: {
-    fontSize: 26, fontWeight: '700', color: WHITE,
-    textAlign: 'center', letterSpacing: 1.0, lineHeight: 36,
+    fontSize: 28, fontWeight: '700', color: WHITE,
+    textAlign: 'center', letterSpacing: 1.2, lineHeight: 38,
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   navRow: {
     position: 'absolute', bottom: 44, left: 0, right: 0,
@@ -565,13 +480,13 @@ const ds = StyleSheet.create({
     alignItems: 'center', paddingHorizontal: 32, zIndex: 10,
   },
   navBtn: {
-    width: 52, height: 52, borderRadius: 14,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
     justifyContent: 'center', alignItems: 'center',
   },
-  navNext: { backgroundColor: '#2D6974' },
-  arrowText: { color: WHITE, fontSize: 20, fontWeight: '600' },
+  navNext: { backgroundColor: '#2D6974', borderColor: '#2D6974' },
+  arrowText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center' },
   dots: { flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center' },
   dot:  { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.28)' },
   dotActive: { backgroundColor: WHITE, width: 10, height: 10, borderRadius: 5 },
@@ -581,33 +496,86 @@ const ds = StyleSheet.create({
 // Exercise screen (main game)
 // ─────────────────────────────────────────────────────────────────────────────────
 
-function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
+const IDLE_PROMPT_MESSAGES = [
+  "You've got this!\nTry saying it loud!",
+  "Take a breath\nand give it a go!",
+  "Come on, your voice\nis powerful!",
+  "Whenever you're ready,\nwe believe in you!",
+];
+
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
   const [phase, setPhase]           = useState('idle');
   const [roundIdx, setRoundIdx]     = useState(0);
   const [doneCount, setDoneCount]   = useState(0);
   const [activeHoleId, setActiveHoleId] = useState(null);
+  const [idleMsg, setIdleMsg]       = useState('');
 
-  const riseAnim   = useRef(new Animated.Value(0)).current;
-  const scaleAnim  = useRef(new Animated.Value(1)).current;
-  const opacAnim   = useRef(new Animated.Value(1)).current;
-  const timerAnim  = useRef(new Animated.Value(1)).current;
-  const volumeAnim = useRef(new Animated.Value(0)).current;
+  const riseAnim    = useRef(new Animated.Value(0)).current;
+  const scaleAnim   = useRef(new Animated.Value(1)).current;
+  const opacAnim    = useRef(new Animated.Value(1)).current;
+  const timerAnim   = useRef(new Animated.Value(1)).current;
+  const volumeAnim  = useRef(new Animated.Value(0)).current;
+  const idleOverlay = useRef(new Animated.Value(0)).current;
 
-  const phaseRef      = useRef('idle');
-  const roundIdxRef   = useRef(0);
-  const recordingRef  = useRef(null);
-  const speakRef      = useRef(null);
-  const countdownRef  = useRef(null);
-  const lastHoleRef   = useRef(null);
+  const phaseRef          = useRef('idle');
+  const roundIdxRef       = useRef(0);
+  const recordingRef      = useRef(null);
+  const speakRef          = useRef(null);
+  const countdownRef      = useRef(null);
+  const lastHoleRef       = useRef(null);
+  const adaptiveThreshRef = useRef(MIN_THRESHOLD);
+  const ambientSamplesRef = useRef([]);
+  const calibrateTimerRef = useRef(null);
+  const idleTimerRef      = useRef(null);
+  const idleMsgIdxRef     = useRef(0);
 
   function setPhaseS(p) { phaseRef.current = p; setPhase(p); }
   function setRoundS(n) { roundIdxRef.current = n; setRoundIdx(n); }
 
-  // Start first round after a short delay
+  // Calibrate ambient noise, then start first round
   useEffect(() => {
-    const t = setTimeout(startRound, 700);
-    return () => { clearTimeout(t); cleanup(); };
+    calibrateAmbient();
+    return () => {
+      if (calibrateTimerRef.current) clearTimeout(calibrateTimerRef.current);
+      cleanup();
+    };
   }, []);
+
+  async function calibrateAmbient() {
+    ambientSamplesRef.current = [];
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        {
+          android: Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+          ios:     Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+          web:     {},
+          isMeteringEnabled: true,
+        },
+        (status) => {
+          if (!status.isRecording) return;
+          const db  = status.metering ?? -160;
+          const vol = Math.min(1, Math.max(0, (db + 70) / 60));
+          ambientSamplesRef.current.push(vol);
+        },
+        80,
+      );
+      calibrateTimerRef.current = setTimeout(async () => {
+        calibrateTimerRef.current = null;
+        const samples = ambientSamplesRef.current;
+        if (samples.length > 0) {
+          const sorted = [...samples].sort((a, b) => a - b);
+          const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? MIN_THRESHOLD;
+          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, p90 * 1.6 + 0.12));
+        }
+        try { await recording.stopAndUnloadAsync(); } catch (_) {}
+        startRound();
+      }, CALIBRATION_MS);
+    } catch (_) {
+      adaptiveThreshRef.current = MIN_THRESHOLD;
+      startRound();
+    }
+  }
 
   function pickHole() {
     const candidates = lastHoleRef.current != null
@@ -636,9 +604,29 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     });
   }
 
+  function startIdleTimer() {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      const msg = IDLE_PROMPT_MESSAGES[idleMsgIdxRef.current % IDLE_PROMPT_MESSAGES.length];
+      idleMsgIdxRef.current += 1;
+      setIdleMsg(msg);
+      Animated.sequence([
+        Animated.timing(idleOverlay, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.delay(2800),
+        Animated.timing(idleOverlay, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start(() => setIdleMsg(''));
+    }, 6000);
+  }
+
+  function clearIdleTimer() {
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    Animated.timing(idleOverlay, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+  }
+
   async function beginWaiting() {
     setPhaseS('waiting');
     await startMic();
+    startIdleTimer();
     countdownRef.current = setTimeout(handleMiss, TIMER_MS);
     Animated.timing(timerAnim, { toValue: 0, duration: TIMER_MS, useNativeDriver: false }).start();
   }
@@ -666,7 +654,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
     const vol = Math.min(1, Math.max(0, (db + 70) / 60));
     Animated.timing(volumeAnim, { toValue: vol, duration: 80, useNativeDriver: false }).start();
 
-    if (vol >= SPEAK_THRESHOLD) {
+    if (vol >= adaptiveThreshRef.current) {
       if (!speakRef.current) {
         speakRef.current = setTimeout(() => {
           speakRef.current = null;
@@ -681,6 +669,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   async function cleanup() {
     if (speakRef.current)    { clearTimeout(speakRef.current);    speakRef.current    = null; }
     if (countdownRef.current){ clearTimeout(countdownRef.current); countdownRef.current= null; }
+    if (idleTimerRef.current){ clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
     timerAnim.stopAnimation();
     try {
       if (recordingRef.current) {
@@ -692,9 +681,25 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
 
   async function handleWhack() {
     if (phaseRef.current !== 'waiting') return;
-    setPhaseS('whacked');
-    await cleanup();
+    clearIdleTimer();
 
+    if (countdownRef.current) { clearTimeout(countdownRef.current); countdownRef.current = null; }
+    if (speakRef.current)     { clearTimeout(speakRef.current);     speakRef.current     = null; }
+    timerAnim.stopAnimation();
+
+    // Stop the mic (no backend check — loud enough = whacked)
+    try {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
+    } catch (_) {}
+
+    doWhack();
+  }
+
+  function doWhack() {
+    setPhaseS('whacked');
     Animated.parallel([
       Animated.sequence([
         Animated.timing(scaleAnim, { toValue: 1.28, duration: 140, useNativeDriver: false }),
@@ -742,15 +747,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
   const backHoles  = sorted.filter(h => h.id !== activeHoleId);
 
   return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
+    <ImageBackground source={BG_IMAGE} style={{ flex: 1 }} resizeMode="cover">
       <StatusBar barStyle="light-content" />
 
       {/* ── Full-screen scene ── */}
       <View style={StyleSheet.absoluteFillObject}>
-        <UnderwaterBg />
-        {backHoles.map(h => <HoleFull key={h.id} hole={h} />)}
-
-        {activeHole && <HoleShadow hole={activeHole} />}
         {activeHole && (
           <Jellyfish
             hole={activeHole}
@@ -759,85 +760,116 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo }) {
             opacityAnim={opacAnim}
           />
         )}
-        {/* Cylinder drawn on top of jellyfish → masks submerged part */}
-        {activeHole && <HoleCylinder hole={activeHole} isActive />}
       </View>
 
-      {/* ── Header row: back | pills | help ── */}
+      {/* ── Header row: X | counter | ? ── */}
       <View style={ex.headerRow}>
-        <TouchableOpacity style={ex.backBtn} onPress={onExit}>
-          <Text style={ex.backText}>←</Text>
+        <TouchableOpacity style={ex.xBtn} onPress={onExit} accessibilityLabel="Exit exercise">
+          <Text style={ex.xText}>✕</Text>
         </TouchableOpacity>
-        <View style={{ flex: 1, paddingHorizontal: 8 }}>
-          <ProgressPills doneCount={doneCount} />
-        </View>
-        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo}>
+        <Text style={ex.counter}>{doneCount + 1}/{TOTAL_ROUNDS}</Text>
+        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo} accessibilityLabel="Show instructions">
           <Text style={ex.helpText}>?</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Word card ── */}
+      {/* ── Word card + instruction ── */}
       <View style={ex.cardWrap}>
         <WordCard
           word={round.word}
-          tip={round.tip}
           timerAnim={timerAnim}
           isActive={isWaiting}
         />
-      </View>
-
-      {/* ── Bottom mic strip ── */}
-      <View style={ex.strip}>
-        <Animated.View style={[ex.micDot, {
-          backgroundColor: volumeAnim.interpolate({
-            inputRange:  [0, SPEAK_THRESHOLD, 1],
-            outputRange: ['#4A7070', '#45B013', '#45B013'],
-          }),
-        }]} />
-        <Text style={ex.stripLabel}>
-          {phase === 'waiting' ? 'Say it loud!'
-           : phase === 'whacked' ? 'Great hit!'
-           : phase === 'done'    ? 'Complete!'
-           : ''}
+        <Text style={ex.instrLine}>
+          Say "{round.word.toLowerCase()}" to whack a jellyfish
         </Text>
       </View>
-    </View>
+
+      {/* ── Volume bar (right side) ── */}
+      <View style={ex.volBarTrack}>
+        <Animated.View style={[ex.volBarFill, {
+          height: volumeAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+        }]} />
+      </View>
+
+
+      {/* ── Idle encouragement overlay ── */}
+      {idleMsg !== '' && (
+        <Animated.View style={[ex.idleOverlay, { opacity: idleOverlay }]} pointerEvents="none">
+          <Text style={ex.idleText}>{idleMsg}</Text>
+        </Animated.View>
+      )}
+
+      {/* ── Can't do now ── */}
+      <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 35 }}>
+        <CantDoNow onSkip={onSkip} onEnd={onExit} />
+      </View>
+    </ImageBackground>
   );
 }
 
 const ex = StyleSheet.create({
   headerRow: {
     position: 'absolute', top: 52, left: 16, right: 16, zIndex: 20,
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  backBtn: {
-    width: 44, height: 44, borderRadius: 12,
+  xBtn: {
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
     justifyContent: 'center', alignItems: 'center',
   },
-  backText: { color: WHITE, fontSize: 18, fontWeight: '600' },
+  xText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  counter: {
+    color: WHITE, fontSize: 22, fontWeight: '800', letterSpacing: 1.0,
+  },
   helpBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: ORANGE, shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.45, shadowRadius: 6, elevation: 6,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
   },
-  helpText: { color: WHITE, fontSize: 17, fontWeight: '800' },
+  helpText: { color: WHITE, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
   cardWrap: {
-    position: 'absolute', top: 112, left: 0, right: 0, zIndex: 20,
+    position: 'absolute', top: 116, left: 0, right: 0, zIndex: 20,
+    alignItems: 'center',
   },
-  strip: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: 68,
-    backgroundColor: 'rgba(0,0,0,0.32)',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 12, paddingBottom: 14, zIndex: 20,
+  instrLine: {
+    marginTop: 14,
+    color: WHITE,
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.8,
+    lineHeight: 30,
+    paddingHorizontal: 24,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
-  micDot: { width: 10, height: 10, borderRadius: 5 },
-  stripLabel: {
-    color: 'rgba(255,255,255,0.68)', fontSize: 13, letterSpacing: 0.5,
+  volBarTrack: {
+    position: 'absolute', right: 16, top: H * 0.42, bottom: 80,
+    width: 10, borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    zIndex: 20, overflow: 'hidden', justifyContent: 'flex-end',
   },
+  volBarFill: {
+    width: '100%', backgroundColor: ORANGE, borderRadius: 5,
+  },
+  idleOverlay: {
+    position: 'absolute', bottom: 80, left: 0, right: 0, zIndex: 30,
+    alignItems: 'center', paddingHorizontal: 40,
+  },
+  idleText: {
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    color: WHITE, fontSize: 22, fontWeight: '700',
+    textAlign: 'center', lineHeight: 32,
+    paddingHorizontal: 28, paddingVertical: 18,
+    borderRadius: 20, overflow: 'hidden',
+    letterSpacing: 0.3,
+  },
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -845,26 +877,19 @@ const ex = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────────
 
 export default function LoudnessDrillsExercise({ onComplete, onExit }) {
-  const [showDemo, setShowDemo] = useState(null); // null = loading
+  // TODO (production): read DEMO_KEY from AsyncStorage to only show once.
+  // For testing, always show the demo first.
+  const [showDemo, setShowDemo] = useState(true);
 
-  useEffect(() => {
-    AsyncStorage.getItem(DEMO_KEY)
-      .then(val => setShowDemo(val !== 'true'))
-      .catch(() => setShowDemo(false));
-  }, []);
+  function finishDemo() { setShowDemo(false); }
 
-  async function finishDemo() {
-    await AsyncStorage.setItem(DEMO_KEY, 'true').catch(() => {});
-    setShowDemo(false);
-  }
-
-  if (showDemo === null) return null;
   if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} />;
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
       onShowDemo={() => setShowDemo(true)}
+      onSkip={onComplete}
     />
   );
 }

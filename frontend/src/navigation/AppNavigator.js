@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
@@ -22,9 +22,14 @@ import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 
 // Main app
 import HomeScreen from '../screens/HomeScreen';
+import OpeningScreen from '../screens/OpeningScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 import SpeechEnhancementScreen from '../screens/SpeechEnhancementScreen';
 import SpeechDemoScreen from '../screens/SpeechDemoScreen';
 import VocalTrainingSessionScreen from '../screens/vocaltraining/VocalTrainingSessionScreen';
+import StreakCelebrationScreen from '../screens/StreakCelebrationScreen';
+import StreakCommitmentScreen from '../screens/StreakCommitmentScreen';
+import ProgressScreen from '../screens/ProgressScreen';
 
 const Stack = createStackNavigator();
 
@@ -57,10 +62,30 @@ export default function AppNavigator() {
         <Stack.Screen name="AboutYouIntro" component={AboutYouIntroScreen} />
         <Stack.Screen name="SetupAboutYou" component={SetupAboutYouScreen} />
         <Stack.Screen name="SetupVoice" component={SetupVoiceScreen} />
+        <Stack.Screen name="Opening" component={OpeningScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{
+            cardStyleInterpolator: ({ current, layouts }) => ({
+              cardStyle: {
+                transform: [{
+                  translateX: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-layouts.screen.width, 0],
+                  }),
+                }],
+              },
+            }),
+          }}
+        />
+        <Stack.Screen name="Progress" component={ProgressScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
         <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
         <Stack.Screen name="VocalTrainingSession" component={VocalTrainingSessionScreen} />
+        <Stack.Screen name="StreakCelebration" component={StreakCelebrationScreen} />
+        <Stack.Screen name="StreakCommitment" component={StreakCommitmentScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

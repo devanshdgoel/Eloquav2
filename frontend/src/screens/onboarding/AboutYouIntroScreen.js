@@ -31,6 +31,7 @@ export default function AboutYouIntroScreen({ navigation }) {
         source={require('../../../assets/images/wave-logo.png')}
         style={styles.waveLogo}
         resizeMode="contain"
+        accessible={false}
       />
     </LinearGradient>
   );

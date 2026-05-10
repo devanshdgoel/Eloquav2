@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../../theme';
+import { useAuth } from '../../context/AuthContext';
 import DolphinAnimation from './DolphinAnimation';
 import BrandReveal from './BrandReveal';
 import SplashButtons from './SplashButtons';
@@ -15,6 +16,8 @@ import SplashButtons from './SplashButtons';
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen({ navigation }) {
+  const { isSignedIn, hasCompletedOnboarding } = useAuth();
+
   // Animated values
   const dolphinY = useRef(new Animated.Value(height + 60)).current;
   const dolphinX = useRef(new Animated.Value(width * 0.05)).current;
@@ -30,40 +33,49 @@ export default function SplashScreen({ navigation }) {
   const hiOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    const alreadySignedIn = isSignedIn && hasCompletedOnboarding;
+
+    // Phase 1: dolphin sequence (same for everyone)
     Animated.sequence([
       Animated.delay(400),
-      // Dolphin swims in
       Animated.parallel([
         Animated.timing(dolphinX, { toValue: width * 0.28, duration: 1400, useNativeDriver: true }),
         Animated.timing(dolphinY, { toValue: height - 220, duration: 1400, useNativeDriver: true }),
       ]),
-      // "Hi!" fades in while the dolphin is stationary
       Animated.timing(hiOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.delay(600),
-      // "Hi!" fades out as the dolphin begins to exit
       Animated.timing(hiOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-      // Dolphin exits while scene transitions
       Animated.parallel([
-        Animated.timing(dolphinX, { toValue: width * 0.85, duration: 2400, useNativeDriver: true }),
-        Animated.timing(dolphinY, { toValue: -150, duration: 2400, useNativeDriver: true }),
-        Animated.timing(dolphinRotate, { toValue: 1, duration: 2400, useNativeDriver: true }),
-        Animated.timing(gradientFade, { toValue: 1, duration: 2400, useNativeDriver: true }),
+        Animated.timing(dolphinX, { toValue: width * 0.85, duration: 1600, useNativeDriver: true }),
+        Animated.timing(dolphinY, { toValue: -150, duration: 1600, useNativeDriver: true }),
+        Animated.timing(dolphinRotate, { toValue: 1, duration: 1600, useNativeDriver: true }),
       ]),
-      // Brand reveal sequence
-      Animated.timing(thisIsOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(logoOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.parallel([
-        Animated.timing(taglineOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(bubblesOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ]),
-      // Buttons appear
-      Animated.parallel([
-        Animated.timing(buttonsOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(orTextOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(waveLogoOpacity, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ]),
-      Animated.delay(500),
-    ]).start();
+    ]).start(() => {
+      if (alreadySignedIn) {
+        // Already logged in — show personalised opening screen, then Home
+        navigation.replace('Opening');
+        return;
+      }
+
+      // Phase 2 (new users only): brand reveal + buttons
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(gradientFade, { toValue: 1, duration: 600, useNativeDriver: true }),
+          Animated.timing(thisIsOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ]),
+        Animated.timing(logoOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.parallel([
+          Animated.timing(taglineOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(bubblesOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(buttonsOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+          Animated.timing(orTextOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+          Animated.timing(waveLogoOpacity, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ]),
+        Animated.delay(500),
+      ]).start();
+    });
   }, []);
 
   const rotateInterpolation = dolphinRotate.interpolate({

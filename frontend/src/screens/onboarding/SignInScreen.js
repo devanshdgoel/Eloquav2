@@ -121,7 +121,7 @@ export default function SignInScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Continue with Apple"
           >
-            <Text style={styles.appleIcon}>󰀶</Text>
+            <Text style={styles.appleIcon}>{'\uF8FF'}</Text>
             <Text style={styles.socialText}>Continue with Apple</Text>
           </TouchableOpacity>
 

@@ -42,9 +42,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: height - 300,
     left: width * 0.42,
-    fontSize: 36,
-    fontWeight: '700',
-    color: colors.onboarding.darkTeal,
+    fontSize: 52,
+    fontWeight: '300',
+    color: '#FFFFFF',
     letterSpacing: 1,
   },
 });

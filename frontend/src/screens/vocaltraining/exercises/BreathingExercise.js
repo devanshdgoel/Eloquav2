@@ -7,8 +7,13 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  Image,
+  PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Video, ResizeMode, Audio } from 'expo-av';
+import Svg, { Path, Polygon } from 'react-native-svg';
+import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -49,74 +54,6 @@ function FadeIn({ children }) {
     <Animated.View style={{ flex: 1, opacity }}>
       {children}
     </Animated.View>
-  );
-}
-
-// ── Glass Bubble ──────────────────────────────────────────────────────────────
-// Soap-bubble aesthetic: near-transparent body, thin white rim, soft highlight
-// arc in the upper-left with a bright specular dot, and a faint teal reflection
-// at the base. Two layers: outer carries the glow shadow; inner clips highlights.
-
-function GlassBubble({ size = BUBBLE_BASE }) {
-  const r = size / 2;
-  return (
-    <View style={{
-      width: size, height: size, borderRadius: r,
-      shadowColor: '#70D8E8',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.60,
-      shadowRadius: size * 0.24,
-      elevation: 20,
-    }}>
-      <View style={{
-        width: size, height: size, borderRadius: r,
-        backgroundColor: 'rgba(155, 215, 230, 0.08)',
-        borderWidth: 2.5,
-        borderColor: 'rgba(255, 255, 255, 0.50)',
-        overflow: 'hidden',
-      }}>
-
-        {/* Large soft highlight arc — upper-left */}
-        <View style={{
-          position: 'absolute',
-          width: size * 0.62, height: size * 0.28,
-          borderRadius: size * 0.18,
-          top: size * 0.07, left: size * 0.04,
-          backgroundColor: 'rgba(255, 255, 255, 0.20)',
-          transform: [{ rotate: '-24deg' }],
-        }} />
-
-        {/* Tighter inner highlight */}
-        <View style={{
-          position: 'absolute',
-          width: size * 0.32, height: size * 0.12,
-          borderRadius: size * 0.09,
-          top: size * 0.13, left: size * 0.08,
-          backgroundColor: 'rgba(255, 255, 255, 0.48)',
-          transform: [{ rotate: '-18deg' }],
-        }} />
-
-        {/* Specular pinpoint */}
-        <View style={{
-          position: 'absolute',
-          width: size * 0.08, height: size * 0.06,
-          borderRadius: size * 0.04,
-          top: size * 0.09, left: size * 0.25,
-          backgroundColor: 'rgba(255, 255, 255, 0.88)',
-        }} />
-
-        {/* Bottom-right iridescent teal reflection */}
-        <View style={{
-          position: 'absolute',
-          width: size * 0.40, height: size * 0.12,
-          borderRadius: size * 0.09,
-          bottom: size * 0.09, right: size * 0.14,
-          backgroundColor: 'rgba(90, 215, 240, 0.14)',
-          transform: [{ rotate: '14deg' }],
-        }} />
-
-      </View>
-    </View>
   );
 }
 
@@ -164,50 +101,55 @@ const cp = StyleSheet.create({
 // ── Shared header button styles — larger for accessibility ────────────────────
 const hb = StyleSheet.create({
   closeBtn: {
-    width: 54, height: 54, borderRadius: 14,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
     justifyContent: 'center', alignItems: 'center',
   },
-  closeText: { color: '#FFFFFF', fontSize: 20, fontWeight: '600' },
+  closeText: { color: '#FFFFFF', fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
   helpBtn: {
-    width: 52, height: 52, borderRadius: 26,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: '#FFA940',
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.55, shadowRadius: 8, elevation: 8,
+    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
   },
-  helpText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  helpText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 });
 
 // ── Screen 0: Title ───────────────────────────────────────────────────────────
 function TitleScreen({ onNext, onExit }) {
   return (
     <FadeIn>
-      <LinearGradient
-        colors={BG_GRADIENT} locations={BG_LOCATIONS}
-        start={BG_START} end={BG_END}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <StatusBar barStyle="light-content" />
+      <View style={{ flex: 1, backgroundColor: '#1C4047' }}>
+        <StatusBar barStyle="light-content" />
 
-      <View style={ts.header}>
-        <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityLabel="Exit exercise">
-          <Text style={hb.closeText}>✕</Text>
+        <View style={ts.header}>
+          <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityLabel="Exit exercise">
+            <Text style={hb.closeText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+          <Text style={ts.title} numberOfLines={1} adjustsFontSizeToFit>Breathing</Text>
+          <Text style={ts.motivational}>Your voice starts with your breath.</Text>
+          <View style={ts.bubbleWrap}>
+            <Image
+              source={require('../../../../assets/images/bubble2.png')}
+              style={{ width: 200, height: 200 }}
+              resizeMode="contain"
+              accessible={false}
+            />
+          </View>
+        </View>
+
+        {/* Arrow button — must sit above the progress bar (bottom: 28 + 12h + 16 gap = 56) */}
+        <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8}>
+          <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
+
+        <SessionBar fill={0.14} />
       </View>
-
-      <Text style={ts.title}>Breathing</Text>
-
-      <View style={ts.bubbleWrap}>
-        <GlassBubble size={164} />
-      </View>
-
-      <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8}>
-        <Text style={ts.arrowText}>→</Text>
-      </TouchableOpacity>
-
-      <SessionBar fill={0.14} />
     </FadeIn>
   );
 }
@@ -218,52 +160,204 @@ const ts = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
   },
   title: {
-    color: '#FFFFFF', fontSize: 64, fontWeight: '800',
-    letterSpacing: 3.2, textAlign: 'center', marginTop: 52,
+    color: '#FFFFFF', fontSize: 56, fontWeight: '800',
+    letterSpacing: 1.5, textAlign: 'center', marginBottom: 12,
   },
-  bubbleWrap: { alignItems: 'center', marginTop: 56 },
+  motivational: {
+    color: '#C3DECE', fontSize: 15, fontWeight: '400',
+    letterSpacing: 0.4, textAlign: 'center', opacity: 0.85,
+    marginBottom: 32,
+  },
+  bubbleWrap: { alignItems: 'center' },
   arrowBtn: {
-    alignSelf: 'center', marginTop: 56,
-    width: 76, height: 62, borderRadius: 16,
+    alignSelf: 'center', marginBottom: 60,
+    width: 80, height: 64, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
   arrowText: { color: '#FFFFFF', fontSize: 26, fontWeight: '300' },
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatTime(ms) {
+  if (!ms || isNaN(ms)) return '0:00';
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ── Play / Pause SVG icons ────────────────────────────────────────────────────
+function PlayIcon({ size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polygon points="5,3 19,12 5,21" fill="#FFFFFF" />
+    </Svg>
+  );
+}
+function PauseIcon({ size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="#FFFFFF" />
+    </Svg>
+  );
+}
+function Skip10Icon({ size = 20 }) {
+  // forward arrow with "10" label
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M18 13a6 6 0 1 1-6-6h.5"
+        stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round"
+      />
+      <Path
+        d="M15 4l3.5 3L15 10"
+        stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 // ── Screen 1: Video (instruction screen) ─────────────────────────────────────
 function VideoScreen({ onNext, onExit }) {
+  const videoRef = useRef(null);
+  const [isPlaying, setIsPlaying]   = useState(false);
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(0);
+  const [hasEnded,   setHasEnded]   = useState(false);
+
+  const scrubberWidthRef = useRef(1);
+  // Ref keeps duration current inside PanResponder closures (avoids stale state capture)
+  const durationMsRef = useRef(0);
+
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+    });
+  }, []);
+
+  function handleStatus(status) {
+    if (!status.isLoaded) return;
+    setIsPlaying(status.isPlaying ?? false);
+    setPositionMs(status.positionMillis ?? 0);
+    const dur = status.durationMillis ?? 0;
+    durationMsRef.current = dur;
+    setDurationMs(dur);
+    if (status.didJustFinish) setHasEnded(true);
+  }
+
+  async function togglePlay() {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      await videoRef.current.pauseAsync();
+    } else {
+      if (hasEnded) {
+        await videoRef.current.setPositionAsync(0);
+        setHasEnded(false);
+      }
+      await videoRef.current.playAsync();
+    }
+  }
+
+  // Uses refs only — safe to capture inside PanResponder once
+  async function seekTo(x) {
+    if (!videoRef.current || !durationMsRef.current) return;
+    const fraction = Math.max(0, Math.min(1, x / scrubberWidthRef.current));
+    await videoRef.current.setPositionAsync(Math.floor(fraction * durationMsRef.current));
+  }
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: async (e) => {
+        await videoRef.current?.pauseAsync();
+        seekTo(e.nativeEvent.locationX);
+      },
+      onPanResponderMove:   (e) => { seekTo(e.nativeEvent.locationX); },
+      onPanResponderRelease: async () => { await videoRef.current?.playAsync(); },
+    })
+  ).current;
+
+  const progress = durationMs > 0 ? positionMs / durationMs : 0;
+  const btnLabel = hasEnded ? 'Begin Exercise  →' : 'Skip  →';
+
   return (
     <FadeIn>
       <LinearGradient
-        colors={BG_GRADIENT} locations={BG_LOCATIONS}
-        start={BG_START} end={BG_END}
+        colors={['#1C3242', '#0D1E2B']}
+        start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Subtle dark overlay so the video box reads clearly */}
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.32)' }]} />
       <StatusBar barStyle="light-content" />
 
+      {/* Header */}
       <View style={vs.header}>
-        <TouchableOpacity style={vs.backBtn} onPress={onExit} activeOpacity={0.8}>
-          <Text style={vs.backText}>← Back</Text>
+        {/* Back — just an arrow, no text */}
+        <TouchableOpacity style={vs.iconBtn} onPress={onExit} activeOpacity={0.8} accessibilityLabel="Go back">
+          <Text style={vs.iconBtnText}>←</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* Video placeholder */}
-      <View style={vs.videoBox}>
-        <View style={vs.playCircle}>
-          <Text style={vs.playIcon}>▶</Text>
+        <View style={vs.pill}>
+          <Text style={vs.pillText}>INSTRUCTIONS</Text>
         </View>
-        <Text style={vs.caption}>Video coming soon</Text>
+
+        {/* Spacer to balance layout */}
+        <View style={vs.iconBtn} />
       </View>
 
-      <Text style={vs.desc}>Diaphragmatic{'\n'}Breathing Technique</Text>
+      {/* Title */}
+      <Text style={vs.heading}>Diaphragmatic{'\n'}Breathing Technique</Text>
 
-      {/* Begin exercise */}
+      {/* Video */}
+      <View style={vs.videoBox}>
+        <Video
+          ref={videoRef}
+          source={require('../../../../assets/videos/BreathingDemo.mp4')}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode={ResizeMode.CONTAIN}
+          shouldPlay={false}
+          isLooping={false}
+          isMuted={false}
+          onPlaybackStatusUpdate={handleStatus}
+        />
+
+        {/* Tap video to toggle play */}
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={togglePlay} activeOpacity={1} />
+
+        {/* Centre play overlay — visible when paused */}
+        {!isPlaying && (
+          <View style={vs.playOverlay} pointerEvents="none">
+            <View style={vs.playCircle}>
+              <PlayIcon size={28} />
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Timeline only — no duplicate button row */}
+      <View style={vs.controls}>
+        <View style={vs.timeRow}>
+          <Text style={vs.timeText}>{formatTime(positionMs)}</Text>
+          <Text style={vs.timeText}>{formatTime(durationMs)}</Text>
+        </View>
+        <View
+          style={vs.scrubberTrack}
+          onLayout={e => { scrubberWidthRef.current = e.nativeEvent.layout.width; }}
+          {...panResponder.panHandlers}
+          hitSlop={{ top: 14, bottom: 14 }}
+        >
+          <View style={[vs.scrubberFill, { width: `${progress * 100}%` }]} />
+          <View style={[vs.scrubberThumb, { left: `${progress * 100}%` }]} />
+        </View>
+      </View>
+
+      {/* Single CTA button: "Skip →" until video ends, then "Begin Exercise →" */}
       <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85}>
-        <Text style={vs.startText}>Begin Exercise  →</Text>
+        <Text style={vs.startText}>{btnLabel}</Text>
       </TouchableOpacity>
     </FadeIn>
   );
@@ -271,38 +365,85 @@ function VideoScreen({ onNext, onExit }) {
 
 const vs = StyleSheet.create({
   header: {
-    paddingTop: 52, paddingHorizontal: 24,
+    paddingTop: 52, paddingHorizontal: 20,
     flexDirection: 'row', alignItems: 'center',
+    gap: 10,
   },
-  backBtn: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 22, paddingHorizontal: 18, paddingVertical: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+  // Icon-only back button (arrow, no text)
+  iconBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  backText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', letterSpacing: 0.3 },
+  iconBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '300' },
+
+  pill: {
+    flex: 1,
+    backgroundColor: '#FFA940', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 5,
+    alignItems: 'center',
+  },
+  pillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
+
+  heading: {
+    color: 'rgba(255,255,255,0.90)', fontSize: 20, fontWeight: '700',
+    textAlign: 'center', letterSpacing: 0.4, lineHeight: 28,
+    marginTop: 18, marginBottom: 14, paddingHorizontal: 24,
+  },
+
   videoBox: {
-    alignSelf: 'center', marginTop: 22,
-    width: W - 52, height: H * 0.42, borderRadius: 32,
-    backgroundColor: 'rgba(5,18,24,0.60)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)',
-    justifyContent: 'center', alignItems: 'center', gap: 18,
+    alignSelf: 'center',
+    width: W - 40, height: H * 0.40, borderRadius: 24,
+    backgroundColor: '#000', overflow: 'hidden',
+  },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
   },
   playCircle: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
-    justifyContent: 'center', alignItems: 'center',
+    width: 68, height: 68, borderRadius: 34,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+    paddingLeft: 4,
   },
-  playIcon:  { color: '#FFFFFF', fontSize: 24, marginLeft: 5 },
-  caption:   { color: 'rgba(255,255,255,0.40)', fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' },
-  desc: {
-    color: 'rgba(255,255,255,0.78)', fontSize: 22, fontWeight: '700',
-    textAlign: 'center', letterSpacing: 0.5, lineHeight: 32, marginTop: 24,
+
+  // Timeline only — no duplicate button row
+  controls: {
+    marginTop: 18, paddingHorizontal: 24,
   },
+  timeRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  timeText: {
+    color: 'rgba(255,255,255,0.50)', fontSize: 12, fontWeight: '500',
+    fontVariant: ['tabular-nums'],
+  },
+  scrubberTrack: {
+    height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    position: 'relative', justifyContent: 'center',
+  },
+  scrubberFill: {
+    height: '100%', borderRadius: 2,
+    backgroundColor: '#FE9C2D',
+  },
+  scrubberThumb: {
+    position: 'absolute',
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#FE9C2D',
+    top: -5, marginLeft: -7,
+    shadowColor: '#FE9C2D',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8, shadowRadius: 4,
+  },
+
   startBtn: {
-    alignSelf: 'center', marginTop: 30,
+    alignSelf: 'center', marginTop: 28,
     backgroundColor: '#FE9C2D', borderRadius: 14,
-    paddingHorizontal: 36, paddingVertical: 16,
+    paddingHorizontal: 40, paddingVertical: 16,
     shadowColor: '#FE9C2D', shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
@@ -315,7 +456,7 @@ const vs = StyleSheet.create({
 // Bubble expands on inhale, holds at full size, then contracts on exhale —
 // no "flying away". No timer shown.
 
-function DrillScreen({ onComplete, onExit, onShowVideo }) {
+function DrillScreen({ onComplete, onExit, onShowVideo, onSkip }) {
   const [cycleIndex, setCycleIndex] = useState(0);
   const [doneCount,  setDoneCount]  = useState(0);
 
@@ -400,7 +541,7 @@ function DrillScreen({ onComplete, onExit, onShowVideo }) {
         </TouchableOpacity>
       </View>
 
-      {/* Phase label — crossfades so text never snaps */}
+      {/* Phase label — above bubble, crossfades so text never snaps */}
       <Animated.Text
         style={[ds.phaseLabel, { opacity: labelOpacity }]}
         numberOfLines={1}
@@ -412,12 +553,18 @@ function DrillScreen({ onComplete, onExit, onShowVideo }) {
       {/* Animated bubble */}
       <View style={ds.bubbleArea}>
         <Animated.View style={{ transform: [{ scale: bubbleScale }] }}>
-          <GlassBubble size={BUBBLE_BASE} />
+          <Image
+            source={require('../../../../assets/images/bubble2.png')}
+            style={{ width: BUBBLE_BASE, height: BUBBLE_BASE }}
+            resizeMode="contain"
+            accessible={false}
+          />
         </Animated.View>
       </View>
 
-      {/* Cycle pills */}
+      {/* Can't do now — above the cycle progress pills */}
       <View style={ds.bottom}>
+        <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 20 }} />
         <CyclePills current={cycleIndex} done={doneCount} />
       </View>
     </FadeIn>
@@ -430,9 +577,17 @@ const ds = StyleSheet.create({
     paddingTop: 52, paddingHorizontal: 18,
   },
   phaseLabel: {
-    color: '#FFFFFF', fontSize: 54, fontWeight: '800',
-    letterSpacing: 2.5, textAlign: 'center',
-    marginTop: 22, paddingHorizontal: 24,
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 1,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    marginTop: 52,
+    marginBottom: 0,
+    paddingHorizontal: 24,
   },
   bubbleArea: {
     flex: 1,
@@ -470,6 +625,7 @@ export default function BreathingExercise({ onComplete, onExit }) {
       onComplete={onComplete}
       onExit={onExit}
       onShowVideo={() => setStep(STEP_VIDEO)}
+      onSkip={onComplete}
     />
   );
 }

@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { signOut as firebaseSignOut } from '../services/authService';
 import { isOnboardingComplete, setOnboardingComplete } from '../utils/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AuthContext = createContext(null);
 
@@ -11,6 +12,7 @@ export function AuthProvider({ children }) {
     isLoading: true,
     isSignedIn: false,
     hasCompletedOnboarding: false,
+    isGuest: false,
     user: null,
   });
 
@@ -24,6 +26,7 @@ export function AuthProvider({ children }) {
           isLoading: false,
           isSignedIn: true,
           hasCompletedOnboarding: onboarded,
+          isGuest: firebaseUser.isAnonymous,
           user: {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -50,6 +53,8 @@ export function AuthProvider({ children }) {
 
   async function signOut() {
     await firebaseSignOut();
+    // Clear the onboarding flag so guest/anonymous sessions don't auto-skip login
+    await AsyncStorage.removeItem('eloqua_onboarding_complete');
     setState({
       isLoading: false,
       isSignedIn: false,
