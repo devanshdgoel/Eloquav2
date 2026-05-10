@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from config import MAX_AUDIO_SIZE_MB
-from services.clarity_speech import clarity_transcript
+from services.clarity_speech import clarity_transcript, clarity_transcript_chunked
 from services.enhancement_service import SpeechEnhancementError, generate_enhanced_speech
 from services.speech_service import TranscriptionError, transcribe_audio
 from services.voice_cloning_service import get_user_voice_id, has_cloned_voice
@@ -17,25 +17,75 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ── Hallucination filter ──────────────────────────────────────────────────────
+# Whisper was trained on YouTube data and fills silence with common phrases.
+_WHISPER_HALLUCINATIONS = frozenset({
+    "thank you for watching",
+    "thank you for watching.",
+    "thanks for watching",
+    "thanks for watching.",
+    "thanks for watching!",
+    "please like and subscribe",
+    "like and subscribe",
+    "please subscribe",
+    "see you in the next video",
+    "see you next time",
+    "don't forget to subscribe",
+    "subscribe to my channel",
+    "subtitles by the amara.org community",
+    "you",
+    ".",
+    "",
+})
+
+# Chunks below this size are almost certainly silence — skip Whisper entirely.
+_MIN_CHUNK_BYTES = 5_000
+
+
+def _is_hallucination(text: str) -> bool:
+    lower = text.lower().strip().rstrip(" .,!?")
+    if lower in _WHISPER_HALLUCINATIONS:
+        return True
+    # Single isolated word that isn't a plausible one-word utterance
+    words = lower.split()
+    if len(words) == 1 and lower not in {
+        "yes", "no", "ok", "okay", "hello", "hi", "bye", "help",
+        "stop", "go", "wait", "please", "thanks", "sorry",
+    }:
+        return True
+    return False
+
 
 @router.post("/transcribe-chunk")
 async def transcribe_chunk(
     file: UploadFile = File(...),
     chunk_index: int = Form(0),
     previous_text: str = Form(""),
+    previous_enhanced_text: str = Form(""),
 ):
     """
-    Fast-path: transcribe a single audio chunk with Whisper and return the text.
-    No clarity editing, no TTS. Called repeatedly while the user is recording
-    so their words appear in near real-time on the frontend.
+    Transcribe one 4-second audio chunk and immediately apply clarity enhancement.
 
-    previous_text is passed to Whisper as a context prompt so it understands
-    vocabulary and sentence flow across chunk boundaries.
+    previous_text         — raw accumulated transcript, passed to Whisper as a prompt
+                            for context continuity across chunk boundaries.
+    previous_enhanced_text — enhanced accumulated transcript, passed to GPT so it can
+                            handle sentences that span chunk boundaries.
+
+    Returns raw_text (Whisper output) and enhanced_text (GPT-corrected) for this chunk.
     """
     if not is_valid_audio(file.filename):
         raise HTTPException(status_code=400, detail="Invalid audio format.")
 
     contents = await file.read()
+
+    # Silence detection: skip Whisper for near-empty audio files
+    if len(contents) < _MIN_CHUNK_BYTES:
+        return success_response({
+            "raw_text": "",
+            "enhanced_text": "",
+            "chunk_index": chunk_index,
+        })
+
     if len(contents) > MAX_AUDIO_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Chunk too large.")
     await file.seek(0)
@@ -43,30 +93,57 @@ async def transcribe_chunk(
     audio_path = save_uploaded_audio(file)
 
     try:
-        text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
+        raw_text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
     except TranscriptionError as e:
         if e.error_type == "empty":
-            return success_response({"text": "", "chunk_index": chunk_index})
+            return success_response({
+                "raw_text": "",
+                "enhanced_text": "",
+                "chunk_index": chunk_index,
+            })
         raise HTTPException(status_code=503, detail=e.message)
 
-    return success_response({"text": text, "chunk_index": chunk_index})
+    # Reject known Whisper hallucinations produced on silence/noise
+    if _is_hallucination(raw_text):
+        logger.info("Hallucination filtered at chunk %d: %r", chunk_index, raw_text)
+        return success_response({
+            "raw_text": "",
+            "enhanced_text": "",
+            "chunk_index": chunk_index,
+        })
+
+    # Run per-chunk GPT clarity with sentence-boundary context
+    enhanced_text = clarity_transcript_chunked(raw_text, previous_enhanced_text)
+
+    return success_response({
+        "raw_text": raw_text,
+        "enhanced_text": enhanced_text,
+        "chunk_index": chunk_index,
+    })
 
 
 @router.post("/enhance-text")
 async def enhance_text_route(
     raw_transcript: str = Form(...),
+    enhanced_transcript: str = Form(""),
     user_id: Optional[str] = Form(None),
 ):
     """
-    Second half of the chunked pipeline: receive an already-merged raw
-    transcript, apply clarity editing, generate ElevenLabs TTS, and return
-    the enhanced result. Called once when the user finishes recording and all
-    chunks have been transcribed.
+    Final step of the chunked pipeline: generate ElevenLabs TTS audio.
+
+    enhanced_transcript — the merged, already-GPT-enhanced text from per-chunk clarity.
+                          When provided, the full GPT clarity pass is skipped (it was
+                          already done per-chunk), saving latency and cost.
+    raw_transcript      — always required; used as fallback and for the clarity_applied flag.
     """
     if not raw_transcript.strip():
         raise HTTPException(status_code=400, detail="raw_transcript is empty.")
 
-    cleaned_transcript = clarity_transcript(raw_transcript)
+    # Prefer the pre-enhanced transcript; fall back to a fresh clarity pass on raw
+    if enhanced_transcript.strip():
+        final_transcript = enhanced_transcript.strip()
+    else:
+        final_transcript = clarity_transcript(raw_transcript)
 
     if user_id and has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)
@@ -84,7 +161,7 @@ async def enhance_text_route(
     audio_url = None
     try:
         enhanced_path = generate_enhanced_speech(
-            cleaned_transcript,
+            final_transcript,
             voice_id=synthesis_voice_id,
             voice_settings=voice_settings,
         )
@@ -93,8 +170,8 @@ async def enhance_text_route(
         logger.warning("enhance-text TTS failed: %s", e)
 
     return success_response({
-        "cleaned_transcript": cleaned_transcript,
-        "clarity_applied": cleaned_transcript != raw_transcript,
+        "cleaned_transcript": final_transcript,
+        "clarity_applied": final_transcript != raw_transcript,
         "audio_url": audio_url,
         "voice_profile": DEFAULT_PROFILE.to_dict(),
     })
@@ -106,30 +183,16 @@ async def process_audio(
     user_id: Optional[str] = Form(None),
 ):
     """
-    Transcribe audio, apply clarity enhancement, and generate enhanced speech.
-
-    If a user_id is provided and the user has a cloned voice on file, that voice
-    is used for synthesis. Otherwise, voice profile matching selects the best
-    ElevenLabs default voice based on the user's pitch, speaking rate, and energy.
-
-    Returns:
-        raw_transcript: Whisper transcription before editing.
-        cleaned_transcript: Transcript after clarity enhancement.
-        clarity_applied: True if the cleaned transcript differs from the raw one.
-        audio_url: Relative URL to the generated audio file, or null on failure.
-        voice_profile: The voice profile metadata used for synthesis.
+    Legacy single-shot endpoint: transcribe, enhance, and synthesise in one call.
     """
-    # Clean up old temp files on each request to prevent disk accumulation.
     cleanup_old_files()
 
-    # 1. Validate audio format
     if not is_valid_audio(file.filename):
         raise HTTPException(
             status_code=400,
             detail="Invalid audio format. Please upload wav, mp3, or m4a.",
         )
 
-    # 2. Validate file size
     contents = await file.read()
     max_bytes = MAX_AUDIO_SIZE_MB * 1024 * 1024
     if len(contents) > max_bytes:
@@ -139,11 +202,8 @@ async def process_audio(
         )
     await file.seek(0)
 
-    # 3. Save audio to disk
     audio_path = save_uploaded_audio(file)
 
-    # 4. Transcribe — verbose_json mode returns both the transcript and audio
-    #    duration, which is needed for speaking-rate analysis in step 6.
     try:
         raw_transcript, audio_duration_s = transcribe_audio(str(audio_path))
     except TranscriptionError as e:
@@ -153,13 +213,9 @@ async def process_audio(
             raise HTTPException(status_code=503, detail=e.message)
         raise HTTPException(status_code=500, detail=e.message)
 
-    # 5. Apply clarity enhancement (grammar / filler-word clean-up)
     cleaned_transcript = clarity_transcript(raw_transcript)
 
-    # 6. Determine which voice to use for synthesis.
-    #    Priority: cloned voice (if user has completed voice setup) > profile match.
     if user_id and has_cloned_voice(user_id):
-        # Use the user's personal cloned voice with neutral settings.
         synthesis_voice_id = get_user_voice_id(user_id)
         voice_settings = {
             "stability": 0.50,
@@ -170,13 +226,9 @@ async def process_audio(
         profile = DEFAULT_PROFILE
         logger.info("Using cloned voice for user %s", user_id[:8] if user_id else "unknown")
     else:
-        # No clone on file — fall back to automatic voice profile matching.
         logger.info(
-            "No cloned voice for user %s — using profile matching. "
-            "(user_id received: %s, has_clone: %s)",
+            "No cloned voice for user %s — using profile matching.",
             user_id[:8] if user_id else "none",
-            bool(user_id),
-            has_cloned_voice(user_id) if user_id else False,
         )
         try:
             profile, voice_settings = analyze_voice(
@@ -194,7 +246,6 @@ async def process_audio(
                 "speed": 1.0,
             }
 
-    # 7. Generate enhanced speech audio
     audio_url = None
     try:
         enhanced_path = generate_enhanced_speech(
@@ -206,7 +257,6 @@ async def process_audio(
     except SpeechEnhancementError as e:
         logger.warning("Speech enhancement failed: %s", e)
 
-    # 8. Return all results to the client
     return success_response({
         "raw_transcript": raw_transcript,
         "cleaned_transcript": cleaned_transcript,

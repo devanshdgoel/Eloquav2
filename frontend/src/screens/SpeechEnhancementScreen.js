@@ -174,7 +174,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const soundRef          = useRef(null);
   const chunkTimerRef     = useRef(null);
   const chunkIndexRef     = useRef(0);
-  const chunksRef         = useRef({});       // { [chunkIndex]: text }
+  // Each entry: { raw: string, enhanced: string }
+  const chunksRef         = useRef({});
   const chunkPromisesRef  = useRef([]);
   const stoppingRef       = useRef(false);
   const isRotatingRef     = useRef(false);    // true while rotateChunk is mid-execution
@@ -190,21 +191,33 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Chunk helpers ────────────────────────────────────────────────────────────
 
-  function getAccumulatedText() {
+  function getAccumulatedRawText() {
     return Object.keys(chunksRef.current)
       .map(Number)
       .sort((a, b) => a - b)
-      .map(i => chunksRef.current[i])
+      .map(i => chunksRef.current[i]?.raw)
+      .filter(Boolean)
       .join(' ')
       .trim();
   }
 
-  async function transcribeChunk(uri, index, previousText) {
+  function getAccumulatedEnhancedText() {
+    return Object.keys(chunksRef.current)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(i => chunksRef.current[i]?.enhanced || chunksRef.current[i]?.raw)
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+
+  async function transcribeChunk(uri, index, previousRawText, previousEnhancedText) {
     try {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: `chunk_${index}.m4a` });
       form.append('chunk_index', String(index));
-      if (previousText) form.append('previous_text', previousText);
+      if (previousRawText)      form.append('previous_text',          previousRawText);
+      if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
       const res = await fetch(`${API_BASE_URL}/api/transcribe-chunk`, {
         method: 'POST',
@@ -218,10 +231,16 @@ export default function SpeechEnhancementScreen({ navigation }) {
       }
 
       const data = await res.json();
-      const text = data.text?.trim();
-      if (text) {
-        chunksRef.current[index] = text;
-        setLiveTranscript(getAccumulatedText());
+      const rawText      = data.raw_text?.trim();
+      const enhancedText = data.enhanced_text?.trim();
+
+      if (rawText) {
+        chunksRef.current[index] = {
+          raw:      rawText,
+          enhanced: enhancedText || rawText,
+        };
+        // Show the enhanced text live — already GPT-corrected per chunk
+        setLiveTranscript(getAccumulatedEnhancedText());
       }
     } catch (e) {
       console.error(`[Speech] chunk ${index} error:`, e?.message);
@@ -235,9 +254,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
     if (stoppingRef.current || !recordingRef.current) return;
 
     isRotatingRef.current = true;
-    const index        = chunkIndexRef.current++;
-    const previousText = getAccumulatedText();
-    const finished     = recordingRef.current;
+    const index                = chunkIndexRef.current++;
+    const previousRawText      = getAccumulatedRawText();
+    const previousEnhancedText = getAccumulatedEnhancedText();
+    const finished             = recordingRef.current;
     recordingRef.current = null;
 
     try {
@@ -255,7 +275,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
       if (uri) {
         setPendingCount(c => c + 1);
-        const p = transcribeChunk(uri, index, previousText)
+        const p = transcribeChunk(uri, index, previousRawText, previousEnhancedText)
           .finally(() => setPendingCount(c => c - 1));
         chunkPromisesRef.current.push(p);
       }
@@ -325,14 +345,15 @@ export default function SpeechEnhancementScreen({ navigation }) {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
 
       if (lastRecording) {
-        const index        = chunkIndexRef.current++;
-        const previousText = getAccumulatedText();
+        const index                = chunkIndexRef.current++;
+        const previousRawText      = getAccumulatedRawText();
+        const previousEnhancedText = getAccumulatedEnhancedText();
         await lastRecording.stopAndUnloadAsync();
         const uri = lastRecording.getURI();
 
         if (uri) {
           setPendingCount(c => c + 1);
-          const finalP = transcribeChunk(uri, index, previousText)
+          const finalP = transcribeChunk(uri, index, previousRawText, previousEnhancedText)
             .finally(() => setPendingCount(c => c - 1));
           chunkPromisesRef.current.push(finalP);
         }
@@ -341,7 +362,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
       await Promise.allSettled(chunkPromisesRef.current);
       setPendingCount(0);
 
-      const rawText = getAccumulatedText();
+      const rawText      = getAccumulatedRawText();
+      const enhancedText = getAccumulatedEnhancedText();
+
       if (!rawText) {
         setErrorMsg(
           chunkErrorsRef.current > 0
@@ -352,7 +375,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
         return;
       }
 
-      await enhanceText(rawText);
+      await enhanceText(rawText, enhancedText);
     } catch (e) {
       console.error('[Speech] stopRecording error:', e?.message);
       setErrorMsg('Recording failed. Please try again.');
@@ -362,10 +385,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Enhancement ──────────────────────────────────────────────────────────────
 
-  async function enhanceText(rawText) {
+  async function enhanceText(rawText, enhancedText = '') {
     try {
       const form = new FormData();
       form.append('raw_transcript', rawText);
+      if (enhancedText) form.append('enhanced_transcript', enhancedText);
       const uid = auth.currentUser?.uid;
       if (uid) form.append('user_id', uid);
 
@@ -497,7 +521,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
             {/* Label strip at the bottom of the card */}
             <View style={styles.liveCardFooter}>
               <View style={styles.liveCardDot} />
-              <Text style={styles.liveCardLabel}>LIVE TRANSCRIPT</Text>
+              <Text style={styles.liveCardLabel}>LIVE ENHANCED</Text>
             </View>
           </View>
         </View>

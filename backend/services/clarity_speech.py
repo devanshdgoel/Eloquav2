@@ -69,6 +69,75 @@ INPUT TRANSCRIPTION:
 Return ONLY the corrected text. No explanation, no preamble, no quotation marks."""
 
 
+_CHUNKED_CORRECTION_PROMPT_TEMPLATE = """\
+You are enhancing a real-time transcription chunk from a person with Hypokinetic Dysarthria \
+(Parkinson's disease). The previous speech has already been enhanced and is given as context only.
+
+PREVIOUSLY ENHANCED CONTEXT — do NOT include this in your response:
+"{context}"
+
+NEW CHUNK TO ENHANCE:
+"{raw_text}"
+
+Apply the same Dysarthria correction rules (palilalia, false starts, filler sounds, missing \
+function words, fused words). Use the context to handle sentence continuity naturally.
+
+Return ONLY the enhanced version of the NEW CHUNK. Never repeat or include any text from the \
+PREVIOUSLY ENHANCED CONTEXT. If the chunk begins mid-sentence, start your response from that \
+mid-sentence point."""
+
+
+def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
+    """
+    Enhance a single chunk with awareness of the previous enhanced text.
+    Used during real-time recording so the user sees corrected speech per chunk.
+    Falls back to context-free clarity when context is empty.
+    """
+    if not raw_text or len(raw_text.strip()) < 3:
+        return raw_text
+
+    if not context.strip():
+        return clarity_transcript(raw_text)
+
+    if not ENABLE_CLARITY or not OPENAI_API_KEY:
+        return raw_text
+
+    # Keep only the tail of the context to stay within token budget
+    context_window = context[-400:] if len(context) > 400 else context
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": _CHUNKED_CORRECTION_PROMPT_TEMPLATE.format(
+                        context=context_window,
+                        raw_text=raw_text,
+                    ),
+                },
+            ],
+            temperature=0.15,
+            max_tokens=300,
+        )
+
+        cleaned = response.choices[0].message.content.strip()
+        if not cleaned:
+            return raw_text
+
+        if len(cleaned) > len(raw_text) * MAX_LENGTH_EXPANSION_RATIO:
+            logger.warning("Chunked clarity output too long, discarding")
+            return raw_text
+
+        return cleaned
+
+    except Exception as exc:
+        logger.warning("Chunked clarity failed, returning raw: %s", exc)
+        return raw_text
+
+
 def clarity_transcript(raw_text: str) -> str:
     """
     Apply Hypokinetic Dysarthria-aware clarity enhancement to a raw Whisper
