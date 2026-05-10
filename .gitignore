@@ -21,6 +21,12 @@ backend/firebase-service-account.json
 node_modules/
 frontend/.expo/
 frontend/dist/
+
+# Large media — use external hosting, not git
+*.mp4
+*.mov
+*.avi
+*.mkv
 *.jks
 *.p8
 *.p12
