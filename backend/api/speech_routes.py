@@ -18,6 +18,88 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.post("/transcribe-chunk")
+async def transcribe_chunk(
+    file: UploadFile = File(...),
+    chunk_index: int = Form(0),
+    previous_text: str = Form(""),
+):
+    """
+    Fast-path: transcribe a single audio chunk with Whisper and return the text.
+    No clarity editing, no TTS. Called repeatedly while the user is recording
+    so their words appear in near real-time on the frontend.
+
+    previous_text is passed to Whisper as a context prompt so it understands
+    vocabulary and sentence flow across chunk boundaries.
+    """
+    if not is_valid_audio(file.filename):
+        raise HTTPException(status_code=400, detail="Invalid audio format.")
+
+    contents = await file.read()
+    if len(contents) > MAX_AUDIO_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Chunk too large.")
+    await file.seek(0)
+
+    audio_path = save_uploaded_audio(file)
+
+    try:
+        text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
+    except TranscriptionError as e:
+        if e.error_type == "empty":
+            return success_response({"text": "", "chunk_index": chunk_index})
+        raise HTTPException(status_code=503, detail=e.message)
+
+    return success_response({"text": text, "chunk_index": chunk_index})
+
+
+@router.post("/enhance-text")
+async def enhance_text_route(
+    raw_transcript: str = Form(...),
+    user_id: Optional[str] = Form(None),
+):
+    """
+    Second half of the chunked pipeline: receive an already-merged raw
+    transcript, apply clarity editing, generate ElevenLabs TTS, and return
+    the enhanced result. Called once when the user finishes recording and all
+    chunks have been transcribed.
+    """
+    if not raw_transcript.strip():
+        raise HTTPException(status_code=400, detail="raw_transcript is empty.")
+
+    cleaned_transcript = clarity_transcript(raw_transcript)
+
+    if user_id and has_cloned_voice(user_id):
+        synthesis_voice_id = get_user_voice_id(user_id)
+        logger.info("enhance-text: using cloned voice for user %s", user_id[:8])
+    else:
+        synthesis_voice_id = DEFAULT_PROFILE.voice_id
+
+    voice_settings = {
+        "stability": 0.50,
+        "similarity_boost": 0.75,
+        "style": 0.30,
+        "speed": 1.0,
+    }
+
+    audio_url = None
+    try:
+        enhanced_path = generate_enhanced_speech(
+            cleaned_transcript,
+            voice_id=synthesis_voice_id,
+            voice_settings=voice_settings,
+        )
+        audio_url = f"/api/audio/{enhanced_path.name}"
+    except SpeechEnhancementError as e:
+        logger.warning("enhance-text TTS failed: %s", e)
+
+    return success_response({
+        "cleaned_transcript": cleaned_transcript,
+        "clarity_applied": cleaned_transcript != raw_transcript,
+        "audio_url": audio_url,
+        "voice_profile": DEFAULT_PROFILE.to_dict(),
+    })
+
+
 @router.post("/process-audio")
 async def process_audio(
     file: UploadFile = File(...),

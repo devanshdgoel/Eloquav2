@@ -20,9 +20,23 @@ import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
 
 const { width: SW } = Dimensions.get('window');
-const SC = SW / 402; // Scale factor from Figma 402px frame
+const SC = SW / 402;
 
-// ── Random amoeba blob sets (shown only during recording) ───────────────────
+// How long each audio chunk is before being sent for transcription.
+// 4 s gives ~10–20 words per chunk; first text appears ~5.5 s after
+// the user starts speaking (4 s chunk + ~1.5 s Whisper RTT).
+const CHUNK_INTERVAL_MS = 4000;
+
+// ── Screen states ────────────────────────────────────────────────────────────
+const S = {
+  IDLE:      'idle',
+  RECORDING: 'recording',
+  ENHANCING: 'enhancing', // post-recording: waiting for clarity + TTS
+  RESULTS:   'results',
+  ERROR:     'error',
+};
+
+// ── Amoeba blob SVGs ─────────────────────────────────────────────────────────
 const AMOEBA_SETS = [
   {
     a: `<svg viewBox="0 0 220 260" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -50,18 +64,15 @@ const AMOEBA_SETS = [
   },
 ];
 
-// Black circle with mic-shaped evenodd cutout (renders teal ring + teal mic through holes)
 const MIC_ICON_SVG = `<svg viewBox="0 0 112 112" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path fill-rule="evenodd" clip-rule="evenodd" d="M56 0C86.9279 0 112 25.0721 112 56C112 86.9279 86.9279 112 56 112C25.0721 112 0 86.9279 0 56C0 25.0721 25.0721 0 56 0ZM28 54C28 61 30.2665 67.1337 34.7998 72.4004C39.3331 77.667 45.0667 80.7669 52 81.7002V94H60V81.7002C66.9333 80.7669 72.6669 77.667 77.2002 72.4004C81.7335 67.1337 84 61 84 54H76C76.0053 59.5333 74.0563 64.2498 70.1523 68.1484C66.2484 72.0471 61.5306 73.9973 56 74C50.4693 74.0027 45.7529 72.0537 41.8516 68.1523C37.9503 64.251 36 59.5333 36 54H28ZM56 18C52.6667 18 49.8333 19.1667 47.5 21.5C45.1667 23.8333 44 26.6667 44 30V54C44 57.3333 45.1667 60.1667 47.5 62.5C49.8333 64.8333 52.6667 66 56 66C59.3333 66 62.1667 64.8333 64.5 62.5C66.8333 60.1667 68 57.3333 68 54V30C68 26.6667 66.8333 23.8333 64.5 21.5C62.1667 19.1667 59.3333 18 56 18Z" fill="#000000"/>
 </svg>`;
 
-// ── Mic group: plain circle when idle, random amoeba blobs when recording ───
+// ── Mic group ─────────────────────────────────────────────────────────────────
 function MicGroup({ onPress, scale = 1, isRecording = false }) {
   const s = SC * scale;
   const gW = Math.round(291 * s);
   const gH = Math.round(307 * s);
-
-  // Pick a random blob set when recording starts and hold it for the session
   const blobSet = useRef(AMOEBA_SETS[0]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -80,7 +91,6 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
     }
   }, [isRecording]);
 
-  // When idle — just the circle + mic, no blobs
   if (!isRecording) {
     const circleSize = Math.round(157 * SC);
     return (
@@ -90,12 +100,10 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
         style={{ width: circleSize, height: circleSize, alignItems: 'center', justifyContent: 'center' }}
       >
         <View style={{
-          width: circleSize,
-          height: circleSize,
+          width: circleSize, height: circleSize,
           borderRadius: circleSize / 2,
           backgroundColor: '#2D6974',
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: 'center', justifyContent: 'center',
         }}>
           <SvgXml xml={MIC_ICON_SVG} width={Math.round(112 * SC)} height={Math.round(112 * SC)} />
         </View>
@@ -103,26 +111,28 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
     );
   }
 
-  // When recording — amoeba blobs + circle + mic
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{ width: gW, height: gH }}>
-      <Animated.View style={{ position: 'absolute', left: 0, top: 0, width: gW, height: gH,
-        justifyContent: 'center', alignItems: 'center', transform: [{ scale: pulseAnim }] }}>
+      <Animated.View style={{
+        position: 'absolute', left: 0, top: 0, width: gW, height: gH,
+        justifyContent: 'center', alignItems: 'center',
+        transform: [{ scale: pulseAnim }],
+      }}>
         <View style={{ width: gW, height: gH, transform: [{ rotate: '-148.88deg' }] }}>
           <SvgXml xml={blobSet.current.a} width="100%" height="100%" />
         </View>
       </Animated.View>
-      <Animated.View style={{ position: 'absolute', left: Math.round(20 * s), top: Math.round(53 * s),
-        transform: [{ scale: pulseAnim }] }}>
+      <Animated.View style={{
+        position: 'absolute',
+        left: Math.round(20 * s), top: Math.round(53 * s),
+        transform: [{ scale: pulseAnim }],
+      }}>
         <SvgXml xml={blobSet.current.b} width={Math.round(246 * s)} height={Math.round(221 * s)} />
       </Animated.View>
-      {/* Mic circle */}
       <View style={{
         position: 'absolute',
-        left: Math.round(83 * s),
-        top: Math.round(78 * s),
-        width: Math.round(157 * s),
-        height: Math.round(157 * s),
+        left: Math.round(83 * s), top: Math.round(78 * s),
+        width: Math.round(157 * s), height: Math.round(157 * s),
         borderRadius: Math.round(78.5 * s),
         backgroundColor: '#2D6974',
       }} />
@@ -136,24 +146,132 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
   );
 }
 
-// ── Screen states ───────────────────────────────────────────────────────────
-const S = { IDLE: 'idle', RECORDING: 'recording', PROCESSING: 'processing', RESULTS: 'results', ERROR: 'error' };
+// ── Animated ellipsis indicator ───────────────────────────────────────────────
+function PendingDots() {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return <Animated.Text style={[styles.pendingDots, { opacity: anim }]}>  ···</Animated.Text>;
+}
 
-// ── Main screen ─────────────────────────────────────────────────────────────
+// ── Main screen ───────────────────────────────────────────────────────────────
 export default function SpeechEnhancementScreen({ navigation }) {
-  const [phase, setPhase] = useState(S.IDLE);
-  const [result, setResult] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [phase,          setPhase]          = useState(S.IDLE);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [pendingCount,   setPendingCount]   = useState(0);
+  const [result,         setResult]         = useState(null);
+  const [isPlaying,      setIsPlaying]      = useState(false);
+  const [errorMsg,       setErrorMsg]       = useState('');
 
-  const recordingRef = useRef(null);
-  const soundRef = useRef(null);
+  // Chunk bookkeeping — plain refs to avoid re-render storms
+  const recordingRef      = useRef(null);
+  const soundRef          = useRef(null);
+  const chunkTimerRef     = useRef(null);
+  const chunkIndexRef     = useRef(0);
+  const chunksRef         = useRef({});       // { [chunkIndex]: text }
+  const chunkPromisesRef  = useRef([]);
+  const stoppingRef       = useRef(false);
+  const isRotatingRef     = useRef(false);    // true while rotateChunk is mid-execution
+  const chunkErrorsRef    = useRef(0);        // count of failed chunk requests
 
   useEffect(() => {
-    return () => { soundRef.current?.unloadAsync(); };
+    return () => {
+      soundRef.current?.unloadAsync();
+      clearTimeout(chunkTimerRef.current);
+      recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+    };
   }, []);
 
-  // ── Recording ─────────────────────────────────────────────────────────────
+  // ── Chunk helpers ────────────────────────────────────────────────────────────
+
+  function getAccumulatedText() {
+    return Object.keys(chunksRef.current)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(i => chunksRef.current[i])
+      .join(' ')
+      .trim();
+  }
+
+  async function transcribeChunk(uri, index, previousText) {
+    try {
+      const form = new FormData();
+      form.append('file', { uri, type: 'audio/m4a', name: `chunk_${index}.m4a` });
+      form.append('chunk_index', String(index));
+      if (previousText) form.append('previous_text', previousText);
+
+      const res = await fetch(`${API_BASE_URL}/api/transcribe-chunk`, {
+        method: 'POST',
+        body: form,
+      });
+
+      if (!res.ok) {
+        console.error(`[Speech] chunk ${index} → HTTP ${res.status}`);
+        chunkErrorsRef.current += 1;
+        return;
+      }
+
+      const data = await res.json();
+      const text = data.text?.trim();
+      if (text) {
+        chunksRef.current[index] = text;
+        setLiveTranscript(getAccumulatedText());
+      }
+    } catch (e) {
+      console.error(`[Speech] chunk ${index} error:`, e?.message);
+      chunkErrorsRef.current += 1;
+    }
+  }
+
+  // Stop the active recording, immediately start a fresh one, and fire the
+  // completed chunk at the backend concurrently.
+  async function rotateChunk() {
+    if (stoppingRef.current || !recordingRef.current) return;
+
+    isRotatingRef.current = true;
+    const index        = chunkIndexRef.current++;
+    const previousText = getAccumulatedText();
+    const finished     = recordingRef.current;
+    recordingRef.current = null;
+
+    try {
+      await finished.stopAndUnloadAsync();
+      const uri = finished.getURI();
+
+      // Start the next recording before sending the chunk so there's no
+      // audible gap for the user.
+      if (!stoppingRef.current) {
+        const { recording: next } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        recordingRef.current = next;
+      }
+
+      if (uri) {
+        setPendingCount(c => c + 1);
+        const p = transcribeChunk(uri, index, previousText)
+          .finally(() => setPendingCount(c => c - 1));
+        chunkPromisesRef.current.push(p);
+      }
+    } catch (e) {
+      console.error('[Speech] rotateChunk error:', e?.message);
+    } finally {
+      isRotatingRef.current = false;
+    }
+
+    if (!stoppingRef.current) {
+      chunkTimerRef.current = setTimeout(rotateChunk, CHUNK_INTERVAL_MS);
+    }
+  }
+
+  // ── Recording control ────────────────────────────────────────────────────────
+
   async function startRecording() {
     try {
       const { status } = await Audio.requestPermissionsAsync();
@@ -161,72 +279,144 @@ export default function SpeechEnhancementScreen({ navigation }) {
         Alert.alert('Microphone Required', 'Please enable microphone access in your device settings.');
         return;
       }
+
+      chunkIndexRef.current    = 0;
+      chunksRef.current        = {};
+      chunkPromisesRef.current = [];
+      chunkErrorsRef.current   = 0;
+      stoppingRef.current      = false;
+      isRotatingRef.current    = false;
+      setLiveTranscript('');
+      setPendingCount(0);
+      setResult(null);
+
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
       recordingRef.current = recording;
       setPhase(S.RECORDING);
+      chunkTimerRef.current = setTimeout(rotateChunk, CHUNK_INTERVAL_MS);
     } catch {
       Alert.alert('Error', 'Could not start recording.');
     }
   }
 
   async function stopRecording() {
-    if (!recordingRef.current) return;
+    stoppingRef.current = true;
+    clearTimeout(chunkTimerRef.current);
+    chunkTimerRef.current = null;
+
+    // If rotateChunk is mid-execution (it has nulled recordingRef and is
+    // awaiting stopAndUnloadAsync or createAsync), wait for it to finish
+    // before we proceed — otherwise we'd race on recordingRef and
+    // chunkPromisesRef.
+    while (isRotatingRef.current) {
+      await new Promise(r => setTimeout(r, 30));
+    }
+
+    // Switch to ENHANCING immediately so the UI is responsive.
+    setPhase(S.ENHANCING);
+
+    const lastRecording = recordingRef.current;
+    recordingRef.current = null;
+
     try {
-      setPhase(S.PROCESSING);
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-      await uploadAudio(uri);
-    } catch {
+
+      if (lastRecording) {
+        const index        = chunkIndexRef.current++;
+        const previousText = getAccumulatedText();
+        await lastRecording.stopAndUnloadAsync();
+        const uri = lastRecording.getURI();
+
+        if (uri) {
+          setPendingCount(c => c + 1);
+          const finalP = transcribeChunk(uri, index, previousText)
+            .finally(() => setPendingCount(c => c - 1));
+          chunkPromisesRef.current.push(finalP);
+        }
+      }
+
+      await Promise.allSettled(chunkPromisesRef.current);
+      setPendingCount(0);
+
+      const rawText = getAccumulatedText();
+      if (!rawText) {
+        setErrorMsg(
+          chunkErrorsRef.current > 0
+            ? 'Could not reach the server. Make sure your backend is running and try again.'
+            : 'No speech was detected. Please speak clearly and try again.'
+        );
+        setPhase(S.ERROR);
+        return;
+      }
+
+      await enhanceText(rawText);
+    } catch (e) {
+      console.error('[Speech] stopRecording error:', e?.message);
       setErrorMsg('Recording failed. Please try again.');
       setPhase(S.ERROR);
     }
   }
 
-  // ── Upload ────────────────────────────────────────────────────────────────
-  async function uploadAudio(uri) {
+  // ── Enhancement ──────────────────────────────────────────────────────────────
+
+  async function enhanceText(rawText) {
     try {
       const form = new FormData();
-      form.append('file', { uri, type: 'audio/m4a', name: 'recording.m4a' });
-
-      // Include the user's Firebase UID so the backend can use their cloned
-      // voice for synthesis if one exists. Falls back gracefully if null.
+      form.append('raw_transcript', rawText);
       const uid = auth.currentUser?.uid;
       if (uid) form.append('user_id', uid);
 
-      const res = await fetch(`${API_BASE_URL}/api/process-audio`, { method: 'POST', body: form });
+      const res = await fetch(`${API_BASE_URL}/api/enhance-text`, {
+        method: 'POST',
+        body: form,
+      });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `Server error (${res.status})`);
       }
-      setResult(await res.json());
+
+      const data = await res.json();
+      setResult({ ...data, raw_transcript: rawText });
       setPhase(S.RESULTS);
     } catch (e) {
-      setErrorMsg(e.message || 'Processing failed. Please try again.');
+      console.error('[Speech] enhanceText error:', e?.message);
+      setErrorMsg(e.message || 'Enhancement failed. Please try again.');
       setPhase(S.ERROR);
     }
   }
 
-  // ── Playback ──────────────────────────────────────────────────────────────
+  // ── Playback ─────────────────────────────────────────────────────────────────
+
   async function playEnhanced() {
     if (!result?.audio_url) return;
     try {
       if (soundRef.current) { await soundRef.current.unloadAsync(); soundRef.current = null; }
       const { sound } = await Audio.Sound.createAsync(
         { uri: `${API_BASE_URL}${result.audio_url}` },
-        { shouldPlay: true }
+        { shouldPlay: true, rate: 0.85, shouldCorrectPitch: true }
       );
       soundRef.current = sound;
       setIsPlaying(true);
-      sound.setOnPlaybackStatusUpdate(s => { if (s.didJustFinish || !s.isLoaded) setIsPlaying(false); });
+      sound.setOnPlaybackStatusUpdate(s => {
+        if (s.didJustFinish || !s.isLoaded) {
+          setIsPlaying(false);
+          sound.unloadAsync().catch(() => {});
+          if (soundRef.current === sound) soundRef.current = null;
+        }
+      });
     } catch {
       Alert.alert('Playback Error', 'Could not play the enhanced audio.');
     }
   }
 
-  async function stopPlayback() { await soundRef.current?.stopAsync(); setIsPlaying(false); }
+  async function stopPlayback() {
+    await soundRef.current?.stopAsync();
+    setIsPlaying(false);
+  }
 
   async function shareText() {
     const text = result?.cleaned_transcript || result?.raw_transcript || '';
@@ -234,14 +424,22 @@ export default function SpeechEnhancementScreen({ navigation }) {
   }
 
   const reset = useCallback(() => {
-    soundRef.current?.unloadAsync(); soundRef.current = null;
-    setIsPlaying(false); setResult(null); setErrorMsg(''); setPhase(S.IDLE);
+    soundRef.current?.unloadAsync();
+    soundRef.current = null;
+    setIsPlaying(false);
+    setResult(null);
+    setErrorMsg('');
+    setLiveTranscript('');
+    setPendingCount(0);
+    setPhase(S.IDLE);
   }, []);
 
   const handleMicPress = () => {
-    if (phase === S.IDLE) startRecording();
+    if (phase === S.IDLE)      startRecording();
     else if (phase === S.RECORDING) stopRecording();
   };
+
+  const showPending = pendingCount > 0;
 
   return (
     <LinearGradient
@@ -252,48 +450,80 @@ export default function SpeechEnhancementScreen({ navigation }) {
     >
       <StatusBar barStyle="dark-content" />
 
-      {/* Back button — hidden while recording */}
       {phase !== S.RECORDING && (
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
       )}
 
-      {/* Title — always visible */}
       <Text style={styles.title}>Speech{'\n'}Enhancement</Text>
 
-      {/* ── IDLE ─────────────────────────────────────────────────────────── */}
+      {/* ── IDLE ──────────────────────────────────────────────────────────── */}
       {phase === S.IDLE && (
         <View style={styles.idleArea}>
-          <MicGroup onPress={handleMicPress} scale={1} isRecording={false} />
+          <MicGroup onPress={handleMicPress} isRecording={false} />
           <Text style={styles.hintText}>Press mic to start</Text>
         </View>
       )}
 
-      {/* ── RECORDING ────────────────────────────────────────────────────── */}
+      {/* ── RECORDING ─────────────────────────────────────────────────────── */}
       {phase === S.RECORDING && (
         <View style={styles.recordingArea}>
-          <MicGroup onPress={handleMicPress} scale={0.85} isRecording={true} />
-          <Text style={styles.hintText}>Press mic to finish</Text>
+          {/* Mic lives at the top so the transcript card has room below */}
+          <View style={styles.micRow}>
+            <MicGroup onPress={handleMicPress} scale={0.78} isRecording />
+          </View>
+
+          <Text style={styles.hintText}>Tap mic to finish</Text>
+
+          {/* Live transcript card — appears as soon as the first chunk lands */}
           <View style={styles.liveCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.liveCardText}>
-                Press the button above and start speaking
-              </Text>
+            <ScrollView
+              contentContainerStyle={styles.liveCardPad}
+              showsVerticalScrollIndicator={false}
+            >
+              {liveTranscript ? (
+                <Text style={styles.liveText}>
+                  {liveTranscript}
+                  {showPending && <PendingDots />}
+                </Text>
+              ) : (
+                <Text style={styles.liveTextPlaceholder}>
+                  {showPending ? 'Transcribing…' : 'Listening…'}
+                </Text>
+              )}
             </ScrollView>
+
+            {/* Label strip at the bottom of the card */}
+            <View style={styles.liveCardFooter}>
+              <View style={styles.liveCardDot} />
+              <Text style={styles.liveCardLabel}>LIVE TRANSCRIPT</Text>
+            </View>
           </View>
         </View>
       )}
 
-      {/* ── PROCESSING ───────────────────────────────────────────────────── */}
-      {phase === S.PROCESSING && (
-        <View style={styles.centeredArea}>
+      {/* ── ENHANCING ─────────────────────────────────────────────────────── */}
+      {phase === S.ENHANCING && (
+        <View style={styles.enhancingArea}>
           <ActivityIndicator size="large" color="#1C4047" />
-          <Text style={styles.processingText}>Enhancing your speech…</Text>
+          <Text style={styles.enhancingText}>Polishing your words…</Text>
+
+          {/* Keep the raw transcript visible while the AI works */}
+          {liveTranscript ? (
+            <View style={[styles.liveCard, styles.liveCardDim]}>
+              <ScrollView
+                contentContainerStyle={styles.liveCardPad}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.liveTextDim}>{liveTranscript}</Text>
+              </ScrollView>
+            </View>
+          ) : null}
         </View>
       )}
 
-      {/* ── ERROR ────────────────────────────────────────────────────────── */}
+      {/* ── ERROR ─────────────────────────────────────────────────────────── */}
       {phase === S.ERROR && (
         <View style={styles.centeredArea}>
           <Text style={styles.errorTitle}>Something went wrong</Text>
@@ -304,19 +534,33 @@ export default function SpeechEnhancementScreen({ navigation }) {
         </View>
       )}
 
-      {/* ── RESULTS ──────────────────────────────────────────────────────── */}
+      {/* ── RESULTS ───────────────────────────────────────────────────────── */}
       {phase === S.RESULTS && result && (
         <View style={styles.resultsArea}>
-          {/* Transcript card */}
           <View style={styles.transcriptCard}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.transcriptPad}>
-              <Text style={styles.transcriptText}>
-                {result.cleaned_transcript || result.raw_transcript}
-              </Text>
+              {/* Show both versions when clarity actually changed something */}
+              {result.clarity_applied && result.raw_transcript && (
+                <>
+                  <Text style={styles.transcriptLabel}>ENHANCED</Text>
+                  <Text style={styles.transcriptText}>
+                    {result.cleaned_transcript}
+                  </Text>
+                  <View style={styles.rawDivider} />
+                  <Text style={styles.transcriptLabel}>YOUR WORDS</Text>
+                  <Text style={styles.rawText}>
+                    {result.raw_transcript}
+                  </Text>
+                </>
+              )}
+              {!result.clarity_applied && (
+                <Text style={styles.transcriptText}>
+                  {result.cleaned_transcript || result.raw_transcript}
+                </Text>
+              )}
             </ScrollView>
           </View>
 
-          {/* Play button */}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={isPlaying ? stopPlayback : playEnhanced}
@@ -326,146 +570,169 @@ export default function SpeechEnhancementScreen({ navigation }) {
             <Text style={styles.actionIcon}>🔊</Text>
           </TouchableOpacity>
 
-          {/* Copy text button */}
           <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85}>
             <Text style={styles.actionLabel}>Copy text</Text>
             <Text style={styles.actionIcon}>📋</Text>
           </TouchableOpacity>
 
-          {/* Copy audio button */}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => Alert.alert('Copy Audio', 'Not supported on this device.')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.actionLabel}>Copy audio</Text>
-            <Text style={styles.actionIcon}>🎵</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.newRecordBtn} onPress={reset}>
-            <Text style={styles.newRecordText}>New recording</Text>
+          <TouchableOpacity style={styles.newRecordBtn} onPress={reset} activeOpacity={0.85}>
+            <Text style={styles.actionLabel}>New recording</Text>
+            <Text style={styles.actionIcon}>🎙️</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Wave logo — always bottom-right */}
       <Image
         source={require('../../assets/images/wave-logo.png')}
         style={styles.waveLogo}
         resizeMode="contain"
+        accessible={false}
       />
     </LinearGradient>
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
+const TEAL   = '#1C4047';
+const WHITE  = '#FFFFFF';
+const ORANGE = '#FE9C2D';
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
   backBtn: {
-    position: 'absolute',
-    top: 52,
-    left: 20,
-    zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    position: 'absolute', top: 52, left: 20, zIndex: 10,
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 1.5, borderColor: 'rgba(28,64,71,0.18)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  backArrow: { color: '#1C4047', fontSize: 18, fontWeight: '600' },
+  backArrow: { color: TEAL, fontSize: 24, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 
-  // Title — Figma: 45px, center, letterSpacing 2.25, top=56
   title: {
     marginTop: Math.round(56 * SC),
     fontSize: Math.round(45 * SC),
     fontWeight: '800',
-    color: '#1C4047',
+    color: TEAL,
     textAlign: 'center',
     letterSpacing: 2.25,
     lineHeight: Math.round(70 * SC),
   },
 
-  // IDLE
+  // ── IDLE ──
   idleArea: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 60,
+    flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60,
   },
 
-  // RECORDING
+  // ── RECORDING ──
   recordingArea: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 8,
+    paddingHorizontal: Math.round(20 * SC),
+    paddingBottom: 24,
+    gap: 10 * SC,
   },
+  micRow: {
+    alignItems: 'center',
+  },
+
+  hintText: {
+    fontSize: Math.round(20 * SC),
+    color: TEAL,
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+
+  // ── Live transcript card ──
   liveCard: {
     flex: 1,
-    marginTop: 16,
-    marginBottom: 28,
-    marginHorizontal: Math.round(54 * SC),
-    backgroundColor: '#FFFFFF',
-    borderRadius: 30,
-    padding: 20,
+    width: '100%',
+    backgroundColor: WHITE,
+    borderRadius: 24 * SC,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-    alignSelf: 'stretch',
+    shadowRadius: 10,
+    elevation: 4,
+    overflow: 'hidden',
   },
-  liveCardText: {
+  liveCardDim: {
+    opacity: 0.55,
+  },
+  liveCardPad: {
+    padding: 18 * SC,
+    paddingBottom: 8 * SC,
+    flexGrow: 1,
+  },
+  liveText: {
     fontSize: Math.round(16 * SC),
-    color: '#000000',
-    letterSpacing: 1.6,
-    lineHeight: 24,
+    color: '#111',
+    lineHeight: 26 * SC,
+    letterSpacing: 0.3,
+  },
+  liveTextDim: {
+    fontSize: Math.round(15 * SC),
+    color: '#444',
+    lineHeight: 24 * SC,
+    letterSpacing: 0.3,
+  },
+  liveTextPlaceholder: {
+    fontSize: Math.round(15 * SC),
+    color: 'rgba(28,64,71,0.40)',
+    fontStyle: 'italic',
+    letterSpacing: 0.5,
+  },
+  pendingDots: {
+    fontSize: Math.round(16 * SC),
+    color: ORANGE,
+    fontWeight: '700',
+  },
+  liveCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 18 * SC,
+    paddingVertical: 10 * SC,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(28,64,71,0.08)',
+  },
+  liveCardDot: {
+    width: 7, height: 7, borderRadius: 3.5,
+    backgroundColor: ORANGE,
+  },
+  liveCardLabel: {
+    fontSize: 10 * SC,
+    fontWeight: '700',
+    color: 'rgba(28,64,71,0.45)',
+    letterSpacing: 1.5,
   },
 
-  // Hint text — Figma: Kulim Park, 24px, letterSpacing 2.4
-  hintText: {
-    marginTop: 24,
-    fontSize: Math.round(24 * SC),
-    color: '#1C4047',
-    letterSpacing: 2.4,
-    textAlign: 'center',
-  },
-
-  // PROCESSING / ERROR
-  centeredArea: {
+  // ── ENHANCING ──
+  enhancingArea: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    paddingBottom: 60,
+    paddingHorizontal: Math.round(20 * SC),
+    paddingBottom: 24,
+    gap: 14 * SC,
   },
-  processingText: {
-    fontSize: 20,
-    color: '#1C4047',
+  enhancingText: {
+    fontSize: Math.round(20 * SC),
+    color: TEAL,
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
-  errorTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1C4047',
-    textAlign: 'center',
-  },
-  errorSub: {
-    fontSize: 15,
-    color: 'rgba(28,64,71,0.6)',
-    textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: 32,
-  },
-  retryBtn: {
-    marginTop: 8,
-    backgroundColor: '#1C4047',
-    borderRadius: 14,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-  },
-  retryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
 
-  // RESULTS — Figma: card left=57, w=294, buttons left=58, w=291, h=52, rounded=20
+  // ── ERROR ──
+  centeredArea: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    gap: 16, paddingBottom: 60,
+  },
+  errorTitle: { fontSize: 22, fontWeight: '700', color: TEAL, textAlign: 'center' },
+  errorSub:   { fontSize: 15, color: 'rgba(28,64,71,0.6)', textAlign: 'center', lineHeight: 22, paddingHorizontal: 32 },
+  retryBtn:   { marginTop: 8, backgroundColor: TEAL, borderRadius: 14, paddingHorizontal: 32, paddingVertical: 14 },
+  retryText:  { color: WHITE, fontSize: 16, fontWeight: '600' },
+
+  // ── RESULTS ──
   resultsArea: {
     flex: 1,
     paddingHorizontal: Math.round(57 * SC),
@@ -474,7 +741,7 @@ const styles = StyleSheet.create({
   },
   transcriptCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: WHITE,
     borderRadius: 30,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -482,52 +749,54 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  transcriptPad: {
-    padding: 20,
+  transcriptPad: { padding: 20 },
+  transcriptLabel: {
+    fontSize: 10 * SC,
+    fontWeight: '800',
+    color: 'rgba(28,64,71,0.40)',
+    letterSpacing: 2,
+    marginBottom: 6,
   },
   transcriptText: {
     fontSize: Math.round(16 * SC),
-    color: '#000000',
-    letterSpacing: 1.6,
-    lineHeight: 24,
+    color: '#000',
+    letterSpacing: 1.2,
+    lineHeight: 26 * SC,
+  },
+  rawDivider: {
+    height: 1,
+    backgroundColor: 'rgba(28,64,71,0.08)',
+    marginVertical: 14 * SC,
+  },
+  rawText: {
+    fontSize: Math.round(13 * SC),
+    color: 'rgba(0,0,0,0.40)',
+    letterSpacing: 0.5,
+    lineHeight: 20 * SC,
   },
 
-  // Action buttons — Figma: black pill, h=52, rounded=20
   actionBtn: {
-    backgroundColor: '#000000',
+    backgroundColor: '#000',
     borderRadius: Math.round(20 * SC),
     height: Math.round(52 * SC),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
   },
-  actionLabel: {
-    color: '#FFFFFF',
-    fontSize: Math.round(24 * SC),
-    fontWeight: '700',
-    letterSpacing: 2.4,
-  },
-  actionIcon: {
-    fontSize: Math.round(20 * SC),
-  },
+  actionLabel: { color: WHITE, fontSize: Math.round(20 * SC), fontWeight: '700', letterSpacing: 1.8 },
+  actionIcon:  { fontSize: Math.round(20 * SC) },
 
   newRecordBtn: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  newRecordText: {
-    color: '#1C4047',
-    fontSize: Math.round(15 * SC),
-    letterSpacing: 0.5,
+    backgroundColor: '#3A8C4A',
+    borderRadius: Math.round(20 * SC),
+    height: Math.round(52 * SC),
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
+    shadowColor: '#3A8C4A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
   },
 
-  // Wave logo — Figma: left=245, top=814, w=146, h=55
   waveLogo: {
     position: 'absolute',
-    bottom: 24,
-    right: Math.round(16 * SC),
-    width: Math.round(146 * SC),
-    height: Math.round(55 * SC),
+    bottom: 24, right: Math.round(16 * SC),
+    width: Math.round(146 * SC), height: Math.round(55 * SC),
   },
 });

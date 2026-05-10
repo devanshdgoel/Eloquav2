@@ -13,10 +13,14 @@ class TranscriptionError(Exception):
         super().__init__(message)
 
 
-def transcribe_audio(audio_path: str) -> tuple:
+def transcribe_audio(audio_path: str, prompt: str = "") -> tuple:
     """
     Returns (text: str, duration_seconds: float).
     Uses verbose_json so we get audio duration for speaking-rate analysis.
+
+    prompt: optional previous transcript text passed to Whisper for context
+    continuity across chunks — greatly improves accuracy at chunk boundaries.
+    Whisper's prompt window is ~224 tokens; we send the last 800 chars.
     """
     if not OPENAI_API_KEY:
         raise TranscriptionError(
@@ -33,6 +37,9 @@ def transcribe_audio(audio_path: str) -> tuple:
         "model": (None, "whisper-1"),
         "response_format": (None, "verbose_json"),
     }
+
+    if prompt:
+        files["prompt"] = (None, prompt[-800:])
 
     try:
         response = requests.post(
