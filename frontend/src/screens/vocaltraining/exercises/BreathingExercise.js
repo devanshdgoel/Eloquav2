@@ -8,10 +8,9 @@ import {
   Animated,
   Dimensions,
   Image,
-  PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video, ResizeMode, Audio } from 'expo-av';
+import { Audio } from 'expo-av';
 import Svg, { Path, Polygon } from 'react-native-svg';
 import CantDoNow from '../../../components/CantDoNow';
 
@@ -179,112 +178,15 @@ const ts = StyleSheet.create({
   arrowText: { color: '#FFFFFF', fontSize: 26, fontWeight: '300' },
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function formatTime(ms) {
-  if (!ms || isNaN(ms)) return '0:00';
-  const total = Math.floor(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+const INSTRUCTIONS = [
+  { step: '1', text: 'Sit upright with one hand on your chest and one on your abdomen.' },
+  { step: '2', text: 'Breathe in slowly through your nose for 4 counts. Feel your abdomen rise.' },
+  { step: '3', text: 'Hold gently for 2 counts.' },
+  { step: '4', text: 'Breathe out through your mouth for 4 counts. Let your abdomen fall.' },
+];
 
-// ── Play / Pause SVG icons ────────────────────────────────────────────────────
-function PlayIcon({ size = 22 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Polygon points="5,3 19,12 5,21" fill="#FFFFFF" />
-    </Svg>
-  );
-}
-function PauseIcon({ size = 22 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="#FFFFFF" />
-    </Svg>
-  );
-}
-function Skip10Icon({ size = 20 }) {
-  // forward arrow with "10" label
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M18 13a6 6 0 1 1-6-6h.5"
-        stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round"
-      />
-      <Path
-        d="M15 4l3.5 3L15 10"
-        stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-// ── Screen 1: Video (instruction screen) ─────────────────────────────────────
+// ── Screen 1: Instructions ────────────────────────────────────────────────────
 function VideoScreen({ onNext, onExit }) {
-  const videoRef = useRef(null);
-  const [isPlaying, setIsPlaying]   = useState(false);
-  const [positionMs, setPositionMs] = useState(0);
-  const [durationMs, setDurationMs] = useState(0);
-  const [hasEnded,   setHasEnded]   = useState(false);
-
-  const scrubberWidthRef = useRef(1);
-  // Ref keeps duration current inside PanResponder closures (avoids stale state capture)
-  const durationMsRef = useRef(0);
-
-  useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-    });
-  }, []);
-
-  function handleStatus(status) {
-    if (!status.isLoaded) return;
-    setIsPlaying(status.isPlaying ?? false);
-    setPositionMs(status.positionMillis ?? 0);
-    const dur = status.durationMillis ?? 0;
-    durationMsRef.current = dur;
-    setDurationMs(dur);
-    if (status.didJustFinish) setHasEnded(true);
-  }
-
-  async function togglePlay() {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      await videoRef.current.pauseAsync();
-    } else {
-      if (hasEnded) {
-        await videoRef.current.setPositionAsync(0);
-        setHasEnded(false);
-      }
-      await videoRef.current.playAsync();
-    }
-  }
-
-  // Uses refs only — safe to capture inside PanResponder once
-  async function seekTo(x) {
-    if (!videoRef.current || !durationMsRef.current) return;
-    const fraction = Math.max(0, Math.min(1, x / scrubberWidthRef.current));
-    await videoRef.current.setPositionAsync(Math.floor(fraction * durationMsRef.current));
-  }
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder:  () => true,
-      onPanResponderGrant: async (e) => {
-        await videoRef.current?.pauseAsync();
-        seekTo(e.nativeEvent.locationX);
-      },
-      onPanResponderMove:   (e) => { seekTo(e.nativeEvent.locationX); },
-      onPanResponderRelease: async () => { await videoRef.current?.playAsync(); },
-    })
-  ).current;
-
-  const progress = durationMs > 0 ? positionMs / durationMs : 0;
-  const btnLabel = hasEnded ? 'Begin Exercise  →' : 'Skip  →';
-
   return (
     <FadeIn>
       <LinearGradient
@@ -294,70 +196,31 @@ function VideoScreen({ onNext, onExit }) {
       />
       <StatusBar barStyle="light-content" />
 
-      {/* Header */}
       <View style={vs.header}>
-        {/* Back — just an arrow, no text */}
-        <TouchableOpacity style={vs.iconBtn} onPress={onExit} activeOpacity={0.8} accessibilityLabel="Go back">
+        <TouchableOpacity style={vs.iconBtn} onPress={onExit} activeOpacity={0.8}>
           <Text style={vs.iconBtnText}>←</Text>
         </TouchableOpacity>
-
         <View style={vs.pill}>
           <Text style={vs.pillText}>INSTRUCTIONS</Text>
         </View>
-
-        {/* Spacer to balance layout */}
         <View style={vs.iconBtn} />
       </View>
 
-      {/* Title */}
       <Text style={vs.heading}>Diaphragmatic{'\n'}Breathing Technique</Text>
 
-      {/* Video */}
-      <View style={vs.videoBox}>
-        <Video
-          ref={videoRef}
-          source={require('../../../../assets/videos/BreathingDemo.mp4')}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={false}
-          isLooping={false}
-          isMuted={false}
-          onPlaybackStatusUpdate={handleStatus}
-        />
-
-        {/* Tap video to toggle play */}
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={togglePlay} activeOpacity={1} />
-
-        {/* Centre play overlay — visible when paused */}
-        {!isPlaying && (
-          <View style={vs.playOverlay} pointerEvents="none">
-            <View style={vs.playCircle}>
-              <PlayIcon size={28} />
+      <View style={vs.cardBox}>
+        {INSTRUCTIONS.map(({ step, text }) => (
+          <View key={step} style={vs.instrRow}>
+            <View style={vs.stepBadge}>
+              <Text style={vs.stepNum}>{step}</Text>
             </View>
+            <Text style={vs.instrText}>{text}</Text>
           </View>
-        )}
+        ))}
       </View>
 
-      {/* Timeline only — no duplicate button row */}
-      <View style={vs.controls}>
-        <View style={vs.timeRow}>
-          <Text style={vs.timeText}>{formatTime(positionMs)}</Text>
-          <Text style={vs.timeText}>{formatTime(durationMs)}</Text>
-        </View>
-        <View
-          style={vs.scrubberTrack}
-          onLayout={e => { scrubberWidthRef.current = e.nativeEvent.layout.width; }}
-          {...panResponder.panHandlers}
-          hitSlop={{ top: 14, bottom: 14 }}
-        >
-          <View style={[vs.scrubberFill, { width: `${progress * 100}%` }]} />
-          <View style={[vs.scrubberThumb, { left: `${progress * 100}%` }]} />
-        </View>
-      </View>
-
-      {/* Single CTA button: "Skip →" until video ends, then "Begin Exercise →" */}
       <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85}>
-        <Text style={vs.startText}>{btnLabel}</Text>
+        <Text style={vs.startText}>Begin Exercise  →</Text>
       </TouchableOpacity>
     </FadeIn>
   );
@@ -369,7 +232,6 @@ const vs = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     gap: 10,
   },
-  // Icon-only back button (arrow, no text)
   iconBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.10)',
@@ -377,71 +239,35 @@ const vs = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   iconBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '300' },
-
   pill: {
-    flex: 1,
-    backgroundColor: '#FFA940', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 5,
-    alignItems: 'center',
+    flex: 1, backgroundColor: '#FFA940', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 5, alignItems: 'center',
   },
   pillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
-
   heading: {
     color: 'rgba(255,255,255,0.90)', fontSize: 20, fontWeight: '700',
     textAlign: 'center', letterSpacing: 0.4, lineHeight: 28,
-    marginTop: 18, marginBottom: 14, paddingHorizontal: 24,
+    marginTop: 18, marginBottom: 24, paddingHorizontal: 24,
   },
-
-  videoBox: {
-    alignSelf: 'center',
-    width: W - 40, height: H * 0.40, borderRadius: 24,
-    backgroundColor: '#000', overflow: 'hidden',
+  cardBox: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
   },
-  playOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center', justifyContent: 'center',
+  instrRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  stepBadge: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: '#FFA940',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  playCircle: {
-    width: 68, height: 68, borderRadius: 34,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-    paddingLeft: 4,
+  stepNum: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  instrText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 15, lineHeight: 22, fontWeight: '400',
   },
-
-  // Timeline only — no duplicate button row
-  controls: {
-    marginTop: 18, paddingHorizontal: 24,
-  },
-  timeRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  timeText: {
-    color: 'rgba(255,255,255,0.50)', fontSize: 12, fontWeight: '500',
-    fontVariant: ['tabular-nums'],
-  },
-  scrubberTrack: {
-    height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    position: 'relative', justifyContent: 'center',
-  },
-  scrubberFill: {
-    height: '100%', borderRadius: 2,
-    backgroundColor: '#FE9C2D',
-  },
-  scrubberThumb: {
-    position: 'absolute',
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: '#FE9C2D',
-    top: -5, marginLeft: -7,
-    shadowColor: '#FE9C2D',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8, shadowRadius: 4,
-  },
-
   startBtn: {
-    alignSelf: 'center', marginTop: 28,
+    alignSelf: 'center', marginTop: 32,
     backgroundColor: '#FE9C2D', borderRadius: 14,
     paddingHorizontal: 40, paddingVertical: 16,
     shadowColor: '#FE9C2D', shadowOffset: { width: 0, height: 5 },
