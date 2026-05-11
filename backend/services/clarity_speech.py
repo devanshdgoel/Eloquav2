@@ -62,11 +62,12 @@ RULES:
 - Never change the speaker's word choices.
 - Preserve the speaker's exact intent and all factual content.
 - Fix punctuation and capitalisation normally.
+- Never wrap the output in quotation marks of any kind.
 
 INPUT TRANSCRIPTION:
 "{raw_text}"
 
-Return ONLY the corrected text. No explanation, no preamble, no quotation marks."""
+Return ONLY the corrected text. No explanation, no preamble, no wrapping quotation marks."""
 
 
 _CHUNKED_CORRECTION_PROMPT_TEMPLATE = """\
@@ -84,7 +85,19 @@ function words, fused words). Use the context to handle sentence continuity natu
 
 Return ONLY the enhanced version of the NEW CHUNK. Never repeat or include any text from the \
 PREVIOUSLY ENHANCED CONTEXT. If the chunk begins mid-sentence, start your response from that \
-mid-sentence point."""
+mid-sentence point. Never wrap the output in quotation marks."""
+
+
+def _strip_wrapping_quotes(text: str) -> str:
+    """Remove outer quotation marks GPT sometimes wraps the whole response in."""
+    t = text.strip()
+    if len(t) >= 2 and (
+        (t.startswith('"') and t.endswith('"')) or
+        (t.startswith('“') and t.endswith('”')) or  # " "
+        (t.startswith("'") and t.endswith("'"))
+    ):
+        t = t[1:-1].strip()
+    return t
 
 
 def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
@@ -123,7 +136,7 @@ def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
             max_tokens=300,
         )
 
-        cleaned = response.choices[0].message.content.strip()
+        cleaned = _strip_wrapping_quotes(response.choices[0].message.content.strip())
         if not cleaned:
             return raw_text
 
@@ -175,7 +188,7 @@ def clarity_transcript(raw_text: str) -> str:
             max_tokens=500,
         )
 
-        cleaned = response.choices[0].message.content.strip()
+        cleaned = _strip_wrapping_quotes(response.choices[0].message.content.strip())
 
         if not cleaned:
             return raw_text

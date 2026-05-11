@@ -18,41 +18,64 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Hallucination filter ──────────────────────────────────────────────────────
-# Whisper was trained on YouTube data and fills silence with common phrases.
-_WHISPER_HALLUCINATIONS = frozenset({
+# Whisper was trained on YouTube/subtitle data and fills silence with common
+# phrases. We use substring matching so variants like "thank you for watching
+# my video" are also caught.
+_HALLUCINATION_SUBSTRINGS = [
     "thank you for watching",
-    "thank you for watching.",
     "thanks for watching",
-    "thanks for watching.",
-    "thanks for watching!",
-    "please like and subscribe",
-    "like and subscribe",
     "please subscribe",
-    "see you in the next video",
-    "see you next time",
+    "like and subscribe",
     "don't forget to subscribe",
     "subscribe to my channel",
-    "subtitles by the amara.org community",
-    "you",
-    ".",
-    "",
-})
+    "see you in the next video",
+    "see you next time",
+    "subtitles by",
+    "amara.org",
+    "www.",
+    ".com",
+]
 
 # Chunks below this size are almost certainly silence — skip Whisper entirely.
+# Note: a 4-second AAC clip at typical quality is ~50–80 KB even for silence,
+# so this only catches near-empty (truly empty) files.
 _MIN_CHUNK_BYTES = 5_000
 
+# One-word responses that are plausible real utterances
+_VALID_SINGLE_WORDS = {
+    "yes", "no", "ok", "okay", "hello", "hi", "bye", "help",
+    "stop", "go", "wait", "please", "thanks", "sorry", "yeah",
+    "good", "bad", "fine", "sure", "right", "left", "done",
+}
 
-def _is_hallucination(text: str) -> bool:
-    lower = text.lower().strip().rstrip(" .,!?")
-    if lower in _WHISPER_HALLUCINATIONS:
+
+def _is_hallucination(text: str, previous_enhanced_text: str = "") -> bool:
+    if not text:
         return True
-    # Single isolated word that isn't a plausible one-word utterance
-    words = lower.split()
-    if len(words) == 1 and lower not in {
-        "yes", "no", "ok", "okay", "hello", "hi", "bye", "help",
-        "stop", "go", "wait", "please", "thanks", "sorry",
-    }:
+    lower = text.lower().strip()
+
+    # Substring check — catches "thank you for watching my video." and variants
+    for phrase in _HALLUCINATION_SUBSTRINGS:
+        if phrase in lower:
+            return True
+
+    # Multiple dollar amounts = random price-list hallucination
+    # e.g. "$25 lunch, $30 lunch, $50 lunch..."
+    if lower.count("$") >= 3:
         return True
+
+    # Single word that isn't a plausible short utterance
+    words = lower.rstrip(" .,!?").split()
+    if len(words) == 1 and words[0] not in _VALID_SINGLE_WORDS:
+        return True
+
+    # Repetition of the previous context — Whisper echoing back what it heard
+    if previous_enhanced_text:
+        prev_tail = previous_enhanced_text.lower()[-300:]
+        # If the new text appears verbatim in the recent context, it's a repeat
+        if lower.rstrip(".,!? ") in prev_tail:
+            return True
+
     return False
 
 
@@ -104,7 +127,7 @@ async def transcribe_chunk(
         raise HTTPException(status_code=503, detail=e.message)
 
     # Reject known Whisper hallucinations produced on silence/noise
-    if _is_hallucination(raw_text):
+    if _is_hallucination(raw_text, previous_enhanced_text):
         logger.info("Hallucination filtered at chunk %d: %r", chunk_index, raw_text)
         return success_response({
             "raw_text": "",
