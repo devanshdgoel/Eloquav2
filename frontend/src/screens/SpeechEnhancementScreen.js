@@ -27,6 +27,12 @@ const SC = SW / 402;
 // the user starts speaking (4 s chunk + ~1.5 s Whisper RTT).
 const CHUNK_INTERVAL_MS = 4000;
 
+// Silence detection thresholds.
+// dBFS readings below SILENCE_DB_THRESHOLD are considered silent.
+// If >SILENCE_CHUNK_RATIO of a chunk's readings are silent, skip Whisper.
+const SILENCE_DB_THRESHOLD = -40;  // dBFS
+const SILENCE_CHUNK_RATIO  = 0.80;
+
 // ── Screen states ────────────────────────────────────────────────────────────
 const S = {
   IDLE:      'idle',
@@ -180,6 +186,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const stoppingRef       = useRef(false);
   const isRotatingRef     = useRef(false);    // true while rotateChunk is mid-execution
   const chunkErrorsRef    = useRef(0);        // count of failed chunk requests
+  // dBFS readings collected from the active recording via status callback
+  const meteringRef       = useRef([]);
 
   useEffect(() => {
     return () => {
@@ -209,6 +217,39 @@ export default function SpeechEnhancementScreen({ navigation }) {
       .filter(Boolean)
       .join(' ')
       .trim();
+  }
+
+  // ── Silence detection helpers ────────────────────────────────────────────────
+
+  // Drain the metering buffer and return its contents.
+  // Clearing here means the next recording starts with an empty slate.
+  function snapshotMetering() {
+    const readings = [...meteringRef.current];
+    meteringRef.current = [];
+    return readings;
+  }
+
+  // Returns true when >SILENCE_CHUNK_RATIO of readings are below SILENCE_DB_THRESHOLD.
+  // Skips the check when there are fewer than 5 readings (e.g. user stops very quickly)
+  // so we never accidentally drop a short but valid utterance.
+  function isChunkSilent(readings) {
+    if (readings.length < 5) return false;
+    const silentCount = readings.filter(db => db < SILENCE_DB_THRESHOLD).length;
+    return (silentCount / readings.length) > SILENCE_CHUNK_RATIO;
+  }
+
+  // Creates an Audio.Recording with metering enabled so we can detect silence.
+  async function createRecordingWithMetering() {
+    const { recording } = await Audio.Recording.createAsync(
+      { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true },
+      (status) => {
+        if (status.isRecording && status.metering != null) {
+          meteringRef.current.push(status.metering);
+        }
+      },
+      100 // status update interval in ms
+    );
+    return recording;
   }
 
   async function transcribeChunk(uri, index, previousRawText, previousEnhancedText) {
@@ -260,6 +301,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
     const finished             = recordingRef.current;
     recordingRef.current = null;
 
+    // Snapshot metering BEFORE stopping so we capture all readings for this chunk.
+    const chunkReadings = snapshotMetering();
+
     try {
       await finished.stopAndUnloadAsync();
       const uri = finished.getURI();
@@ -267,13 +311,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
       // Start the next recording before sending the chunk so there's no
       // audible gap for the user.
       if (!stoppingRef.current) {
-        const { recording: next } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        recordingRef.current = next;
+        recordingRef.current = await createRecordingWithMetering();
       }
 
-      if (uri) {
+      // Layer 1 silence gate: skip Whisper entirely for silent chunks.
+      if (uri && !isChunkSilent(chunkReadings)) {
         setPendingCount(c => c + 1);
         const p = transcribeChunk(uri, index, previousRawText, previousEnhancedText)
           .finally(() => setPendingCount(c => c - 1));
@@ -310,11 +352,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
       setPendingCount(0);
       setResult(null);
 
+      meteringRef.current = [];
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      recordingRef.current = recording;
+      recordingRef.current = await createRecordingWithMetering();
       setPhase(S.RECORDING);
       chunkTimerRef.current = setTimeout(rotateChunk, CHUNK_INTERVAL_MS);
     } catch {
@@ -348,10 +388,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
         const index                = chunkIndexRef.current++;
         const previousRawText      = getAccumulatedRawText();
         const previousEnhancedText = getAccumulatedEnhancedText();
+        const finalReadings        = snapshotMetering();
         await lastRecording.stopAndUnloadAsync();
         const uri = lastRecording.getURI();
 
-        if (uri) {
+        if (uri && !isChunkSilent(finalReadings)) {
           setPendingCount(c => c + 1);
           const finalP = transcribeChunk(uri, index, previousRawText, previousEnhancedText)
             .finally(() => setPendingCount(c => c - 1));

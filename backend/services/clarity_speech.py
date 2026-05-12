@@ -7,18 +7,18 @@ logger = logging.getLogger(__name__)
 
 ENABLE_CLARITY = True
 
-# Allow the corrected text to be up to 40% longer than the raw transcription.
-# Parkinson's patients frequently omit function words, so restoration can
-# legitimately increase length beyond what a generic 1.3x ratio permits.
-MAX_LENGTH_EXPANSION_RATIO = 1.4
+# Output must be same length or shorter in almost all cases: we only remove
+# artefacts (fillers, repetitions) and split fused words. The 1.1 margin
+# covers rare cases where splitting several fused words adds spaces.
+MAX_LENGTH_EXPANSION_RATIO = 1.10
 
 # System prompt that primes the model with the clinical context before
 # the per-request user prompt is sent.
 _SYSTEM_PROMPT = (
-    "You are a precise assistive speech corrector for people with Hypokinetic Dysarthria "
-    "caused by Parkinson's disease. You correct transcription artefacts caused by the "
-    "condition — nothing more. You never paraphrase, never add content, and never change "
-    "the speaker's intended meaning or vocabulary."
+    "You are a minimal transcription artefact remover for people with Hypokinetic Dysarthria "
+    "caused by Parkinson's disease. You remove only four things: palilalia (word repetitions), "
+    "filler sounds (um/uh/ah/er/hmm), non-speech sounds, and unambiguously fused words. "
+    "You never add, infer, or change any words. When in doubt, return the text unchanged."
 )
 
 # Detailed instruction prompt. Separating it from the system prompt keeps the
@@ -26,65 +26,61 @@ _SYSTEM_PROMPT = (
 # per-request with the actual transcription.
 _CORRECTION_PROMPT_TEMPLATE = """\
 The text below is a raw Whisper transcription of speech from a person with Hypokinetic \
-Dysarthria (Parkinson's disease). Their condition produces specific, predictable \
-transcription artefacts. Correct for those artefacts only.
+Dysarthria (Parkinson's disease). Remove transcription artefacts only. \
+You must not add, change, or infer any words — this person's exact words must be preserved.
 
-COMMON ARTEFACTS TO FIX:
+WHAT TO CORRECT — only these four things:
 
 1. Palilalia — involuntary repetition of words or short phrases.
-   Example: "I want I want to go home" → "I want to go home"
-   Example: "the the the doctor said" → "the doctor said"
+   "I want I want to go home" → "I want to go home"
+   "the the the doctor said" → "the doctor said"
 
-2. False starts and self-corrections — the speaker restarts mid-sentence.
-   Example: "I need to— I want to call my daughter" → "I want to call my daughter"
-   Example: "Can you can you please help" → "Can you please help"
+2. Filler sounds — um, uh, ah, er, hmm — remove them.
+   "Um I want to uh call my daughter" → "I want to call my daughter"
 
-3. Filler sounds — um, uh, ah, er, hmm. Remove all of them.
+3. Non-speech sounds — throat clearing, coughing, lip smacking, or their
+   transcribed forms such as "[clears throat]" or "ahem". Remove them.
 
-4. Non-speech sounds — throat clearing, coughing, lip smacking. Remove any
-   transcribed artefacts from these (e.g. "hmm", "[clears throat]", "ahem").
+4. Fused words — two words run together by Whisper due to rushed speech.
+   Only split when the correct split is completely unambiguous.
+   "Iwant to leave" → "I want to leave"
+   If the split is the slightest bit uncertain, leave it unchanged.
 
-5. Missing function words — Parkinson's patients frequently omit articles,
-   prepositions, and conjunctions due to reduced motor precision. Restore
-   them ONLY when the correct word is grammatically unambiguous.
-   Example: "I went shop yesterday" → "I went to the shop yesterday"
-   Example: "give me glass water" → "give me a glass of water"
-   Do NOT restore if there is any ambiguity about which word belongs.
-
-6. Fused words from festination (rushed speech) — if Whisper has run two
-   words together, split them only when the correct split is unambiguous.
-   Example: "Iwant to leave" → "I want to leave"
-
-RULES:
-- Never add, change, or infer content words (nouns, verbs, adjectives, adverbs).
-- Never complete an unfinished sentence beyond restoring missing function words.
-- Never paraphrase or restructure a sentence.
-- Never change the speaker's word choices.
-- Preserve the speaker's exact intent and all factual content.
-- Fix punctuation and capitalisation normally.
+ABSOLUTE RULES — never break these:
+- Never add any word that is not already present in the transcription.
+- Never remove content words (nouns, verbs, adjectives, adverbs).
+- Never complete or extend an unfinished sentence.
+- Never rephrase, restructure, or rewrite any part of the sentence.
+- Never change the speaker's word choices or intended meaning.
+- When in doubt about any correction, return the text exactly as received.
+- Fix punctuation and capitalisation only.
 - Never wrap the output in quotation marks of any kind.
 
 INPUT TRANSCRIPTION:
 "{raw_text}"
 
-Return ONLY the corrected text. No explanation, no preamble, no wrapping quotation marks."""
+Return ONLY the corrected text. If nothing needs correcting, return it exactly as above. \
+No explanation, no preamble, no quotation marks."""
 
 
 _CHUNKED_CORRECTION_PROMPT_TEMPLATE = """\
-You are enhancing a real-time transcription chunk from a person with Hypokinetic Dysarthria \
-(Parkinson's disease). The previous speech has already been enhanced and is given as context only.
+You are removing artefacts from a real-time transcription chunk for a person with Hypokinetic \
+Dysarthria (Parkinson's disease). This person's exact words must be preserved — do not add, \
+change, or infer any words.
 
-PREVIOUSLY ENHANCED CONTEXT — do NOT include this in your response:
+PREVIOUSLY CORRECTED CONTEXT — for sentence continuity only, do NOT include in your response:
 "{context}"
 
-NEW CHUNK TO ENHANCE:
+NEW CHUNK TO CORRECT:
 "{raw_text}"
 
-Apply the same Dysarthria correction rules (palilalia, false starts, filler sounds, missing \
-function words, fused words). Use the context to handle sentence continuity naturally.
+Only correct: palilalia (word/phrase repetitions), filler sounds (um, uh, ah, er, hmm), \
+non-speech sounds ([clears throat], ahem), and clearly fused words (split only when \
+completely unambiguous). Never add words not already in the chunk. Never rephrase. \
+When in doubt, return the chunk exactly as received.
 
-Return ONLY the enhanced version of the NEW CHUNK. Never repeat or include any text from the \
-PREVIOUSLY ENHANCED CONTEXT. If the chunk begins mid-sentence, start your response from that \
+Return ONLY the corrected version of the NEW CHUNK. Never repeat or include any text from the \
+PREVIOUSLY CORRECTED CONTEXT. If the chunk begins mid-sentence, start your response from that \
 mid-sentence point. Never wrap the output in quotation marks."""
 
 
@@ -153,15 +149,13 @@ def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
 
 def clarity_transcript(raw_text: str) -> str:
     """
-    Apply Hypokinetic Dysarthria-aware clarity enhancement to a raw Whisper
-    transcription.
+    Remove Hypokinetic Dysarthria transcription artefacts from a raw Whisper output.
 
-    Targets the specific artefacts produced by Parkinson's speech:
-    palilalia, false starts, missing function words, filler sounds, and
-    festination-induced fused words.
+    Only removes: palilalia (word repetitions), filler sounds (um/uh/ah/er/hmm),
+    non-speech sounds, and unambiguously fused words. Never adds or changes words.
 
     Falls back to the raw transcription on any error so the caller is
-    never blocked by a failed enhancement.
+    never blocked by a failed correction.
     """
     if not raw_text or len(raw_text.strip()) < 3:
         return raw_text

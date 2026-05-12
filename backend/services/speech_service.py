@@ -72,11 +72,41 @@ def transcribe_audio(audio_path: str, prompt: str = "") -> tuple:
     data = response.json()
     text = data.get("text", "").strip()
     duration = float(data.get("duration", 0.0))
+    segments = data.get("segments", [])
 
     if not text:
         raise TranscriptionError(
             error_type="empty",
             message="No clear speech detected in the audio."
         )
+
+    # Use Whisper's own confidence signals to reject non-speech audio.
+    # verbose_json exposes no_speech_prob and avg_logprob per segment —
+    # these are far more reliable than content-based filters for silence/noise.
+    if segments:
+        n = len(segments)
+        mean_no_speech = sum(s.get("no_speech_prob", 0.0) for s in segments) / n
+        mean_logprob   = sum(s.get("avg_logprob",    0.0) for s in segments) / n
+
+        # High no-speech probability: Whisper is confident there's no speech
+        if mean_no_speech > 0.70:
+            logger.info(
+                "Whisper no_speech_prob=%.2f — rejecting as silence/noise", mean_no_speech
+            )
+            raise TranscriptionError(
+                error_type="empty",
+                message="No clear speech detected in the audio."
+            )
+
+        # Moderate no-speech AND very low log-probability: low-quality or ambiguous audio
+        if mean_no_speech > 0.40 and mean_logprob < -0.85:
+            logger.info(
+                "Whisper no_speech_prob=%.2f logprob=%.2f — rejecting low-quality audio",
+                mean_no_speech, mean_logprob
+            )
+            raise TranscriptionError(
+                error_type="empty",
+                message="Audio quality too low to transcribe reliably."
+            )
 
     return text, duration
