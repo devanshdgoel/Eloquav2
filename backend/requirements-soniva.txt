@@ -1,0 +1,7 @@
+# Extra dependencies for SONIVA local inference.
+# DO NOT add these to requirements.txt — Render free tier cannot run this model.
+# Install locally: pip install -r requirements-soniva.txt
+torch>=2.0.0
+transformers>=4.35.0
+librosa>=0.10.0
+soundfile>=0.12.0

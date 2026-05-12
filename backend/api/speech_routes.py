@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from config import MAX_AUDIO_SIZE_MB
 from services.clarity_speech import clarity_transcript, clarity_transcript_chunked
 from services.enhancement_service import SpeechEnhancementError, generate_enhanced_speech
+from services.soniva_service import transcribe_soniva
 from services.speech_service import TranscriptionError, transcribe_audio
 from services.voice_cloning_service import get_user_voice_id, has_cloned_voice
 from services.voice_profile_service import DEFAULT_PROFILE, analyze_voice
@@ -85,6 +86,7 @@ async def transcribe_chunk(
     chunk_index: int = Form(0),
     previous_text: str = Form(""),
     previous_enhanced_text: str = Form(""),
+    model: str = Form("whisper"),
 ):
     """
     Transcribe one 4-second audio chunk and immediately apply clarity enhancement.
@@ -93,8 +95,9 @@ async def transcribe_chunk(
                             for context continuity across chunk boundaries.
     previous_enhanced_text — enhanced accumulated transcript, passed to GPT so it can
                             handle sentences that span chunk boundaries.
+    model                 — "whisper" (OpenAI API) or "soniva" (local fine-tuned model).
 
-    Returns raw_text (Whisper output) and enhanced_text (GPT-corrected) for this chunk.
+    Returns raw_text (model output) and enhanced_text (GPT-corrected) for this chunk.
     """
     if not is_valid_audio(file.filename):
         raise HTTPException(status_code=400, detail="Invalid audio format.")
@@ -116,7 +119,10 @@ async def transcribe_chunk(
     audio_path = save_uploaded_audio(file)
 
     try:
-        raw_text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
+        if model == "soniva":
+            raw_text, _ = transcribe_soniva(str(audio_path))
+        else:
+            raw_text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
     except TranscriptionError as e:
         if e.error_type == "empty":
             return success_response({
@@ -204,6 +210,7 @@ async def enhance_text_route(
 async def process_audio(
     file: UploadFile = File(...),
     user_id: Optional[str] = Form(None),
+    model: str = Form("whisper"),
 ):
     """
     Legacy single-shot endpoint: transcribe, enhance, and synthesise in one call.
@@ -228,7 +235,10 @@ async def process_audio(
     audio_path = save_uploaded_audio(file)
 
     try:
-        raw_transcript, audio_duration_s = transcribe_audio(str(audio_path))
+        if model == "soniva":
+            raw_transcript, audio_duration_s = transcribe_soniva(str(audio_path))
+        else:
+            raw_transcript, audio_duration_s = transcribe_audio(str(audio_path))
     except TranscriptionError as e:
         if e.error_type == "empty":
             return error_response(e.message, error_type="empty")

@@ -22,6 +22,9 @@ node_modules/
 frontend/.expo/
 frontend/dist/
 
+# SONIVA model weights — too large for git (~1.5 GB uncompressed)
+backend/soniva_model/
+
 # Large media — use external hosting, not git
 *.mp4
 *.mov

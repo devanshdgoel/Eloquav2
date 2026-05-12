@@ -16,8 +16,11 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { SvgXml } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
+
+const PREFS_KEY = 'eloqua_preferences';
 
 const { width: SW } = Dimensions.get('window');
 const SC = SW / 402;
@@ -175,6 +178,17 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const [isPlaying,      setIsPlaying]      = useState(false);
   const [errorMsg,       setErrorMsg]       = useState('');
 
+  // Transcription model preference loaded from Settings ("whisper" | "soniva")
+  const transcriptionModelRef = useRef('whisper');
+  useEffect(() => {
+    AsyncStorage.getItem(PREFS_KEY)
+      .then(raw => {
+        const prefs = raw ? JSON.parse(raw) : {};
+        transcriptionModelRef.current = prefs.transcriptionModel || 'whisper';
+      })
+      .catch(() => {});
+  }, []);
+
   // Chunk bookkeeping — plain refs to avoid re-render storms
   const recordingRef      = useRef(null);
   const soundRef          = useRef(null);
@@ -257,6 +271,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: `chunk_${index}.m4a` });
       form.append('chunk_index', String(index));
+      form.append('model', transcriptionModelRef.current);
       if (previousRawText)      form.append('previous_text',          previousRawText);
       if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
