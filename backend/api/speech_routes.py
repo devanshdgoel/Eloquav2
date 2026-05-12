@@ -85,6 +85,7 @@ async def transcribe_chunk(
     chunk_index: int = Form(0),
     previous_text: str = Form(""),
     previous_enhanced_text: str = Form(""),
+    condition: str = Form("parkinsons"),
 ):
     """
     Transcribe one 4-second audio chunk and immediately apply clarity enhancement.
@@ -136,7 +137,7 @@ async def transcribe_chunk(
         })
 
     # Run per-chunk GPT clarity with sentence-boundary context
-    enhanced_text = clarity_transcript_chunked(raw_text, previous_enhanced_text)
+    enhanced_text = clarity_transcript_chunked(raw_text, previous_enhanced_text, condition)
 
     return success_response({
         "raw_text": raw_text,
@@ -150,6 +151,7 @@ async def enhance_text_route(
     raw_transcript: str = Form(...),
     enhanced_transcript: str = Form(""),
     user_id: Optional[str] = Form(None),
+    condition: str = Form("parkinsons"),
 ):
     """
     Final step of the chunked pipeline: generate ElevenLabs TTS audio.
@@ -166,7 +168,7 @@ async def enhance_text_route(
     if enhanced_transcript.strip():
         final_transcript = enhanced_transcript.strip()
     else:
-        final_transcript = clarity_transcript(raw_transcript)
+        final_transcript = clarity_transcript(raw_transcript, condition)
 
     if user_id and has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)
@@ -204,6 +206,7 @@ async def enhance_text_route(
 async def process_audio(
     file: UploadFile = File(...),
     user_id: Optional[str] = Form(None),
+    condition: str = Form("parkinsons"),
 ):
     """
     Legacy single-shot endpoint: transcribe, enhance, and synthesise in one call.
@@ -236,7 +239,7 @@ async def process_audio(
             raise HTTPException(status_code=503, detail=e.message)
         raise HTTPException(status_code=500, detail=e.message)
 
-    cleaned_transcript = clarity_transcript(raw_transcript)
+    cleaned_transcript = clarity_transcript(raw_transcript, condition)
 
     if user_id and has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)

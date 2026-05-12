@@ -21,10 +21,16 @@ const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
 ];
 
+const CONDITIONS = [
+  { key: 'parkinsons', label: "Parkinson's Disease",   sub: "Hypokinetic dysarthria" },
+  { key: 'aphasia',    label: 'Stroke & Aphasia',       sub: "Post-stroke aphasia"    },
+];
+
 export default function SetupAboutYouScreen({ navigation }) {
   const [name, setName]                 = useState('');
   const [age, setAge]                   = useState('');
   const [phone, setPhone]               = useState('');
+  const [condition, setCondition]       = useState('parkinsons');
   const [ageModalVisible, setAgeModalVisible] = useState(false);
 
   async function handleNext() {
@@ -32,12 +38,12 @@ export default function SetupAboutYouScreen({ navigation }) {
     const trimmedPhone = phone.trim();
 
     // Persist locally for offline access.
-    await saveUserProfile({ name: trimmedName, age, phone: trimmedPhone });
+    await saveUserProfile({ name: trimmedName, age, phone: trimmedPhone, condition });
 
     // Persist to Firestore so the profile is accessible from any device
     // and visible in the Firebase console. Failure is non-fatal.
     try {
-      await saveUserProfileToFirestore({ name: trimmedName, age, phone: trimmedPhone });
+      await saveUserProfileToFirestore({ name: trimmedName, age, phone: trimmedPhone, condition });
     } catch (err) {
       console.warn('Failed to save profile to Firestore:', err.message);
     }
@@ -111,6 +117,29 @@ export default function SetupAboutYouScreen({ navigation }) {
             </Text>
             <Text style={styles.chevron}>▾</Text>
           </TouchableOpacity>
+
+          {/* Condition selector */}
+          <Text style={styles.label}>Your condition:</Text>
+          <View style={styles.conditionRow}>
+            {CONDITIONS.map(c => (
+              <TouchableOpacity
+                key={c.key}
+                style={[styles.conditionCard, condition === c.key && styles.conditionCardActive]}
+                onPress={() => setCondition(c.key)}
+                activeOpacity={0.85}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: condition === c.key }}
+                accessibilityLabel={c.label}
+              >
+                <Text style={[styles.conditionLabel, condition === c.key && styles.conditionLabelActive]}>
+                  {c.label}
+                </Text>
+                <Text style={[styles.conditionSub, condition === c.key && styles.conditionSubActive]}>
+                  {c.sub}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           {/* Progress dots */}
           <View style={styles.dotsRow}>
@@ -258,6 +287,46 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#FFA940',
     fontWeight: '700',
+  },
+
+  conditionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 36,
+  },
+  conditionCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  conditionCardActive: {
+    borderColor: '#1C4047',
+    backgroundColor: '#EBF4F0',
+  },
+  conditionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(28,64,71,0.55)',
+    marginBottom: 3,
+  },
+  conditionLabelActive: {
+    color: '#1C4047',
+  },
+  conditionSub: {
+    fontSize: 12,
+    color: 'rgba(28,64,71,0.40)',
+  },
+  conditionSubActive: {
+    color: 'rgba(28,64,71,0.65)',
   },
 
   dotsRow: {

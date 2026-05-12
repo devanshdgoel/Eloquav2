@@ -18,6 +18,7 @@ import { Audio } from 'expo-av';
 import { SvgXml } from 'react-native-svg';
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
+import { getUserCondition } from '../utils/storage';
 
 const { width: SW } = Dimensions.get('window');
 const SC = SW / 402;
@@ -175,6 +176,13 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const [isPlaying,      setIsPlaying]      = useState(false);
   const [errorMsg,       setErrorMsg]       = useState('');
 
+  // User's condition, loaded from profile. Drives which clarity model is used.
+  const [condition, setCondition] = useState('parkinsons');
+
+  useEffect(() => {
+    getUserCondition().then(c => setCondition(c));
+  }, []);
+
   // Chunk bookkeeping — plain refs to avoid re-render storms
   const recordingRef      = useRef(null);
   const soundRef          = useRef(null);
@@ -257,6 +265,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: `chunk_${index}.m4a` });
       form.append('chunk_index', String(index));
+      form.append('condition', condition);
       if (previousRawText)      form.append('previous_text',          previousRawText);
       if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
@@ -430,6 +439,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
     try {
       const form = new FormData();
       form.append('raw_transcript', rawText);
+      form.append('condition', condition);
       if (enhancedText) form.append('enhanced_transcript', enhancedText);
       const uid = auth.currentUser?.uid;
       if (uid) form.append('user_id', uid);
@@ -522,6 +532,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
       )}
 
       <Text style={styles.title}>Speech{'\n'}Enhancement</Text>
+
+      <View style={styles.conditionBadge}>
+        <Text style={styles.conditionBadgeText}>
+          {condition === 'aphasia' ? 'Stroke & Aphasia' : "Parkinson's Disease"}
+        </Text>
+      </View>
 
       {/* ── IDLE ──────────────────────────────────────────────────────────── */}
       {phase === S.IDLE && (
@@ -682,6 +698,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 2.25,
     lineHeight: Math.round(70 * SC),
+  },
+
+  conditionBadge: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(28,64,71,0.10)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  conditionBadgeText: {
+    fontSize: Math.round(12 * SC),
+    fontWeight: '600',
+    color: TEAL,
+    letterSpacing: 0.8,
   },
 
   // ── IDLE ──
