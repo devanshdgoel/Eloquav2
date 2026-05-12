@@ -84,76 +84,6 @@ PREVIOUSLY CORRECTED CONTEXT. If the chunk begins mid-sentence, start your respo
 mid-sentence point. Never wrap the output in quotation marks."""
 
 
-# ── Stroke aphasia prompts ────────────────────────────────────────────────────
-
-_APHASIA_SYSTEM_PROMPT = (
-    "You are a minimal transcription artefact remover for people with post-stroke aphasia. "
-    "Aphasia is a language disorder — intelligence is fully intact. The speaker's word choices, "
-    "including telegraphic speech, missing words, and word substitutions, are their intentional "
-    "communication and must never be changed. "
-    "You remove only: exact consecutive word repetitions, filler sounds (um/uh/ah/er/hmm), "
-    "and non-speech sounds. You never add, infer, or complete any words. When in doubt, "
-    "return the text unchanged."
-)
-
-_APHASIA_CORRECTION_PROMPT_TEMPLATE = """\
-The text below is a raw Whisper transcription of speech from a person with post-stroke aphasia.
-
-Aphasia is a language disorder — the person's intelligence is fully intact. Their speech may be \
-telegraphic (missing words), effortful, or include word substitutions (saying one word when they \
-mean another). Every word they DID say is intentional and must be preserved exactly.
-
-WHAT TO CORRECT — only these three things:
-
-1. Exact consecutive word or phrase repetitions only.
-   "I want want to go" → "I want to go"
-   "my my daughter" → "my daughter"
-   Do NOT remove a word unless it is an exact consecutive duplicate.
-
-2. Filler sounds — um, uh, ah, er, hmm — remove them.
-   "Um I want uh phone" → "I want phone"
-
-3. Non-speech sounds — throat clearing, coughing, or their transcribed forms \
-([clears throat], ahem). Remove them.
-
-ABSOLUTE RULES — never break these:
-- Never add any word not already present in the transcription.
-- Telegraphic speech (e.g. "want phone", "go doctor", "daughter call") is intentional — \
-do not add missing articles, prepositions, verbs, or any other words.
-- Never correct word substitutions — the word the person said is their word, even if it \
-seems unusual in context.
-- Never complete or extend an unfinished sentence.
-- Never rephrase or restructure anything.
-- When in doubt, return the text exactly as received.
-- Fix punctuation and capitalisation only.
-- Never wrap the output in quotation marks of any kind.
-
-INPUT TRANSCRIPTION:
-"{raw_text}"
-
-Return ONLY the corrected text. If nothing needs correcting, return it exactly as above. \
-No explanation, no preamble, no quotation marks."""
-
-
-_APHASIA_CHUNKED_CORRECTION_PROMPT_TEMPLATE = """\
-You are removing artefacts from a real-time transcription chunk for a person with post-stroke \
-aphasia. Their exact words — including telegraphic speech and word substitutions — must be \
-preserved entirely. Do not add, change, infer, or complete any words.
-
-PREVIOUSLY CORRECTED CONTEXT — for continuity only, do NOT include in your response:
-"{context}"
-
-NEW CHUNK TO CORRECT:
-"{raw_text}"
-
-Only remove: exact consecutive word repetitions, filler sounds (um, uh, ah, er, hmm), and \
-non-speech sounds ([clears throat], ahem). Never add words. Never complete sentences. \
-When in doubt, return the chunk exactly as received.
-
-Return ONLY the corrected version of the NEW CHUNK. Never include text from the context. \
-If the chunk begins mid-sentence, start from that point. Never wrap in quotation marks."""
-
-
 def _strip_wrapping_quotes(text: str) -> str:
     """Remove outer quotation marks GPT sometimes wraps the whole response in."""
     t = text.strip()
@@ -166,29 +96,20 @@ def _strip_wrapping_quotes(text: str) -> str:
     return t
 
 
-def clarity_transcript_chunked(raw_text: str, context: str = "", condition: str = "parkinsons") -> str:
+def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
     """
-    Remove artefacts from a single chunk with awareness of the previous corrected text.
+    Enhance a single chunk with awareness of the previous enhanced text.
     Used during real-time recording so the user sees corrected speech per chunk.
     Falls back to context-free clarity when context is empty.
-
-    condition: "parkinsons" (hypokinetic dysarthria) | "aphasia" (post-stroke aphasia)
     """
     if not raw_text or len(raw_text.strip()) < 3:
         return raw_text
 
     if not context.strip():
-        return clarity_transcript(raw_text, condition)
+        return clarity_transcript(raw_text)
 
     if not ENABLE_CLARITY or not OPENAI_API_KEY:
         return raw_text
-
-    if condition == "aphasia":
-        system_prompt    = _APHASIA_SYSTEM_PROMPT
-        chunked_template = _APHASIA_CHUNKED_CORRECTION_PROMPT_TEMPLATE
-    else:
-        system_prompt    = _SYSTEM_PROMPT
-        chunked_template = _CHUNKED_CORRECTION_PROMPT_TEMPLATE
 
     # Keep only the tail of the context to stay within token budget
     context_window = context[-400:] if len(context) > 400 else context
@@ -198,10 +119,10 @@ def clarity_transcript_chunked(raw_text: str, context: str = "", condition: str 
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": _SYSTEM_PROMPT},
                 {
                     "role": "user",
-                    "content": chunked_template.format(
+                    "content": _CHUNKED_CORRECTION_PROMPT_TEMPLATE.format(
                         context=context_window,
                         raw_text=raw_text,
                     ),
@@ -226,14 +147,15 @@ def clarity_transcript_chunked(raw_text: str, context: str = "", condition: str 
         return raw_text
 
 
-def clarity_transcript(raw_text: str, condition: str = "parkinsons") -> str:
+def clarity_transcript(raw_text: str) -> str:
     """
-    Remove transcription artefacts from a raw Whisper output.
+    Remove Hypokinetic Dysarthria transcription artefacts from a raw Whisper output.
 
-    condition: "parkinsons" (hypokinetic dysarthria) | "aphasia" (post-stroke aphasia)
+    Only removes: palilalia (word repetitions), filler sounds (um/uh/ah/er/hmm),
+    non-speech sounds, and unambiguously fused words. Never adds or changes words.
 
-    Never adds or changes words. Falls back to the raw transcription on any error
-    so the caller is never blocked by a failed correction.
+    Falls back to the raw transcription on any error so the caller is
+    never blocked by a failed correction.
     """
     if not raw_text or len(raw_text.strip()) < 3:
         return raw_text
@@ -241,25 +163,21 @@ def clarity_transcript(raw_text: str, condition: str = "parkinsons") -> str:
     if not ENABLE_CLARITY or not OPENAI_API_KEY:
         return raw_text
 
-    if condition == "aphasia":
-        system_prompt    = _APHASIA_SYSTEM_PROMPT
-        user_template    = _APHASIA_CORRECTION_PROMPT_TEMPLATE
-    else:
-        system_prompt    = _SYSTEM_PROMPT
-        user_template    = _CORRECTION_PROMPT_TEMPLATE
-
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
 
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": _SYSTEM_PROMPT},
                 {
                     "role": "user",
-                    "content": user_template.format(raw_text=raw_text),
+                    "content": _CORRECTION_PROMPT_TEMPLATE.format(raw_text=raw_text),
                 },
             ],
+            # Low temperature keeps corrections deterministic and literal.
+            # A small non-zero value prevents the model from being overconfident
+            # about ambiguous restorations.
             temperature=0.15,
             max_tokens=500,
         )
@@ -269,6 +187,8 @@ def clarity_transcript(raw_text: str, condition: str = "parkinsons") -> str:
         if not cleaned:
             return raw_text
 
+        # Guard against hallucination: if the model substantially expands the
+        # text, it has likely added content rather than just correcting artefacts.
         if len(cleaned) > len(raw_text) * MAX_LENGTH_EXPANSION_RATIO:
             logger.warning(
                 "Clarity output too long (%.1fx raw), discarding",

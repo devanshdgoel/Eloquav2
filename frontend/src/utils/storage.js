@@ -17,8 +17,7 @@ export async function isOnboardingComplete() {
   return value === 'true';
 }
 
-// User profile (name, age, phone, condition — collected during onboarding, stored locally)
-// condition: "parkinsons" | "aphasia"
+// User profile (name, age, phone — collected during onboarding, stored locally)
 export async function saveUserProfile(profile) {
   await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
 }
@@ -30,9 +29,4 @@ export async function getUserProfile() {
   } catch {
     return null;
   }
-}
-
-export async function getUserCondition() {
-  const profile = await getUserProfile();
-  return profile?.condition || 'parkinsons';
 }
