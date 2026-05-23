@@ -1,10 +1,11 @@
 /**
- * ProgressScreen — placeholder rewards & progress page.
+ * ProgressScreen — voice score trends, milestones, streak stats.
  *
- * Shows the user's key stats and locked achievement badges.
- * Full leaderboard / detailed stats are planned for a future sprint.
+ * Data sources:
+ *   fetchProgress()          → sessions_completed, streak_days, current_node
+ *   GET /api/progress-data   → baseline scores, check-ins (sparkline), recent sessions
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,10 +14,15 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path, Circle, Polyline } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+
+import { auth } from '../config/firebase';
+import { API_BASE_URL } from '../config/env';
 import { fetchProgress, TOTAL_NODES } from '../services/progressService';
 
 const { width: W } = Dimensions.get('window');
@@ -26,85 +32,151 @@ const ORANGE = '#FE9C2D';
 const TEAL   = '#2D6974';
 const MINT   = '#C3DECE';
 const WHITE  = '#FFFFFF';
-const BG     = '#1C4047';
+const DIM    = 'rgba(255,255,255,0.40)';
 
-// ── Flame icon ────────────────────────────────────────────────────────────────
-function FlameIcon({ size = 22 }) {
-  return (
-    <Svg width={size} height={size * 1.1} viewBox="0 0 50 55" fill="none">
-      <Path
-        d="M28.9176 54.4372C38.1118 52.6667 50 46.3059 50 29.8594C50 14.895 38.6088 4.92817 30.4176 0.349191C28.5971 -0.668989 26.4706 0.668786 26.4706 2.691V7.8611C26.4706 11.9395 24.6882 19.3835 19.7353 22.4805C17.2059 24.0615 14.4706 21.6942 14.1647 18.8094L13.9118 16.4393C13.6176 13.6845 10.7 12.013 8.41176 13.693C4.29706 16.7051 0 21.994 0 29.8566C0 49.9685 15.5559 55 23.3324 55C23.7873 55 24.2618 54.9859 24.7559 54.9576C20.9147 54.6436 14.7059 52.3527 14.7059 44.9426C14.7059 39.1447 19.1029 35.2275 22.4441 33.3184C23.3441 32.8093 24.3941 33.474 24.3941 34.478V36.1467C24.3941 37.4194 24.9088 39.4134 26.1294 40.7766C27.5118 42.3208 29.5382 40.7031 29.7 38.6723C29.7529 38.0332 30.4235 37.6259 31 37.9483C32.8853 39.0089 35.2941 41.2715 35.2941 44.9426C35.2941 50.735 31.9735 53.3992 28.9176 54.4372Z"
-        fill={ORANGE}
-      />
-    </Svg>
-  );
+// ── Milestone definitions ─────────────────────────────────────────────────────
+const MILESTONES = [
+  {
+    id: 'first_voice',
+    label: 'First Voice',
+    desc: 'Completed your baseline assessment',
+    icon: '🎤',
+    check: ({ hasBaseline }) => hasBaseline,
+  },
+  {
+    id: 'week_warrior',
+    label: 'Week Warrior',
+    desc: 'Maintained a 7-day streak',
+    icon: '🔥',
+    check: ({ streak }) => streak >= 7,
+  },
+  {
+    id: 'committed',
+    label: 'Committed',
+    desc: 'Completed 10 sessions',
+    icon: '⚡',
+    check: ({ sessions }) => sessions >= 10,
+  },
+  {
+    id: 'voice_growing',
+    label: 'Voice Growing',
+    desc: 'Improved a score vs your baseline',
+    icon: '📈',
+    check: ({ baseline, latest }) => {
+      if (!baseline || !latest) return false;
+      return ['voice_power', 'expression', 'fluency'].some(k =>
+        latest[k] != null && baseline[k] != null && latest[k] > baseline[k] + 5
+      );
+    },
+  },
+  {
+    id: 'loud_proud',
+    label: 'Loud & Proud',
+    desc: 'Voice Power score above 70',
+    icon: '📢',
+    check: ({ latest }) => (latest?.voice_power ?? 0) >= 70,
+  },
+  {
+    id: 'expressive',
+    label: 'Expressive',
+    desc: 'Expression score above 70',
+    icon: '🎵',
+    check: ({ latest }) => (latest?.expression ?? 0) >= 70,
+  },
+  {
+    id: 'fluent',
+    label: 'Fluent Speaker',
+    desc: 'Fluency score above 70',
+    icon: '🗣️',
+    check: ({ latest }) => (latest?.fluency ?? 0) >= 70,
+  },
+  {
+    id: 'checkin_champ',
+    label: 'Check-in Champ',
+    desc: 'Completed 3 progress check-ins',
+    icon: '🏆',
+    check: ({ checkInCount }) => checkInCount >= 3,
+  },
+  {
+    id: 'journey_complete',
+    label: 'Journey Complete',
+    desc: 'All 20 sessions finished',
+    icon: '🌟',
+    check: ({ sessions }) => sessions >= TOTAL_NODES,
+  },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function avg(arr) {
+  const v = arr.filter(x => x != null && Number.isFinite(x));
+  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
 }
 
-// ── Lock icon ─────────────────────────────────────────────────────────────────
-function LockIcon({ size = 20 }) {
+function buildSparkPoints(baseline, checkIns, recentSessions, key) {
+  const pts = [];
+  if (baseline?.composite?.[key] != null) pts.push(baseline.composite[key]);
+  for (const ci of checkIns) {
+    if (ci.composite?.[key] != null) pts.push(ci.composite[key]);
+  }
+  if (pts.length < 2) {
+    for (const s of recentSessions.slice(0, 5).reverse()) {
+      if (s.scores?.[key] != null) pts.push(s.scores[key]);
+    }
+  }
+  return pts;
+}
+
+function scoreDelta(points) {
+  if (points.length < 2) return null;
+  return points[points.length - 1] - points[0];
+}
+
+// ── Sparkline ─────────────────────────────────────────────────────────────────
+function Sparkline({ points, color }) {
+  const W2 = 100, H2 = 38;
+  if (points.length < 2) return <View style={{ width: W2, height: H2 }} />;
+
+  const mn = Math.max(0,  Math.min(...points) - 8);
+  const mx = Math.min(100, Math.max(...points) + 8);
+  const rng = mx - mn || 1;
+
+  const pts = points.map((v, i) => {
+    const x = (i / (points.length - 1)) * W2;
+    const y = H2 - ((v - mn) / rng) * H2;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const last = pts.split(' ').pop().split(',');
+
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M7 11V7a5 5 0 0 1 10 0v4"
-        stroke="rgba(255,255,255,0.35)"
+    <Svg width={W2} height={H2}>
+      <Polyline
+        points={pts}
+        fill="none"
+        stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.8}
       />
-      <Path
-        d="M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"
-        stroke="rgba(255,255,255,0.35)"
-        strokeWidth={2}
-      />
+      <Circle cx={parseFloat(last[0])} cy={parseFloat(last[1])} r={3.5} fill={color} />
     </Svg>
   );
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ value, label, accent = ORANGE }) {
-  return (
-    <View style={sc.card}>
-      <Text style={[sc.value, { color: accent }]}>{value}</Text>
-      <Text style={sc.label}>{label}</Text>
-    </View>
-  );
-}
-const sc = StyleSheet.create({
-  card: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 18 * SC,
-    backgroundColor: 'rgba(45,105,116,0.45)',
-    borderRadius: 18 * SC,
-    borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.15)',
-    gap: 4,
-  },
-  value: { fontSize: 32 * SC, fontWeight: '800', letterSpacing: 0.5 },
-  label: { color: 'rgba(255,255,255,0.60)', fontSize: 12 * SC, fontWeight: '500', textAlign: 'center' },
-});
-
 // ── Progress ring ─────────────────────────────────────────────────────────────
-function ProgressRing({ progress = 0, size = 140, strokeWidth = 10 }) {
-  const r = (size - strokeWidth) / 2;
+function ProgressRing({ progress = 0, size = 140, sw = 11 }) {
+  const r    = (size - sw) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ * (1 - Math.min(1, progress));
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {/* Track */}
+    <Svg width={size} height={size}>
+      <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(195,222,206,0.12)" strokeWidth={sw} fill="none" />
       <Circle
         cx={size / 2} cy={size / 2} r={r}
-        stroke="rgba(195,222,206,0.15)"
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      {/* Fill */}
-      <Circle
-        cx={size / 2} cy={size / 2} r={r}
-        stroke={ORANGE}
-        strokeWidth={strokeWidth}
-        fill="none"
+        stroke={ORANGE} strokeWidth={sw} fill="none"
         strokeDasharray={circ}
-        strokeDashoffset={offset}
+        strokeDashoffset={circ * (1 - Math.min(1, progress))}
         strokeLinecap="round"
         rotation="-90"
         origin={`${size / 2}, ${size / 2}`}
@@ -113,141 +185,311 @@ function ProgressRing({ progress = 0, size = 140, strokeWidth = 10 }) {
   );
 }
 
-// ── Badge card ────────────────────────────────────────────────────────────────
-const BADGES = [
-  { label: 'First Breath',    desc: 'Complete breathing exercise',   unlocked: false },
-  { label: 'Week Warrior',    desc: 'Maintain a 7-day streak',       unlocked: false },
-  { label: 'Vocal Champion',  desc: 'Complete 10 sessions',          unlocked: false },
-  { label: 'Dolphin Diver',   desc: 'Complete all Level 1 sessions', unlocked: false },
-  { label: 'Consistency',     desc: 'Train for 30 consecutive days', unlocked: false },
-  { label: 'Voice Master',    desc: 'Complete all 20 sessions',      unlocked: false },
-];
+// ── Voice score card ──────────────────────────────────────────────────────────
+function ScoreCard({ label, currentScore, points, color, baselineScore }) {
+  const delta = scoreDelta(points);
+  const hasData = currentScore != null;
 
-function BadgeCard({ label, desc, unlocked }) {
   return (
-    <View style={[badge.card, !unlocked && badge.locked]}>
-      <View style={badge.iconWrap}>
-        {unlocked
-          ? <FlameIcon size={26} />
-          : <LockIcon size={22} />}
+    <View style={sc.card}>
+      <View style={sc.top}>
+        <View>
+          <Text style={sc.label}>{label}</Text>
+          {hasData ? (
+            <Text style={[sc.score, { color }]}>{currentScore}</Text>
+          ) : (
+            <Text style={sc.noData}>—</Text>
+          )}
+        </View>
+        <Sparkline points={points} color={color} />
       </View>
-      <Text style={[badge.title, !unlocked && badge.dimText]}>{label}</Text>
-      <Text style={badge.desc}>{desc}</Text>
+
+      {hasData && delta != null && (
+        <View style={sc.deltaRow}>
+          <Text style={[sc.delta, { color: delta >= 0 ? '#6BCB77' : '#FF6B6B' }]}>
+            {delta >= 0 ? `+${delta}` : delta}
+          </Text>
+          <Text style={sc.deltaLabel}> since baseline</Text>
+        </View>
+      )}
+      {hasData && delta == null && baselineScore != null && (
+        <Text style={sc.deltaLabel}>Baseline: {baselineScore}</Text>
+      )}
+      {!hasData && (
+        <Text style={sc.deltaLabel}>Complete your assessment to unlock</Text>
+      )}
     </View>
   );
 }
-const badge = StyleSheet.create({
+const sc = StyleSheet.create({
   card: {
-    width: (W - 56) / 2,
+    flex: 1,
+    backgroundColor: 'rgba(45,105,116,0.38)',
+    borderRadius: 18 * SC,
+    borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.14)',
+    padding: 16 * SC,
+    gap: 8 * SC,
+  },
+  top:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  label:   { color: DIM, fontSize: 11 * SC, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
+  score:   { fontSize: 34 * SC, fontWeight: '800', lineHeight: 38 * SC },
+  noData:  { fontSize: 32 * SC, fontWeight: '300', color: 'rgba(255,255,255,0.25)' },
+  deltaRow:{ flexDirection: 'row', alignItems: 'baseline' },
+  delta:   { fontSize: 13 * SC, fontWeight: '700' },
+  deltaLabel: { fontSize: 11 * SC, color: DIM, fontWeight: '500' },
+});
+
+// ── Milestone badge ───────────────────────────────────────────────────────────
+function MilestoneBadge({ label, desc, icon, unlocked }) {
+  return (
+    <View style={[mb.card, !unlocked && mb.locked]}>
+      <View style={[mb.iconWrap, unlocked && mb.iconWrapUnlocked]}>
+        <Text style={{ fontSize: unlocked ? 26 : 22, opacity: unlocked ? 1 : 0.35 }}>{icon}</Text>
+      </View>
+      <Text style={[mb.title, !unlocked && mb.dim]}>{label}</Text>
+      <Text style={mb.desc}>{desc}</Text>
+    </View>
+  );
+}
+const mb = StyleSheet.create({
+  card: {
+    width: (W - 56 * SC) / 2,
     alignItems: 'center',
     paddingVertical: 18 * SC,
     paddingHorizontal: 12 * SC,
-    backgroundColor: 'rgba(45,105,116,0.40)',
+    backgroundColor: 'rgba(45,105,116,0.38)',
     borderRadius: 18 * SC,
     borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.18)',
+    borderColor: 'rgba(195,222,206,0.16)',
     gap: 6,
   },
   locked: {
-    backgroundColor: 'rgba(22,52,58,0.50)',
-    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(20,45,50,0.55)',
+    borderColor: 'rgba(255,255,255,0.07)',
   },
   iconWrap: {
     width: 52 * SC, height: 52 * SC, borderRadius: 26 * SC,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.22)',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  title: { color: WHITE, fontSize: 13 * SC, fontWeight: '700', textAlign: 'center' },
-  dimText: { color: 'rgba(255,255,255,0.35)' },
-  desc:  { color: 'rgba(255,255,255,0.45)', fontSize: 11 * SC, textAlign: 'center', lineHeight: 15 * SC },
+  iconWrapUnlocked: { backgroundColor: 'rgba(254,156,45,0.15)' },
+  title:   { color: WHITE, fontSize: 13 * SC, fontWeight: '700', textAlign: 'center' },
+  dim:     { color: 'rgba(255,255,255,0.32)' },
+  desc:    { color: 'rgba(255,255,255,0.42)', fontSize: 11 * SC, textAlign: 'center', lineHeight: 15 * SC },
+});
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+function StatCard({ value, label, accent }) {
+  return (
+    <View style={stat.card}>
+      <Text style={[stat.value, { color: accent }]}>{value}</Text>
+      <Text style={stat.label}>{label}</Text>
+    </View>
+  );
+}
+const stat = StyleSheet.create({
+  card: {
+    flex: 1, alignItems: 'center', paddingVertical: 18 * SC,
+    backgroundColor: 'rgba(45,105,116,0.38)',
+    borderRadius: 18 * SC, borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.14)', gap: 4,
+  },
+  value: { fontSize: 30 * SC, fontWeight: '800', letterSpacing: 0.5 },
+  label: { color: DIM, fontSize: 11 * SC, fontWeight: '500', textAlign: 'center' },
 });
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function ProgressScreen({ navigation }) {
-  const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
-  const [prog, setProg] = useState({ current_node: 0, streak_days: 0, sessions_completed: 0 });
+  const { top, bottom } = useSafeAreaInsets();
 
-  useEffect(() => {
-    fetchProgress().then(setProg).catch(() => {});
-  }, []);
+  const [prog,     setProg]     = useState({ current_node: 0, streak_days: 0, sessions_completed: 0 });
+  const [pdata,    setPdata]    = useState(null);
+  const [loading,  setLoading]  = useState(true);
 
-  const sessionsCompleted = prog.sessions_completed ?? 0;
-  const ringProgress = sessionsCompleted / TOTAL_NODES;
-  const level = Math.floor(sessionsCompleted / 7) + 1;
+  useFocusEffect(useCallback(() => {
+    setLoading(true);
+    const uid = auth.currentUser?.uid;
+
+    Promise.all([
+      fetchProgress(),
+      uid
+        ? fetch(`${API_BASE_URL}/api/progress-data?user_id=${uid}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        : Promise.resolve(null),
+    ])
+      .then(([p, pd]) => {
+        setProg(p);
+        setPdata(pd?.data ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []));
+
+  const sessions      = prog.sessions_completed ?? 0;
+  const streak        = prog.streak_days        ?? 0;
+  const ringProgress  = sessions / TOTAL_NODES;
+  const level         = Math.floor(sessions / 7) + 1;
+
+  const baseline      = pdata?.baseline;
+  const checkIns      = pdata?.check_ins      ?? [];
+  const recentSess    = pdata?.recent_sessions ?? [];
+  const hasBaseline   = pdata?.has_baseline   ?? false;
+
+  // Latest composite: most recent check-in, or baseline itself
+  const latestComp = checkIns.length
+    ? checkIns[checkIns.length - 1]?.composite
+    : baseline?.composite;
+
+  // Sparkline data per metric
+  const vpPoints = buildSparkPoints(baseline, checkIns, recentSess, 'voice_power');
+  const exPoints = buildSparkPoints(baseline, checkIns, recentSess, 'expression');
+  const flPoints = buildSparkPoints(baseline, checkIns, recentSess, 'fluency');
+
+  // Latest single scores for display
+  const vpScore = latestComp?.voice_power ?? (recentSess[0]?.scores?.voice_power ?? null);
+  const exScore = latestComp?.expression  ?? (recentSess[0]?.scores?.expression  ?? null);
+  const flScore = latestComp?.fluency     ?? (recentSess[0]?.scores?.fluency     ?? null);
+
+  // Milestone context
+  const mCtx = {
+    hasBaseline,
+    streak,
+    sessions,
+    checkInCount: checkIns.length,
+    baseline:     baseline?.composite,
+    latest:       latestComp,
+  };
+
+  // Check-in countdown
+  const nextCheckin   = sessions > 0 ? (Math.floor(sessions / 7) + 1) * 7 : 7;
+  const sessToCheckin = Math.max(0, nextCheckin - sessions);
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
         colors={['#37767A', '#1C4047', '#0A1618']}
-        start={{ x: 0.3, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
+        start={{ x: 0.3, y: 0 }} end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: safeTop + 12 }]}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}
+          accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Progress</Text>
         <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[styles.content, { paddingBottom: safeBottom + 32 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Overall ring ── */}
-        <View style={styles.ringSection}>
-          <View style={styles.ringWrap}>
-            <ProgressRing progress={ringProgress} size={160 * SC} strokeWidth={12} />
-            <View style={styles.ringCenter}>
-              <Text style={styles.ringNum}>{sessionsCompleted}</Text>
-              <Text style={styles.ringOf}>of {TOTAL_NODES}</Text>
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={ORANGE} />
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[styles.content, { paddingBottom: bottom + 36 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Ring + level ── */}
+          <View style={styles.ringSection}>
+            <View>
+              <ProgressRing progress={ringProgress} size={154 * SC} sw={11} />
+              <View style={styles.ringCenter}>
+                <Text style={styles.ringNum}>{sessions}</Text>
+                <Text style={styles.ringOf}>of {TOTAL_NODES}</Text>
+              </View>
             </View>
+            <Text style={styles.ringLabel}>sessions complete</Text>
+            <View style={styles.levelTag}>
+              <Text style={styles.levelTagText}>Level {level}</Text>
+            </View>
+
+            {/* Next check-in hint */}
+            {sessions > 0 && sessToCheckin > 0 && (
+              <Text style={styles.checkinHint}>
+                {sessToCheckin} session{sessToCheckin !== 1 ? 's' : ''} until your next progress check-in
+              </Text>
+            )}
+            {sessions > 0 && sessToCheckin === 0 && (
+              <View style={styles.checkinDuePill}>
+                <Text style={styles.checkinDueText}>Progress check-in available!</Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.ringLabel}>sessions complete</Text>
-          <View style={styles.levelTag}>
-            <Text style={styles.levelTagText}>Level {level}</Text>
+
+          {/* ── Stat row ── */}
+          <View style={styles.row}>
+            <StatCard value={streak}   label={'day\nstreak'}         accent={ORANGE} />
+            <StatCard value={sessions} label={'sessions\ncomplete'}   accent={MINT}   />
+            <StatCard value={level}    label={'current\nlevel'}       accent={WHITE}  />
           </View>
-        </View>
 
-        {/* ── Stat row ── */}
-        <View style={styles.statRow}>
-          <StatCard value={prog.streak_days} label={'day' + '\nstreak'} accent={ORANGE} />
-          <StatCard value={sessionsCompleted} label={'sessions' + '\ncomplete'} accent={MINT} />
-          <StatCard value={level} label={'current' + '\nlevel'} accent={WHITE} />
-        </View>
+          {/* ── Voice scores ── */}
+          <Text style={styles.sectionTitle}>Voice Scores</Text>
+          {!hasBaseline ? (
+            <View style={styles.noBaselineCard}>
+              <Text style={styles.noBaselineIcon}>🎤</Text>
+              <Text style={styles.noBaselineTitle}>No baseline yet</Text>
+              <Text style={styles.noBaselineBody}>
+                Complete your first session to unlock voice score tracking.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.row}>
+                <ScoreCard
+                  label="Voice Power"
+                  currentScore={vpScore}
+                  points={vpPoints}
+                  color={ORANGE}
+                  baselineScore={baseline?.composite?.voice_power}
+                />
+                <ScoreCard
+                  label="Expression"
+                  currentScore={exScore}
+                  points={exPoints}
+                  color={MINT}
+                  baselineScore={baseline?.composite?.expression}
+                />
+              </View>
+              <ScoreCard
+                label="Fluency"
+                currentScore={flScore}
+                points={flPoints}
+                color={WHITE}
+                baselineScore={baseline?.composite?.fluency}
+              />
+            </>
+          )}
 
-        {/* ── Badges ── */}
-        <Text style={styles.sectionTitle}>Achievements</Text>
-        <Text style={styles.sectionSub}>Complete sessions to unlock badges</Text>
-
-        <View style={styles.badgeGrid}>
-          {BADGES.map((b, i) => (
-            <BadgeCard key={i} {...b} />
-          ))}
-        </View>
-
-        {/* Coming soon note */}
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonText}>
-            Leaderboards, detailed analytics and more achievements coming soon.
+          {/* ── Milestones ── */}
+          <Text style={styles.sectionTitle}>Milestones</Text>
+          <Text style={styles.sectionSub}>
+            {MILESTONES.filter(m => m.check(mCtx)).length} of {MILESTONES.length} unlocked
           </Text>
-        </View>
-      </ScrollView>
+
+          <View style={styles.milestoneGrid}>
+            {MILESTONES.map(m => (
+              <MilestoneBadge
+                key={m.id}
+                label={m.label}
+                desc={m.desc}
+                icon={m.icon}
+                unlocked={m.check(mCtx)}
+              />
+            ))}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
@@ -256,71 +498,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20 * SC,
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
   backBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center', justifyContent: 'center',
   },
-  backText: { color: WHITE, fontSize: 22, fontWeight: '300' },
-  headerTitle: {
-    color: WHITE, fontSize: 20 * SC, fontWeight: '700', letterSpacing: 0.5,
-  },
+  backText:    { color: WHITE, fontSize: 22, fontWeight: '300' },
+  headerTitle: { color: WHITE, fontSize: 20 * SC, fontWeight: '700', letterSpacing: 0.5 },
 
   content: {
     paddingHorizontal: 20 * SC,
-    paddingTop: 8,
-    gap: 20 * SC,
+    paddingTop: 4,
+    gap: 16 * SC,
   },
 
-  // ── Ring ──
-  ringSection: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 10,
-  },
-  ringWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Ring
+  ringSection: { alignItems: 'center', paddingVertical: 8, gap: 8 },
   ringCenter: {
-    position: 'absolute',
-    alignItems: 'center',
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
   },
-  ringNum: { color: WHITE, fontSize: 42 * SC, fontWeight: '800', lineHeight: 44 * SC },
-  ringOf:  { color: 'rgba(255,255,255,0.50)', fontSize: 13 * SC, fontWeight: '500' },
-  ringLabel: { color: 'rgba(255,255,255,0.60)', fontSize: 13 * SC, letterSpacing: 0.3 },
-  levelTag: {
-    paddingHorizontal: 16 * SC, paddingVertical: 5 * SC,
-    backgroundColor: 'rgba(254,156,45,0.18)',
-    borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(254,156,45,0.35)',
+  ringNum:   { color: WHITE, fontSize: 40 * SC, fontWeight: '800', lineHeight: 44 * SC },
+  ringOf:    { color: DIM, fontSize: 13 * SC, fontWeight: '500' },
+  ringLabel: { color: DIM, fontSize: 13 * SC },
+  levelTag:  {
+    paddingHorizontal: 16 * SC, paddingVertical: 5,
+    backgroundColor: `${ORANGE}22`,
+    borderRadius: 20, borderWidth: 1, borderColor: `${ORANGE}55`,
   },
   levelTagText: { color: ORANGE, fontSize: 13 * SC, fontWeight: '700', letterSpacing: 0.5 },
 
-  // ── Stats ──
-  statRow: { flexDirection: 'row', gap: 10 * SC },
+  checkinHint: {
+    color: DIM, fontSize: 12 * SC, textAlign: 'center', marginTop: 4,
+  },
+  checkinDuePill: {
+    backgroundColor: `${ORANGE}22`,
+    borderRadius: 16, borderWidth: 1, borderColor: `${ORANGE}66`,
+    paddingHorizontal: 16, paddingVertical: 6, marginTop: 4,
+  },
+  checkinDueText: { color: ORANGE, fontSize: 13 * SC, fontWeight: '700' },
 
-  // ── Badges ──
+  row: { flexDirection: 'row', gap: 12 * SC },
+
   sectionTitle: { color: WHITE, fontSize: 18 * SC, fontWeight: '700', letterSpacing: 0.3 },
-  sectionSub:   { color: 'rgba(255,255,255,0.45)', fontSize: 12 * SC, marginTop: -14 * SC },
-  badgeGrid: {
+  sectionSub:   { color: DIM, fontSize: 12 * SC, marginTop: -10 * SC },
+
+  // No baseline
+  noBaselineCard: {
+    backgroundColor: 'rgba(45,105,116,0.30)',
+    borderRadius: 20, borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.12)',
+    padding: 28 * SC, alignItems: 'center', gap: 10,
+  },
+  noBaselineIcon:  { fontSize: 36 },
+  noBaselineTitle: { color: WHITE, fontSize: 18 * SC, fontWeight: '700' },
+  noBaselineBody:  { color: DIM, fontSize: 14 * SC, textAlign: 'center', lineHeight: 21 * SC },
+
+  milestoneGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 14 * SC,
-  },
-
-  // ── Coming soon ──
-  comingSoon: {
-    paddingVertical: 20 * SC,
-    alignItems: 'center',
-  },
-  comingSoonText: {
-    color: 'rgba(255,255,255,0.30)',
-    fontSize: 12 * SC,
-    textAlign: 'center',
-    lineHeight: 18 * SC,
-    letterSpacing: 0.2,
   },
 });

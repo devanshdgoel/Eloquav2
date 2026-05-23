@@ -22,10 +22,12 @@ export async function cloneVoice(audioUris, userId, userName = 'User') {
   formData.append('user_id', userId);
   formData.append('user_name', userName);
 
+  // Do NOT set Content-Type manually — fetch auto-sets multipart/form-data
+  // with the correct boundary when the body is FormData. Overriding it strips
+  // the boundary and FastAPI cannot parse the form, causing silent 422 errors.
   const response = await fetch(`${API_BASE_URL}/api/voice/clone`, {
     method: 'POST',
     body: formData,
-    headers: { 'Content-Type': 'multipart/form-data' },
   });
 
   if (!response.ok) {

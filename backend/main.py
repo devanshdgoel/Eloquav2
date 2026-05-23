@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import ALLOWED_ORIGINS
 from firebase_config import initialize_firebase
+from api.analysis_routes import router as analysis_router
+from api.assessment_routes import router as assessment_router
 from api.audio_routes import router as audio_router
 from api.speech_routes import router as speech_router
 from api.voice_routes import router as voice_router
@@ -32,9 +34,11 @@ def health_check():
     return {"status": "ok", "message": "Eloqua backend running"}
 
 
-app.include_router(speech_router, prefix="/api")
-app.include_router(audio_router, prefix="/api")
-app.include_router(voice_router, prefix="/api")
+app.include_router(speech_router,     prefix="/api")
+app.include_router(audio_router,      prefix="/api")
+app.include_router(voice_router,      prefix="/api")
+app.include_router(analysis_router,   prefix="/api")
+app.include_router(assessment_router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn

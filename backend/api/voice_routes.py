@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from config import MAX_AUDIO_SIZE_MB
 from services.voice_cloning_service import (
     VoiceCloningError,
     create_cloned_voice,
@@ -41,14 +42,20 @@ async def clone_voice(
         raise HTTPException(status_code=400, detail="No audio files provided.")
 
     # Save each valid audio file to disk before forwarding to ElevenLabs.
+    max_bytes = MAX_AUDIO_SIZE_MB * 1024 * 1024
     saved_paths = []
     for f in files:
         if not is_valid_audio(f.filename):
             logger.warning("Skipping unsupported file type: %s", f.filename)
             continue
+        content = await f.read()
+        if len(content) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File '{f.filename}' exceeds the {MAX_AUDIO_SIZE_MB} MB limit.",
+            )
         ext = Path(f.filename).suffix or ".m4a"
         save_path = VOICE_SAMPLES_DIR / f"sample_{user_id}_{uuid.uuid4().hex}{ext}"
-        content = await f.read()
         with open(save_path, "wb") as out:
             out.write(content)
         saved_paths.append(save_path)

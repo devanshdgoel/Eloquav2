@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { saveUserProfileToFirestore } from '../../services/userService';
-import { saveUserProfile } from '../../utils/storage';
+import { saveUserProfile, setOnboardingComplete } from '../../utils/storage';
 
 const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
@@ -42,7 +42,8 @@ export default function SetupAboutYouScreen({ navigation }) {
       console.warn('Failed to save profile to Firestore:', err.message);
     }
 
-    navigation.navigate('SetupVoice');
+    await setOnboardingComplete();
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
 
   const canProceed = name.trim().length > 0;

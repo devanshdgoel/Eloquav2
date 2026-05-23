@@ -43,17 +43,17 @@ def generate_enhanced_speech(
     }
 
     settings = {
-        "stability": 0.50,
-        "similarity_boost": 0.75,
-        "style": 0.30,
-        "speed": 1.0,
+        "stability":        0.65,   # consistent, controlled output
+        "similarity_boost": 0.85,   # stays close to the user's cloned voice
+        "style":            0.20,   # minimal styling — clarity over drama
+        "speed":            1.0,
     }
     if voice_settings:
         settings.update(voice_settings)
 
     payload = {
         "text": text,
-        "model_id": "eleven_multilingual_v2",
+        "model_id": "eleven_turbo_v2_5",   # better articulation clarity
         "voice_settings": settings,
     }
 

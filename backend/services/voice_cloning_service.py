@@ -1,11 +1,10 @@
 import logging
-import os
 import requests
 from firebase_admin import firestore
 
-logger = logging.getLogger(__name__)
+from config import ELEVENLABS_API_KEY
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+logger = logging.getLogger(__name__)
 
 # Rachel — ElevenLabs default voice used when no clone exists.
 DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
@@ -73,10 +72,13 @@ def create_cloned_voice(user_id: str, audio_paths: list, user_name: str = "User"
         for _, file_tuple in files:
             file_tuple[1].close()
 
-    if response.status_code != 200:
+    if response.status_code not in (200, 201):
         detail = response.text
         try:
-            detail = response.json().get("detail", {}).get("message", response.text)
+            body = response.json()
+            d = body.get("detail", response.text)
+            # ElevenLabs can return detail as a string OR as {"status":…,"message":…}
+            detail = d.get("message", response.text) if isinstance(d, dict) else str(d)
         except Exception:
             pass
         raise VoiceCloningError(

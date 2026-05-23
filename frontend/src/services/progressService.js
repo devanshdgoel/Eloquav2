@@ -38,14 +38,31 @@ function yesterday() {
 export async function fetchProgress() {
   const uid = auth.currentUser?.uid;
   if (!uid) {
-    return { current_node: 0, sessions_completed: 0, streak_days: 0 };
+    return { current_node: 0, sessions_completed: 0, streak_days: 0, last_checkin_session: 0 };
   }
 
   const snap = await getDoc(doc(db, 'user_progress', uid));
   if (!snap.exists()) {
-    return { current_node: 0, sessions_completed: 0, streak_days: 0 };
+    return { current_node: 0, sessions_completed: 0, streak_days: 0, last_checkin_session: 0 };
   }
-  return snap.data();
+  return { last_checkin_session: 0, ...snap.data() };
+}
+
+/**
+ * Mark that a check-in assessment has been completed at the current session count.
+ * Prevents the check-in banner from re-appearing until the next 7-session interval.
+ */
+export async function recordCheckin() {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  const ref  = doc(db, 'user_progress', uid);
+  const snap = await getDoc(ref);
+  const sessions = snap.exists() ? (snap.data().sessions_completed ?? 0) : 0;
+  if (snap.exists()) {
+    await updateDoc(ref, { last_checkin_session: sessions });
+  } else {
+    await setDoc(ref, { last_checkin_session: sessions, current_node: 0, sessions_completed: 0, streak_days: 0 });
+  }
 }
 
 /**

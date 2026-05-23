@@ -7,7 +7,9 @@
 module.exports = {
   expo: {
     name: 'Eloqua',
-    slug: 'eloqua',
+    slug: 'eloqua2',
+    owner: 'eloqua-team',
+    privacy: 'public',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
@@ -37,11 +39,11 @@ module.exports = {
       policy: 'sdkVersion',
     },
     updates: {
-      url: 'https://u.expo.dev/f4bb8d13-0817-4c35-af80-dd6c71b42002',
+      url: 'https://u.expo.dev/9510078f-0c91-4206-87fe-9aff31f95693',
     },
     extra: {
       eas: {
-        projectId: 'f4bb8d13-0817-4c35-af80-dd6c71b42002',
+        projectId: '9510078f-0c91-4206-87fe-9aff31f95693',
       },
       apiBaseUrl: process.env.API_BASE_URL || 'https://eloqua-backend.onrender.com',
 

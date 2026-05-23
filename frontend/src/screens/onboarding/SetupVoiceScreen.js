@@ -155,7 +155,7 @@ export default function SetupVoiceScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
         >
-          <Text style={styles.micIcon}>M</Text>
+          <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
         </TouchableOpacity>
 
         {/* One dot per sentence; the current sentence is highlighted white. */}

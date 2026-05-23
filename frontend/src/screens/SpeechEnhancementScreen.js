@@ -202,6 +202,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const chunkErrorsRef    = useRef(0);        // count of failed chunk requests
   // dBFS readings collected from the active recording via status callback
   const meteringRef       = useRef([]);
+  // Voice analysis: URIs of completed chunks + session timing
+  const chunkUrisRef         = useRef([]);
+  const recordingStartMsRef  = useRef(0);
+  const recordingDurationRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -266,7 +270,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
     return recording;
   }
 
-  async function transcribeChunk(uri, index, previousRawText, previousEnhancedText) {
+  // attempt=0 is the first try; attempt=1 is the single permitted retry.
+  // Healthcare context: we must not silently drop words on a transient network error.
+  async function transcribeChunk(uri, index, previousRawText, previousEnhancedText, attempt = 0) {
     try {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: `chunk_${index}.m4a` });
@@ -281,7 +287,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
       });
 
       if (!res.ok) {
-        console.error(`[Speech] chunk ${index} → HTTP ${res.status}`);
+        if (attempt === 0) {
+          // One retry after a short pause — covers transient server/network blips.
+          await new Promise(r => setTimeout(r, 1500));
+          return transcribeChunk(uri, index, previousRawText, previousEnhancedText, 1);
+        }
+        console.error(`[Speech] chunk ${index} → HTTP ${res.status} (after retry)`);
         chunkErrorsRef.current += 1;
         return;
       }
@@ -299,6 +310,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
         setLiveTranscript(getAccumulatedEnhancedText());
       }
     } catch (e) {
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 1500));
+        return transcribeChunk(uri, index, previousRawText, previousEnhancedText, 1);
+      }
       console.error(`[Speech] chunk ${index} error:`, e?.message);
       chunkErrorsRef.current += 1;
     }
@@ -331,6 +346,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
       // Layer 1 silence gate: skip Whisper entirely for silent chunks.
       if (uri && !isChunkSilent(chunkReadings)) {
+        chunkUrisRef.current.push(uri);
         setPendingCount(c => c + 1);
         const p = transcribeChunk(uri, index, previousRawText, previousEnhancedText)
           .finally(() => setPendingCount(c => c - 1));
@@ -357,12 +373,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
         return;
       }
 
-      chunkIndexRef.current    = 0;
-      chunksRef.current        = {};
-      chunkPromisesRef.current = [];
-      chunkErrorsRef.current   = 0;
-      stoppingRef.current      = false;
-      isRotatingRef.current    = false;
+      chunkIndexRef.current       = 0;
+      chunksRef.current           = {};
+      chunkPromisesRef.current    = [];
+      chunkErrorsRef.current      = 0;
+      chunkUrisRef.current        = [];
+      stoppingRef.current         = false;
+      isRotatingRef.current       = false;
+      recordingStartMsRef.current = Date.now();
       setLiveTranscript('');
       setPendingCount(0);
       setResult(null);
@@ -390,6 +408,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
       await new Promise(r => setTimeout(r, 30));
     }
 
+    // Capture session duration before async work begins.
+    recordingDurationRef.current = (Date.now() - recordingStartMsRef.current) / 1000;
+
     // Switch to ENHANCING immediately so the UI is responsive.
     setPhase(S.ENHANCING);
 
@@ -408,6 +429,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
         const uri = lastRecording.getURI();
 
         if (uri && !isChunkSilent(finalReadings)) {
+          chunkUrisRef.current.push(uri);
           setPendingCount(c => c + 1);
           const finalP = transcribeChunk(uri, index, previousRawText, previousEnhancedText)
             .finally(() => setPendingCount(c => c - 1));
@@ -462,10 +484,41 @@ export default function SpeechEnhancementScreen({ navigation }) {
       const data = await res.json();
       setResult({ ...data, raw_transcript: rawText });
       setPhase(S.RESULTS);
+
+      // Fire-and-forget: non-blocking voice analysis for progress tracking.
+      // Does NOT affect the current session's results.
+      analyzeVoiceAsync(rawText, recordingDurationRef.current);
     } catch (e) {
       console.error('[Speech] enhanceText error:', e?.message);
       setErrorMsg(e.message || 'Enhancement failed. Please try again.');
       setPhase(S.ERROR);
+    }
+  }
+
+  // Send a representative audio chunk + transcript to /api/analyze-voice.
+  // Picks the middle chunk (least likely to be a partial/hesitation utterance).
+  // Runs fully in the background — any failure is swallowed.
+  async function analyzeVoiceAsync(transcript, durationS) {
+    const uris = chunkUrisRef.current;
+    if (!uris.length || !durationS) return;
+    const uri = uris[Math.floor(uris.length / 2)];
+    if (!uri) return;
+
+    try {
+      const form = new FormData();
+      form.append('file', { uri, type: 'audio/m4a', name: 'session_chunk.m4a' });
+      form.append('task_type', 'free_speech');
+      form.append('transcript', transcript);
+      form.append('audio_duration_s', String(Math.round(durationS)));
+      const uid = auth.currentUser?.uid;
+      if (uid) form.append('user_id', uid);
+
+      await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+        method: 'POST',
+        body: form,
+      });
+    } catch (e) {
+      console.warn('[Speech] Voice analysis skipped:', e?.message);
     }
   }
 
@@ -530,7 +583,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
     >
       <StatusBar barStyle="dark-content" />
 
-      {phase !== S.RECORDING && (
+      {phase !== S.RECORDING && phase !== S.ENHANCING && (
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
@@ -619,35 +672,23 @@ export default function SpeechEnhancementScreen({ navigation }) {
         <View style={styles.resultsArea}>
           <View style={styles.transcriptCard}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.transcriptPad}>
-              {/* Show both versions when clarity actually changed something */}
-              {result.clarity_applied && result.raw_transcript && (
-                <>
-                  <Text style={styles.transcriptLabel}>ENHANCED</Text>
-                  <Text style={styles.transcriptText}>
-                    {result.cleaned_transcript}
-                  </Text>
-                  <View style={styles.rawDivider} />
-                  <Text style={styles.transcriptLabel}>YOUR WORDS</Text>
-                  <Text style={styles.rawText}>
-                    {result.raw_transcript}
-                  </Text>
-                </>
-              )}
-              {!result.clarity_applied && (
-                <Text style={styles.transcriptText}>
-                  {result.cleaned_transcript || result.raw_transcript}
-                </Text>
-              )}
+              <Text style={styles.transcriptText}>
+                {result.cleaned_transcript || result.raw_transcript}
+              </Text>
             </ScrollView>
           </View>
 
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, !result.audio_url && styles.actionBtnDisabled]}
             onPress={isPlaying ? stopPlayback : playEnhanced}
-            activeOpacity={0.85}
+            activeOpacity={result.audio_url ? 0.85 : 1}
+            disabled={!result.audio_url && !isPlaying}
           >
             <Text style={styles.actionLabel}>{isPlaying ? 'Stop' : 'Play'}</Text>
             <Text style={styles.actionIcon}>🔊</Text>
+            {!result.audio_url && (
+              <Text style={styles.actionUnavailable}>unavailable</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85}>
@@ -861,8 +902,17 @@ const styles = StyleSheet.create({
     height: Math.round(52 * SC),
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
   },
+  actionBtnDisabled: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   actionLabel: { color: WHITE, fontSize: Math.round(20 * SC), fontWeight: '700', letterSpacing: 1.8 },
   actionIcon:  { fontSize: Math.round(20 * SC) },
+  actionUnavailable: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: Math.round(11 * SC),
+    letterSpacing: 0.5,
+    marginLeft: -6,
+  },
 
   newRecordBtn: {
     backgroundColor: '#3A8C4A',

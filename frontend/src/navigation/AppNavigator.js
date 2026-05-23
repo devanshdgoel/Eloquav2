@@ -18,7 +18,6 @@ import PersonaliseScreen from '../screens/onboarding/PersonaliseScreen';
 import SetupPermissionsScreen from '../screens/onboarding/SetupPermissionsScreen';
 import AboutYouIntroScreen from '../screens/onboarding/AboutYouIntroScreen';
 import SetupAboutYouScreen from '../screens/onboarding/SetupAboutYouScreen';
-import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 
 // Main app
 import HomeScreen from '../screens/HomeScreen';
@@ -26,6 +25,7 @@ import OpeningScreen from '../screens/OpeningScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import SpeechEnhancementScreen from '../screens/SpeechEnhancementScreen';
 import SpeechDemoScreen from '../screens/SpeechDemoScreen';
+import AssessmentScreen from '../screens/AssessmentScreen';
 import VocalTrainingSessionScreen from '../screens/vocaltraining/VocalTrainingSessionScreen';
 import StreakCelebrationScreen from '../screens/StreakCelebrationScreen';
 import StreakCommitmentScreen from '../screens/StreakCommitmentScreen';
@@ -51,7 +51,7 @@ export default function AppNavigator() {
        * Navigation flow:
        *   Splash → SignIn → Home (existing users)
        *   Splash → SignUp → Personalise → SetupPermissions → AboutYouIntro
-       *          → SetupAboutYou → SetupVoice → Home (new users)
+       *          → SetupAboutYou → Home (new users, voice captured in Assessment)
        */}
       <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
         <Stack.Screen name="Splash" component={SplashScreen} />
@@ -61,7 +61,6 @@ export default function AppNavigator() {
         <Stack.Screen name="SetupPermissions" component={SetupPermissionsScreen} />
         <Stack.Screen name="AboutYouIntro" component={AboutYouIntroScreen} />
         <Stack.Screen name="SetupAboutYou" component={SetupAboutYouScreen} />
-        <Stack.Screen name="SetupVoice" component={SetupVoiceScreen} />
         <Stack.Screen name="Opening" component={OpeningScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen
@@ -81,6 +80,7 @@ export default function AppNavigator() {
           }}
         />
         <Stack.Screen name="Progress" component={ProgressScreen} />
+        <Stack.Screen name="Assessment" component={AssessmentScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
         <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
         <Stack.Screen name="VocalTrainingSession" component={VocalTrainingSessionScreen} />

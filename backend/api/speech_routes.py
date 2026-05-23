@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from config import MAX_AUDIO_SIZE_MB
-from services.clarity_speech import clarity_transcript, clarity_transcript_chunked
+from services.clarity_speech import clarity_transcript, clarity_transcript_chunked, clarity_final_pass
 from services.enhancement_service import SpeechEnhancementError, generate_enhanced_speech
 from services.soniva_service import transcribe_soniva
 from services.speech_service import TranscriptionError, transcribe_audio
@@ -120,7 +120,7 @@ async def transcribe_chunk(
 
     try:
         if model == "soniva":
-            raw_text, _ = transcribe_soniva(str(audio_path))
+            raw_text, _ = transcribe_soniva(str(audio_path), prompt=previous_text)
         else:
             raw_text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
     except TranscriptionError as e:
@@ -171,6 +171,11 @@ async def enhance_text_route(
     # Prefer the pre-enhanced transcript; fall back to a fresh clarity pass on raw
     if enhanced_transcript.strip():
         final_transcript = enhanced_transcript.strip()
+        # Run one final coherence pass to fix cross-chunk seam artifacts
+        # (duplicate words at chunk joins, punctuation inconsistencies).
+        # Falls back to the pre-pass text on any error — transcript is never lost.
+        logger.info("Running final coherence pass on accumulated enhanced transcript")
+        final_transcript = clarity_final_pass(final_transcript)
     else:
         final_transcript = clarity_transcript(raw_transcript)
 
@@ -181,10 +186,10 @@ async def enhance_text_route(
         synthesis_voice_id = DEFAULT_PROFILE.voice_id
 
     voice_settings = {
-        "stability": 0.50,
-        "similarity_boost": 0.75,
-        "style": 0.30,
-        "speed": 1.0,
+        "stability":        0.65,
+        "similarity_boost": 0.85,
+        "style":            0.20,
+        "speed":            1.0,
     }
 
     audio_url = None
@@ -251,10 +256,10 @@ async def process_audio(
     if user_id and has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)
         voice_settings = {
-            "stability": 0.50,
-            "similarity_boost": 0.75,
-            "style": 0.30,
-            "speed": 1.0,
+            "stability":        0.65,
+            "similarity_boost": 0.85,
+            "style":            0.20,
+            "speed":            1.0,
         }
         profile = DEFAULT_PROFILE
         logger.info("Using cloned voice for user %s", user_id[:8] if user_id else "unknown")

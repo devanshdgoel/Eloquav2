@@ -65,23 +65,39 @@ No explanation, no preamble, no quotation marks."""
 
 _CHUNKED_CORRECTION_PROMPT_TEMPLATE = """\
 You are removing artefacts from a real-time transcription chunk for a person with Hypokinetic \
-Dysarthria (Parkinson's disease). This person's exact words must be preserved — do not add, \
-change, or infer any words.
+Dysarthria (Parkinson's disease). This person's exact words must be preserved.
 
-PREVIOUSLY CORRECTED CONTEXT — for sentence continuity only, do NOT include in your response:
+PREVIOUSLY CORRECTED CONTEXT — for sentence-continuity awareness only. \
+Do NOT echo, repeat, or include any part of this in your response:
 "{context}"
 
 NEW CHUNK TO CORRECT:
 "{raw_text}"
 
-Only correct: palilalia (word/phrase repetitions), filler sounds (um, uh, ah, er, hmm), \
-non-speech sounds ([clears throat], ahem), and clearly fused words (split only when \
-completely unambiguous). Never add words not already in the chunk. Never rephrase. \
-When in doubt, return the chunk exactly as received.
+The chunk may start mid-sentence (continuing directly from the context) or end mid-sentence. \
+That is normal — do not complete the sentence, just clean what is in this chunk.
 
-Return ONLY the corrected version of the NEW CHUNK. Never repeat or include any text from the \
-PREVIOUSLY CORRECTED CONTEXT. If the chunk begins mid-sentence, start your response from that \
-mid-sentence point. Never wrap the output in quotation marks."""
+Correct ONLY these four things:
+1. Palilalia — involuntary word or phrase repetition: "I want I want to go" → "I want to go"
+2. Filler sounds — um, uh, ah, er, hmm: remove them
+3. Non-speech sounds — [clears throat], ahem, coughing: remove them
+4. Clearly fused words — split only when completely unambiguous: "Iwant" → "I want"
+
+ABSOLUTE RULES:
+- Never add any word not already present in the chunk.
+- Never remove content words (nouns, verbs, adjectives, adverbs).
+- Never complete, extend, or rephrase the sentence.
+- Never echo or repeat any text from the PREVIOUSLY CORRECTED CONTEXT above.
+- When in doubt about any correction, return the chunk exactly as received.
+- Never wrap the output in quotation marks.
+
+IMPORTANT — SENTENCE BOUNDARY RULE:
+Chunks are fixed-length recordings (4 seconds). A chunk will often end mid-sentence or mid-phrase. \
+If this chunk ends mid-sentence, do NOT add terminal punctuation (no period, exclamation mark, or \
+question mark) at the end. Leave it open-ended exactly as it is. Only add terminal punctuation if \
+the chunk contains a clearly complete sentence that ends at a natural boundary.
+
+Return ONLY the corrected version of the NEW CHUNK, starting exactly where the chunk starts."""
 
 
 def _strip_wrapping_quotes(text: str) -> str:
@@ -94,6 +110,102 @@ def _strip_wrapping_quotes(text: str) -> str:
     ):
         t = t[1:-1].strip()
     return t
+
+
+_FINAL_PASS_SYSTEM_PROMPT = (
+    "You are a transcription seam-repair assistant for clinical speech transcripts. "
+    "You fix cross-chunk boundary artifacts in an already artefact-corrected transcript. "
+    "Your primary job is to re-join sentences that were split across 4-second recording chunks. "
+    "You never add, infer, or change any words — only remove duplications, remove spurious "
+    "punctuation between fragments, and re-join split sentences."
+)
+
+_FINAL_PASS_PROMPT_TEMPLATE = """\
+The text below is a complete transcript recorded in 4-second chunks. Each chunk was individually \
+corrected, but chunk boundaries do not align with sentence boundaries. The per-chunk processor \
+sometimes added a period or capital letter mid-sentence. Your job is to fix those seam artifacts.
+
+PERMITTED CHANGES — these three only:
+
+1. RE-JOIN SPLIT SENTENCES (most important).
+   A sentence was split if a period, exclamation mark, or question mark is followed by a word \
+that grammatically continues the same sentence — for example a conjunction (and, but, or, so, \
+yet, because, although, while, when, that, which, who), an article (the, a, an), a preposition \
+(to, for, in, at, of, with, from, by, about, into), or any other lowercase continuation word.
+   Action: remove the terminal punctuation and lowercase the first letter of the continuation \
+word so the sentence flows naturally.
+   Examples:
+     "I went to see my. doctor yesterday" → "I went to see my doctor yesterday"
+     "She called the. pharmacy and asked" → "She called the pharmacy and asked"
+     "He felt much better. but was still tired" → "He felt much better but was still tired"
+     "I need to. take my medication" → "I need to take my medication"
+
+2. REMOVE VERBATIM DUPLICATIONS at chunk joins (not intentional palilalia).
+   "go to the the doctor" → "go to the doctor"
+
+3. FIX PUNCTUATION AND CAPITALISATION at genuine sentence boundaries for readability.
+
+ABSOLUTE RULES — never break these:
+- Never add any word that is not already in the text.
+- Never remove content words (nouns, verbs, adjectives, adverbs).
+- Never rephrase, restructure, or reorder any part of the text.
+- Never complete or extend an unfinished sentence.
+- Only remove a period if what follows it is clearly a grammatical continuation, not a new sentence.
+- If the text is already clean, return it exactly as received.
+- Never wrap the output in quotation marks.
+
+INPUT TRANSCRIPT:
+"{text}"
+
+Return ONLY the cleaned transcript. No explanation, no preamble, no quotation marks."""
+
+
+def clarity_final_pass(enhanced_text: str) -> str:
+    """
+    Single coherence pass on the full accumulated enhanced transcript after recording stops.
+
+    Removes cross-chunk seam artifacts: words duplicated at chunk joins and punctuation
+    inconsistencies.  This is the only place where we look at the entire transcript as
+    a whole, so it is the right place to fix problems that span chunk boundaries.
+
+    Falls back to the unmodified input on any error — the transcript is never lost.
+    """
+    if not enhanced_text or len(enhanced_text.strip()) < 10:
+        return enhanced_text
+
+    if not ENABLE_CLARITY or not OPENAI_API_KEY:
+        return enhanced_text
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": _FINAL_PASS_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": _FINAL_PASS_PROMPT_TEMPLATE.format(text=enhanced_text),
+                },
+            ],
+            temperature=0.10,
+            max_tokens=1500,
+        )
+
+        cleaned = _strip_wrapping_quotes(response.choices[0].message.content.strip())
+
+        if not cleaned:
+            return enhanced_text
+
+        # A final-pass that expands the transcript has added words — discard it.
+        if len(cleaned) > len(enhanced_text) * MAX_LENGTH_EXPANSION_RATIO:
+            logger.warning("Final pass output too long (added words?), discarding")
+            return enhanced_text
+
+        return cleaned
+
+    except Exception as exc:
+        logger.warning("Final clarity pass failed, returning pre-pass text: %s", exc)
+        return enhanced_text
 
 
 def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:

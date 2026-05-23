@@ -83,13 +83,29 @@ def _load_model() -> bool:
         return False
 
 
-def transcribe_soniva(audio_path: str) -> tuple:
+def _apply_language_forcing(generate_kwargs: dict) -> None:
+    """Force English transcription via forced_decoder_ids when no prompt_ids are set."""
+    try:
+        generate_kwargs["forced_decoder_ids"] = _processor.get_decoder_prompt_ids(
+            language="english", task="transcribe"
+        )
+    except Exception as e:
+        logger.warning("SONIVA language forcing unavailable (%s)", e)
+
+
+def transcribe_soniva(audio_path: str, prompt: str = "") -> tuple:
     """
     Transcribe an audio file using the SONIVA fine-tuned Whisper Medium model.
 
     Returns (text: str, duration_seconds: float).
     Input audio is resampled to 16 kHz automatically via librosa.
     Accepts any format supported by librosa (wav, m4a, mp3, ogg, …).
+
+    prompt: optional previous transcript text for cross-chunk context continuity,
+            mirroring the Whisper API's prompt parameter.  When supplied, the
+            model receives it as a decoder prefix (prompt_ids) which dramatically
+            improves accuracy at chunk boundaries.  Also forces English output so
+            that silence or noise cannot produce random-language hallucinations.
 
     Raises TranscriptionError on failure so callers can handle it uniformly
     alongside the standard Whisper path.
@@ -117,8 +133,30 @@ def transcribe_soniva(audio_path: str) -> tuple:
             return_tensors="pt",
         ).input_features.to(_device)
 
+        generate_kwargs: dict = {}
+
+        # Context prompt takes priority over plain language forcing.
+        # When prompt_ids is provided, forced_decoder_ids must NOT also be set
+        # (they operate on the same decoder positions and conflict).
+        if prompt.strip():
+            try:
+                prompt_ids = _processor.get_prompt_ids(
+                    prompt[-800:], return_tensors="pt"
+                ).to(_device)
+                generate_kwargs["prompt_ids"] = prompt_ids
+                # prompt_ids already steers the decoder; no forced_decoder_ids needed
+            except Exception as e:
+                logger.warning(
+                    "SONIVA prompt_ids failed (%s) — falling back to language forcing", e
+                )
+                _apply_language_forcing(generate_kwargs)
+        else:
+            # No context — force English/transcribe so silence/noise cannot produce
+            # random-language output that slips past the hallucination filter.
+            _apply_language_forcing(generate_kwargs)
+
         with torch.no_grad():
-            predicted_ids = _model.generate(input_features)
+            predicted_ids = _model.generate(input_features, **generate_kwargs)
 
         text = _processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
 
