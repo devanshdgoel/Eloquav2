@@ -25,6 +25,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
+import { setTiersFromAssessment } from '../services/difficultyService';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -350,6 +351,21 @@ export default function AssessmentScreen({ navigation, route }) {
     try {
       const uid = auth.currentUser?.uid;
       if (uid) {
+        // V2: Initialise difficulty tiers from baseline scores so users don't
+        // waste sessions at tier 1 if their voice is already stronger in some areas.
+        // Also persist baseline_focus_key so TailoredExercise can break ties
+        // in favour of the user's weakest voice dimension.
+        if (isBaseline && (composite.voice_power != null || composite.expression != null || composite.fluency != null)) {
+          // Map the voice score dimension (focus.key) → exercise key
+          const FOCUS_DIM_TO_EXERCISE = {
+            voice_power: 'phonation',
+            expression:  'pitchGlides',
+            fluency:     'speech',
+          };
+          const exerciseFocusKey = FOCUS_DIM_TO_EXERCISE[focus?.key] ?? null;
+          setTiersFromAssessment(composite, exerciseFocusKey).catch(() => {/* non-fatal */});
+        }
+
         // Save assessment scores
         const taskObj = {};
         for (const r of taskResultsRef.current) taskObj[r.task_id] = { scores: r.scores };
@@ -508,8 +524,8 @@ export default function AssessmentScreen({ navigation, route }) {
 
           <View style={s.scoresRow}>
             <ScoreArc score={composite.voice_power} color={ORANGE} label={'Voice\nPower'} />
-            <ScoreArc score={composite.expression}  color={MINT}   label={'Expres-\nsion'} />
-            <ScoreArc score={composite.fluency}     color={WHITE}  label={'Fluency'} />
+            <ScoreArc score={composite.expression}  color={MINT}   label={'Pitch\nVariety'} />
+            <ScoreArc score={composite.fluency}     color={WHITE}  label={'Speech\nRhythm'} />
           </View>
 
           {focus && (
@@ -522,7 +538,7 @@ export default function AssessmentScreen({ navigation, route }) {
 
           {isBaseline && (
             <Text style={s.baselineNote}>
-              These are your personal starting scores. Every number will grow from here.
+              That's your starting point. From here, every session moves it.
             </Text>
           )}
 
@@ -581,9 +597,9 @@ const s = StyleSheet.create({
 
   bodyText: {
     color: 'rgba(255,255,255,0.65)',
-    fontSize: 16 * SC,
+    fontSize: 18,
     textAlign: 'center',
-    lineHeight: 25 * SC,
+    lineHeight: 27,
   },
 
   taskList: { width: '100%', gap: 14 * SC },
@@ -600,7 +616,7 @@ const s = StyleSheet.create({
   primaryBtn: {
     backgroundColor: ORANGE,
     paddingHorizontal: 44 * SC,
-    paddingVertical: 17 * SC,
+    paddingVertical: 20,    // fixed: ensures button ≥ 56px tall for motor precision
     borderRadius: 30,
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },

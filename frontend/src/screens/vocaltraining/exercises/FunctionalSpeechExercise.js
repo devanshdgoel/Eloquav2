@@ -53,25 +53,54 @@ const MIN_THRESHOLD   = 0.28;
 const MAX_THRESHOLD   = 0.70;
 const SUCCESS_HOLD_MS = 700;
 
-// ── Word banks ─────────────────────────────────────────────────────────────────
-const WORDS = [
-  'Hello', 'Please', 'Thanks', 'Water', 'Help',
-  'Sorry', 'Okay', 'Yes', 'Stop', 'Good',
+// ── Word banks by tier ────────────────────────────────────────────────────────
+// Tier 1: Simple words + short phrases (everyday fundamentals)
+const T1_WORDS = ['Hello', 'Please', 'Thanks', 'Water', 'Help', 'Sorry', 'Okay', 'Yes', 'Stop', 'Good'];
+const T1_PHRASES = [
+  'Good morning', 'Thank you', 'Excuse me', 'How are you',
+  'I need help', 'Just a moment', 'Can you hear me', 'See you later',
 ];
-const PHRASES = [
-  'Good morning',    'Thank you',        'Excuse me',
-  'How are you',     'I need help',      'Just a moment',
-  'Can you hear me', 'See you later',    'Come in please',
-  'Hold on please',
+
+// Tier 2: Slightly longer phrases (3–5 words)
+const T2_PHRASES = [
+  'Good morning, how are you', 'I would like some help', 'Can you hear me clearly',
+  'Just a moment please',      'Could you speak up please', 'Let me think about that',
+  'I am doing well today',     'Please come in and sit down',
 ];
-const SENTENCES = [
-  'Could I have a glass of water',
-  'Good morning, how are you today',
-  'Can you please speak a little louder',
-  'I would like to order something',
-  'Thank you very much for your help',
-  'I am sorry, I did not catch that',
-  'Please wait while I get ready',
+const T2_SENTENCES = [
+  'Could I have a glass of water',      'Good morning, how are you doing today',
+  'Can you please speak a little louder', 'I would like to order something please',
+];
+
+// Tier 3: Multi-clause phrases and sentences
+const T3_PHRASES = [
+  'When you have a moment, could you help me',
+  'I was wondering if you could assist',
+  'Before you leave, I have a question',
+  'If it is not too much trouble, could you wait',
+];
+const T3_SENTENCES = [
+  'I would like a cup of tea, and could you also bring some biscuits please',
+  'Good morning everyone, I hope you are all having a wonderful day today',
+  'Could you please turn down the music, as I am trying to concentrate on this',
+  'I have been practising my exercises and I feel my voice getting stronger',
+];
+
+// Tier 4: Complex functional sentences
+const T4_SENTENCES = [
+  'I would like to make an appointment with the doctor for some time next week if possible',
+  'Good morning, my name is and I am here for my ten o clock appointment today',
+  'Could you tell me where the nearest pharmacy is, as I need to pick up a prescription',
+  'I have been feeling a bit under the weather and I think I may need to see a specialist',
+  'Could you please ask them to call me back when they have a moment, as it is rather urgent',
+];
+
+// Tier 5: Rapid natural speech (longer, faster-paced)
+const T5_SENTENCES = [
+  'I have been practising my voice exercises every day for the past few weeks and I am starting to notice a real improvement in my speaking clarity',
+  'Good morning everyone, I am here to tell you a little about myself and the work I have been doing to improve my communication over recent months',
+  'Could you please let the receptionist know that I have arrived for my appointment, and also ask whether there is likely to be much of a wait today',
+  'I would like to order a hot drink and something to eat, and if possible could you also bring some extra napkins and a glass of cold water please',
 ];
 
 function shuffle(arr) {
@@ -83,12 +112,43 @@ function shuffle(arr) {
   return a;
 }
 
-function buildItems() {
-  return [
-    ...shuffle(WORDS).slice(0, 1).map(t => ({ text: t, level: 'word' })),
-    ...shuffle(PHRASES).slice(0, 2).map(t => ({ text: t, level: 'phrase' })),
-    ...shuffle(SENTENCES).slice(0, 1).map(t => ({ text: t, level: 'sentence' })),
-  ];
+/**
+ * Build the item list for a given difficulty tier.
+ * Returns an array of { text, level } objects.
+ */
+function buildItemsForTier(tier) {
+  const t = Math.max(1, Math.min(5, tier ?? 1));
+  switch (t) {
+    case 1:
+      return [
+        ...shuffle(T1_WORDS).slice(0, 1).map(text => ({ text, level: 'word' })),
+        ...shuffle(T1_PHRASES).slice(0, 2).map(text => ({ text, level: 'phrase' })),
+        ...shuffle(T2_SENTENCES).slice(0, 1).map(text => ({ text, level: 'sentence' })),
+      ];
+    case 2:
+      return [
+        ...shuffle(T1_PHRASES).slice(0, 1).map(text => ({ text, level: 'phrase' })),
+        ...shuffle(T2_PHRASES).slice(0, 2).map(text => ({ text, level: 'phrase' })),
+        ...shuffle(T2_SENTENCES).slice(0, 1).map(text => ({ text, level: 'sentence' })),
+      ];
+    case 3:
+      return [
+        ...shuffle(T3_PHRASES).slice(0, 1).map(text => ({ text, level: 'phrase' })),
+        ...shuffle(T3_SENTENCES).slice(0, 2).map(text => ({ text, level: 'sentence' })),
+        ...shuffle(T4_SENTENCES).slice(0, 1).map(text => ({ text, level: 'sentence' })),
+      ];
+    case 4:
+      return [
+        ...shuffle(T3_SENTENCES).slice(0, 1).map(text => ({ text, level: 'sentence' })),
+        ...shuffle(T4_SENTENCES).slice(0, 3).map(text => ({ text, level: 'sentence' })),
+      ];
+    case 5:
+    default:
+      return [
+        ...shuffle(T4_SENTENCES).slice(0, 2).map(text => ({ text, level: 'sentence' })),
+        ...shuffle(T5_SENTENCES).slice(0, 2).map(text => ({ text, level: 'sentence' })),
+      ];
+  }
 }
 
 // ── Organic blob shape (drawn with overlapping ellipses like the Figma) ────────
@@ -178,8 +238,8 @@ function IntroScreen({ onStart, onExit, progress }) {
 }
 
 // ── Main exercise screen ───────────────────────────────────────────────────────
-function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
-  const items   = useRef(buildItems()).current;
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const items   = useRef(buildItemsForTier(tier)).current;
   const TOTAL   = items.length; // 5
 
   const [displayIdx, setDisplayIdx]     = useState(0);
@@ -439,7 +499,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
 
   function advance() {
     const next = itemIdxRef.current + 1;
-    if (next >= TOTAL) { onComplete(); return; }
+    if (next >= TOTAL) {
+      // V2: score is always 100 — exercise only completes when all items spoken
+      onComplete(100);
+      return;
+    }
     itemIdxRef.current = next;
     setDisplayIdx(next);
     loadItem(next);
@@ -610,14 +674,14 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function FunctionalSpeechExercise({ onComplete, onExit }) {
+export default function FunctionalSpeechExercise({ onComplete, onExit, tier = 1 }) {
   // TODO (production): read INTRO_KEY from AsyncStorage to show only once.
   // For testing, always show the intro first.
   const [showIntro, setShowIntro] = useState(true);
 
   return showIntro
     ? <IntroScreen onStart={() => setShowIntro(false)} onExit={onExit} progress={0} />
-    : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onComplete} />;
+    : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onComplete} tier={tier} />;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────

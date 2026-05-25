@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,60 +6,76 @@ import {
   Dimensions,
   Animated,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { completeSession } from '../../services/progressService';
+import {
+  nudgeTiersFromRecentScores,
+  DEFAULT_TIERS,
+  EXERCISE_KEYS,
+  saveSessionExerciseScores,
+} from '../../services/difficultyService';
 import { getUserProfile } from '../../utils/storage';
 
-import BreathingExercise       from './exercises/BreathingExercise';
-import SustainedPhonation      from './exercises/SustainedPhonationExercise';
-import DolphinVowels           from './exercises/DolphinVowelsExercise';
-import LoudnessDrills          from './exercises/LoudnessDrillsExercise';
-import TailoredExercise        from './exercises/TailoredExercise';
-import MidpointScreen        from './exercises/MidpointScreen';
-import FunctionalSpeech        from './exercises/FunctionalSpeechExercise';
+import BreathingExercise  from './exercises/BreathingExercise';
+import SustainedPhonation from './exercises/SustainedPhonationExercise';
+import PitchGlides        from './exercises/PitchGlidesExercise';
+import LoudnessDrills     from './exercises/LoudnessDrillsExercise';
+import TailoredExercise   from './exercises/TailoredExercise';
+import MidpointScreen     from './exercises/MidpointScreen';
+import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
 
 const { width: W } = Dimensions.get('window');
 
 // The fixed sequence of exercises that make up one training session.
-// Breathing appears twice: at the start and as a mid-session reset (after
-// every three consecutive exercises, per clinical recommendation).
+// Breathing appears twice: at the start and as a mid-session reset
+// (after every three consecutive exercises, per clinical recommendation).
+// Labels are user-facing — plain language, no clinical jargon.
 const SESSION_EXERCISES = [
   { type: 'breathing',   label: 'Breathing' },
-  { type: 'phonation',   label: 'Sustained Phonation' },
-  { type: 'pitchGlides', label: 'Dolphin Vowels' },
-  { type: 'loudness',    label: 'Loudness Drills' },
+  { type: 'phonation',   label: 'Sustained Sound' },
+  { type: 'pitchGlides', label: 'Pitch Glides' },
+  { type: 'loudness',    label: 'Voice Power' },
   { type: 'midpoint',    label: 'Halfway There' },
   { type: 'breathing',   label: 'Breathing' },
-  { type: 'tailored',    label: 'Tailored Exercise' },
-  { type: 'speech',      label: 'Functional Speech' },
+  { type: 'tailored',    label: 'Your Exercise' },
+  { type: 'speech',      label: 'Everyday Speech' },
 ];
 
 const EXERCISE_MAP = {
   breathing:   BreathingExercise,
   phonation:   SustainedPhonation,
-  pitchGlides: DolphinVowels,
+  pitchGlides: PitchGlides,
   loudness:    LoudnessDrills,
   midpoint:    MidpointScreen,
   tailored:    TailoredExercise,
   speech:      FunctionalSpeech,
 };
 
+// Show brief encouragement after skill exercises (not breathing / midpoint).
+const SCORED_TYPES_SET = new Set(['phonation', 'loudness', 'pitchGlides', 'speech', 'tailored']);
+
+// Rotating warm messages — cycle through them as the session progresses.
+const ENC_MSGS = [
+  "Nicely done.",
+  "That's the one.",
+  "Your voice carried that.",
+  "Well done.",
+  "Keep going.",
+];
+
 const PROGRESS_BAR_H = 8;
 
-// ── Session complete screen ───────────────────────────────────────────────────
-
-function SessionComplete({ navigation, nodeIndex }) {
+// ── Session complete screen (fallback — shown only if StreakCelebration fails)
+function SessionComplete({ navigation }) {
   return (
     <LinearGradient colors={['#E0ECDE', '#68B39F']} style={completeStyles.root}>
       <View style={completeStyles.content}>
-        <View style={completeStyles.badge}>
-          <Text style={completeStyles.badgeText}>{nodeIndex + 1}</Text>
-        </View>
-        <Text style={completeStyles.title}>Session Complete</Text>
+        <Text style={completeStyles.title}>One session stronger.</Text>
         <Text style={completeStyles.subtitle}>
-          Excellent work. Your streak has been updated.{'\n'}
-          Keep going — consistency is everything.
+          Your streak has been updated.{'\n'}
+          Every session adds up.
         </Text>
         <TouchableOpacity
           style={completeStyles.homeBtn}
@@ -76,33 +92,18 @@ function SessionComplete({ navigation, nodeIndex }) {
 const completeStyles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { alignItems: 'center', paddingHorizontal: 40, gap: 20 },
-  badge: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#FFA940',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#FFA940',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-    marginBottom: 8,
-  },
-  badgeText: { fontSize: 48, fontWeight: '800', color: '#FFFFFF' },
   title: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '800',
     color: '#1C4047',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#2D6974',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 26,
     letterSpacing: 0.2,
   },
   homeBtn: {
@@ -110,11 +111,11 @@ const completeStyles = StyleSheet.create({
     backgroundColor: '#1C4047',
     borderRadius: 16,
     paddingHorizontal: 40,
-    paddingVertical: 18,
+    paddingVertical: 20,   // ≥ 56px tall
   },
   homeBtnText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
@@ -126,47 +127,125 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   const { nodeIndex = 0 } = route.params ?? {};
 
   const [exerciseIndex, setExerciseIndex] = useState(0);
-  const [isDone, setIsDone] = useState(false);
+  const [isDone,        setIsDone]        = useState(false);
+  const [tiers,         setTiers]         = useState(DEFAULT_TIERS);
+  const [focusKey,      setFocusKey]      = useState(null);
 
-  // Animated progress bar width (0 → 1 represents 0% → 100%).
-  // Starts at 0; bar fills as each exercise is completed.
-  // useNativeDriver must be false because width is a layout property.
+  // After-exercise encouragement: brief full-screen message between exercises.
+  const [transitioning,  setTransitioning]  = useState(false);
+  const [transitionMsg,  setTransitionMsg]  = useState('');
+  const encMsgIdxRef = useRef(0);
+
+  // V2: collect per-exercise scores during the session for Firestore persistence.
+  const exerciseScoresRef = useRef({});
+
+  // Load tiers and apply between-session nudges based on recent performance.
+  // Also returns baseline_focus_key for TailoredExercise tie-breaking.
+  useEffect(() => {
+    nudgeTiersFromRecentScores()
+      .then(result => {
+        if (result) {
+          setTiers(result.tiers);
+          if (result.focusKey) setFocusKey(result.focusKey);
+        }
+      })
+      .catch(() => {/* keep defaults */});
+  }, []);
+
+  // Guard against accidental back navigation mid-session.
+  // Only blocks user-initiated back (POP / GO_BACK actions).
+  // Programmatic navigation (navigation.replace → REPLACE, navigation.reset → RESET)
+  // is allowed through so the session-complete flow is never blocked.
+  useEffect(() => {
+    if (isDone) return;
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      const actionType = e.data.action.type;
+      if (actionType === 'REPLACE' || actionType === 'RESET') return; // programmatic — allow
+      e.preventDefault();
+      Alert.alert(
+        'Leave session?',
+        "Your progress won't be saved if you leave now.",
+        [
+          { text: 'Stay', style: 'cancel' },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ],
+      );
+    });
+    return unsub;
+  }, [navigation, isDone]);
+
+  // Animated progress bar width (0 → 1 = 0% → 100%).
+  // useNativeDriver false because width is a layout property.
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   function animateProgressTo(fraction) {
     Animated.timing(progressAnim, {
-      toValue: fraction,
+      toValue:  fraction,
       duration: 600,
       useNativeDriver: false,
     }).start();
   }
 
-  async function handleExerciseComplete() {
+  // Navigate to StreakCelebration (or fall back to simple done screen).
+  async function finishSession() {
+    if (Object.keys(exerciseScoresRef.current).length > 0) {
+      saveSessionExerciseScores(exerciseScoresRef.current).catch(() => {});
+    }
+    try {
+      const result  = await completeSession();
+      const profile = await getUserProfile();
+      navigation.replace('StreakCelebration', {
+        streakDays: result.streak_days,
+        userName:   profile?.name ?? '',
+      });
+    } catch {
+      setIsDone(true);
+    }
+  }
+
+  // V2: exercises pass an optional score (0–100). Collect per exercise type,
+  // then show a brief warm encouragement message before advancing.
+  async function handleExerciseComplete(score = null) {
+    const { type } = SESSION_EXERCISES[exerciseIndex];
+    if (score !== null && Number.isFinite(score) && EXERCISE_KEYS.includes(type)) {
+      exerciseScoresRef.current[type] = Math.round(score);
+    }
+
     const nextIndex = exerciseIndex + 1;
     animateProgressTo(nextIndex / SESSION_EXERCISES.length);
 
-    if (nextIndex >= SESSION_EXERCISES.length) {
-      // All exercises finished — award the streak point.
-      try {
-        const result = await completeSession();
-        const profile = await getUserProfile();
-        const userName = profile?.name ?? '';
-        // Navigate to streak celebration — replace so back goes to Home
-        navigation.replace('StreakCelebration', {
-          streakDays: result.streak_days,
-          userName,
-        });
-      } catch {
-        // Fail silently; fall back to simple completion screen
-        setIsDone(true);
-      }
+    const isLast   = nextIndex >= SESSION_EXERCISES.length;
+    const doEncourage = SCORED_TYPES_SET.has(type);
+
+    if (doEncourage) {
+      // Show warm message for 1.5 s, then advance or finish
+      const msg = ENC_MSGS[encMsgIdxRef.current % ENC_MSGS.length];
+      encMsgIdxRef.current += 1;
+      setTransitionMsg(msg);
+      setTransitioning(true);
+      setTimeout(async () => {
+        setTransitioning(false);
+        if (isLast) {
+          await finishSession();
+        } else {
+          setExerciseIndex(nextIndex);
+        }
+      }, 1500);
     } else {
-      setExerciseIndex(nextIndex);
+      if (isLast) {
+        await finishSession();
+      } else {
+        setExerciseIndex(nextIndex);
+      }
     }
   }
 
   if (isDone) {
-    return <SessionComplete navigation={navigation} nodeIndex={nodeIndex} />;
+    return <SessionComplete navigation={navigation} />;
   }
 
   const { type } = SESSION_EXERCISES[exerciseIndex];
@@ -174,25 +253,40 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
 
   return (
     <View style={styles.root}>
-      {/* The active exercise fills the screen above the progress bar. */}
+      {/* ── Exercise area ─────────────────────────────────────────────────── */}
       <View style={styles.exerciseArea}>
-        <ExerciseComponent
-          onComplete={handleExerciseComplete}
-          onExit={() => navigation.goBack()}
-          exerciseIndex={exerciseIndex}
-          totalExercises={SESSION_EXERCISES.length}
-        />
-        {/*
-          Prototype skip — hold bottom-right corner 2 s to advance.
-          Rendered as the LAST child of exerciseArea so it is always on
-          top of the exercise content without needing zIndex hacks.
-        */}
-        <TouchableOpacity
-          style={styles.skipZone}
-          onLongPress={handleExerciseComplete}
-          delayLongPress={2000}
-          activeOpacity={1}
-        />
+
+        {/* Brief encouragement screen between exercises */}
+        {transitioning ? (
+          <View style={styles.transitionScreen}>
+            <Text style={styles.transitionMsg}>{transitionMsg}</Text>
+          </View>
+        ) : (
+          <>
+            <ExerciseComponent
+              onComplete={handleExerciseComplete}
+              onExit={() => navigation.goBack()}
+              exerciseIndex={exerciseIndex}
+              totalExercises={SESSION_EXERCISES.length}
+              {...(type === 'tailored'
+                ? { tiers, focusKey }
+                : EXERCISE_KEYS.includes(type)
+                  ? { tier: tiers[type] ?? 1 }
+                  : {}
+              )}
+            />
+            {/*
+              Dev skip — hold bottom-right corner 2 s to advance without scoring.
+              Rendered last so it sits on top of exercise content without zIndex hacks.
+            */}
+            <TouchableOpacity
+              style={styles.skipZone}
+              onLongPress={handleExerciseComplete}
+              delayLongPress={2000}
+              activeOpacity={1}
+            />
+          </>
+        )}
       </View>
 
       {/* Orange session progress bar — always visible at the very bottom. */}
@@ -215,19 +309,38 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
   skipZone: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 100,
-    height: 100,
-    opacity: 0,
+    bottom:   0,
+    right:    0,
+    width:    100,
+    height:   100,
+    opacity:  0,
   },
+
   exerciseArea: {
     flex: 1,
-    // Leave room so content is never hidden behind the progress bar.
     paddingBottom: PROGRESS_BAR_H,
   },
+
+  // Between-exercise encouragement screen
+  transitionScreen: {
+    flex: 1,
+    backgroundColor: '#1C4047',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  transitionMsg: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.3,
+    lineHeight: 44,
+  },
+
   progressTrack: {
     height: PROGRESS_BAR_H,
     backgroundColor: 'rgba(0,0,0,0.08)',

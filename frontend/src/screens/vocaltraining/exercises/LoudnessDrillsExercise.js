@@ -35,12 +35,72 @@ const { width: W, height: H } = Dimensions.get('window');
 
 // ── Config ──────────────────────────────────────────────────────────────────────
 const DEMO_KEY        = '@eloqua_loudness_drills_demo_seen';
-const TOTAL_ROUNDS    = 8;
 const MIN_SPEAK_MS    = 280;   // must sustain threshold for this long (ms)
 const CALIBRATION_MS  = 1500;  // ambient noise sampling window
-const MIN_THRESHOLD   = 0.30;
 const MAX_THRESHOLD   = 0.70;
-const TIMER_MS        = 3500;  // countdown per round (ms)
+
+// ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
+// minVolume: adaptive threshold floor (0–1 normalised dB)
+// timerMs:   countdown per round in ms (scales with phrase length)
+// rounds:    content array with progressively longer phrases
+const LOUDNESS_TIER_CONFIG = [
+  // Tier 1: ~5-word phrases, 45% threshold
+  {
+    minVolume: 0.45, timerMs: 4000,
+    rounds: [
+      { word: 'Say it louder',    tip: 'Big, loud voice!' },
+      { word: 'Hear me please',   tip: 'Project your voice!' },
+      { word: 'I can do this',    tip: 'Nice and loud!' },
+      { word: 'Loud and clear',   tip: "You've got this!" },
+      { word: 'Listen to me now', tip: 'Send it across the room!' },
+    ],
+  },
+  // Tier 2: ~8-word phrases, 50% threshold
+  {
+    minVolume: 0.50, timerMs: 5000,
+    rounds: [
+      { word: 'Could you turn it up a little please',   tip: 'Nice and loud!' },
+      { word: 'I am speaking up as loud as I can',      tip: 'Big voice!' },
+      { word: 'My voice is getting stronger each day',  tip: "You've got this!" },
+      { word: 'Please listen I have something to say',  tip: 'Project!' },
+      { word: 'Everyone needs to be able to hear me',   tip: 'Excellent!' },
+    ],
+  },
+  // Tier 3: ~10-word sentences, 55% threshold
+  {
+    minVolume: 0.55, timerMs: 6000,
+    rounds: [
+      { word: 'Good morning I hope you can all hear me',               tip: 'Keep projecting!' },
+      { word: 'I practise my voice so I can speak more clearly',       tip: 'Big voice!' },
+      { word: 'Every day my speaking gets stronger and more confident', tip: "You're doing great!" },
+      { word: 'I use my full voice so I can be heard when I speak',    tip: 'Keep going!' },
+      { word: 'Speaking loudly helps me communicate better every day', tip: 'Outstanding!' },
+    ],
+  },
+  // Tier 4: ~15-word sentences, 60% threshold
+  {
+    minVolume: 0.60, timerMs: 7500,
+    rounds: [
+      { word: 'Good morning everyone, I am speaking as clearly as I possibly can right now',  tip: 'Amazing!' },
+      { word: 'I would like some coffee please, could you bring it when it is ready',         tip: 'Keep it up!' },
+      { word: 'Thank you for helping me practise my speech, I really do appreciate it',       tip: 'Excellent!' },
+      { word: 'Could you ask the receptionist to call my name when the doctor is ready',      tip: 'Big voice!' },
+      { word: 'I have been practising every day and am noticing a real difference in my voice', tip: 'Wonderful!' },
+    ],
+  },
+  // Tier 5: ~20-word sentences, 65% threshold
+  {
+    minVolume: 0.65, timerMs: 9000,
+    rounds: [
+      { word: 'Good morning to everyone here, I am going to speak as clearly and loudly as I possibly can so every person can hear me',          tip: 'Incredible!' },
+      { word: 'I would like to order a hot drink and a snack, and could you also bring some water and napkins when you have a moment please',     tip: 'Keep projecting!' },
+      { word: 'Thank you for taking time to help me practise, the exercises are making a noticeable difference to my confidence and my speech',  tip: 'Outstanding!' },
+      { word: 'Could you help me find information about my appointment, as I am not sure what time it starts and I really cannot be late today', tip: 'Loud and clear!' },
+      { word: 'I have been doing voice exercises every single day for several weeks now and I am genuinely beginning to notice a real improvement', tip: 'Phenomenal!' },
+    ],
+  },
+];
+
 const RISE_MS         = 700;   // jellyfish rising animation (ms)
 const WHACK_MS        = 480;   // jellyfish whack-fly animation (ms)
 const SINK_MS         = 500;   // jellyfish sinking animation (ms)
@@ -57,17 +117,6 @@ const WORD_COL  = '#1F4850';
 const PILL_DONE = '#45B013';
 const PILL_PEND = '#D9D9D9';
 
-// ── Clinical word progression ────────────────────────────────────────────────────
-const ROUNDS = [
-  { word: 'UH',   tip: 'Big, loud voice!' },
-  { word: 'AH',   tip: 'Hold it long and loud!' },
-  { word: 'OOH',  tip: 'Project from your chest!' },
-  { word: 'HEY',  tip: 'Nice and loud!' },
-  { word: 'LOUD', tip: "You've got this!" },
-  { word: 'ONE',  tip: 'Send it across the room!' },
-  { word: 'GO',   tip: 'Big voice — push it out!' },
-  { word: 'YEAH', tip: 'Loud and proud!' },
-];
 
 // ── Hole geometry (calibrated to WhackAMoleBG.png, 402×874 Figma frame) ────────
 const B_CYL_W = 130;  // base cylinder rim width  (sz = 1.0)
@@ -193,10 +242,13 @@ function Jellyfish({ hole, riseAnim, scaleAnim, opacityAnim }) {
 /** Pill card showing the word to say. 10px orange border + timer fill when active (matches LD3/LD5 Figma). */
 function WordCard({ word, timerAnim, isActive }) {
   const CARD_W = W - 100;
-  const CARD_H = 110;
+  const wordCount = (word || '').split(' ').length;
+  // Scale card height and font for longer phrases/sentences
+  const CARD_H  = wordCount <= 3 ? 110 : wordCount <= 6 ? 130 : 150;
+  const fontSize = wordCount <= 2 ? 52 : wordCount <= 4 ? 34 : wordCount <= 7 ? 24 : 18;
+  const letterSp = wordCount <= 2 ? 3 : 0.5;
   return (
     <View style={{ alignSelf: 'center' }}>
-      {/* Thick orange border ring — always shown, matches Figma */}
       <View style={{
         borderWidth: 10, borderColor: ORANGE,
         borderRadius: (CARD_H + 20) / 2,
@@ -208,8 +260,8 @@ function WordCard({ word, timerAnim, isActive }) {
           borderRadius: CARD_H / 2,
           justifyContent: 'center', alignItems: 'center',
           overflow: 'hidden',
+          paddingHorizontal: 16,
         }}>
-          {/* Timer fill sweeps left→right while waiting */}
           {isActive && (
             <Animated.View style={{
               position: 'absolute', left: 0, top: 0, bottom: 0,
@@ -217,7 +269,12 @@ function WordCard({ word, timerAnim, isActive }) {
               backgroundColor: 'rgba(254,156,45,0.15)',
             }} />
           )}
-          <Text style={{ fontSize: 56, fontWeight: '800', color: WORD_COL, letterSpacing: 3 }}>
+          <Text
+            style={{ fontSize, fontWeight: '800', color: WORD_COL, letterSpacing: letterSp, textAlign: 'center', lineHeight: fontSize * 1.3 }}
+            adjustsFontSizeToFit
+            minimumFontScale={0.5}
+            numberOfLines={4}
+          >
             {word}
           </Text>
         </View>
@@ -226,14 +283,14 @@ function WordCard({ word, timerAnim, isActive }) {
   );
 }
 
-/** Eight pills — green when done, grey when pending. */
-function ProgressPills({ doneCount }) {
-  const pillW = (W - 96) / TOTAL_ROUNDS - 6;
+/** Pills — green when done, grey when pending. */
+function ProgressPills({ doneCount, totalRounds }) {
+  const pillW = (W - 96) / totalRounds - 6;
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
-      {Array.from({ length: TOTAL_ROUNDS }, (_, i) => (
+      {Array.from({ length: totalRounds }, (_, i) => (
         <View key={i} style={{
-          width: pillW, height: 11, borderRadius: 6,
+          width: Math.max(8, pillW), height: 11, borderRadius: 6,
           backgroundColor: i < doneCount ? PILL_DONE : PILL_PEND,
         }} />
       ))}
@@ -503,7 +560,9 @@ const IDLE_PROMPT_MESSAGES = [
   "Whenever you're ready,\nwe believe in you!",
 ];
 
-function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const tierConfig = LOUDNESS_TIER_CONFIG[Math.max(0, Math.min(4, tier - 1))];
+  const TOTAL_ROUNDS = tierConfig.rounds.length;
   const [phase, setPhase]           = useState('idle');
   const [roundIdx, setRoundIdx]     = useState(0);
   const [doneCount, setDoneCount]   = useState(0);
@@ -519,11 +578,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
 
   const phaseRef          = useRef('idle');
   const roundIdxRef       = useRef(0);
+  const missCountRef      = useRef(0);   // V2: track missed rounds for scoring
   const recordingRef      = useRef(null);
   const speakRef          = useRef(null);
   const countdownRef      = useRef(null);
   const lastHoleRef       = useRef(null);
-  const adaptiveThreshRef = useRef(MIN_THRESHOLD);
+  const adaptiveThreshRef = useRef(tierConfig.minVolume);
   const ambientSamplesRef = useRef([]);
   const calibrateTimerRef = useRef(null);
   const idleTimerRef      = useRef(null);
@@ -565,14 +625,14 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
         const samples = ambientSamplesRef.current;
         if (samples.length > 0) {
           const sorted = [...samples].sort((a, b) => a - b);
-          const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? MIN_THRESHOLD;
-          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, p90 * 1.6 + 0.12));
+          const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? tierConfig.minVolume;
+          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 1.6 + 0.12));
         }
         try { await recording.stopAndUnloadAsync(); } catch (_) {}
         startRound();
       }, CALIBRATION_MS);
     } catch (_) {
-      adaptiveThreshRef.current = MIN_THRESHOLD;
+      adaptiveThreshRef.current = tierConfig.minVolume;
       startRound();
     }
   }
@@ -627,8 +687,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
     setPhaseS('waiting');
     await startMic();
     startIdleTimer();
-    countdownRef.current = setTimeout(handleMiss, TIMER_MS);
-    Animated.timing(timerAnim, { toValue: 0, duration: TIMER_MS, useNativeDriver: false }).start();
+    countdownRef.current = setTimeout(handleMiss, tierConfig.timerMs);
+    Animated.timing(timerAnim, { toValue: 0, duration: tierConfig.timerMs, useNativeDriver: false }).start();
   }
 
   async function startMic() {
@@ -712,6 +772,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
 
   async function handleMiss() {
     if (phaseRef.current !== 'waiting') return;
+    missCountRef.current += 1;  // V2: count misses for score calculation
     setPhaseS('sinking');
     await cleanup();
 
@@ -731,7 +792,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
     setDoneCount(next);
     if (next >= TOTAL_ROUNDS) {
       setPhaseS('done');
-      setTimeout(onComplete, 1200);
+      // V2: score = successful rounds / (successful + missed rounds) × 100
+      const score = Math.round((TOTAL_ROUNDS / Math.max(TOTAL_ROUNDS, TOTAL_ROUNDS + missCountRef.current)) * 100);
+      setTimeout(() => onComplete(score), 1200);
       return;
     }
     setRoundS(next);
@@ -740,7 +803,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
 
   const activeHole = activeHoleId != null ? HOLES.find(h => h.id === activeHoleId) : null;
   const isWaiting  = phase === 'waiting';
-  const round      = ROUNDS[roundIdx] ?? ROUNDS[ROUNDS.length - 1];
+  const round      = tierConfig.rounds[roundIdx] ?? tierConfig.rounds[tierConfig.rounds.length - 1];
 
   // Sort holes back→front; split active from rest for layered rendering
   const sorted     = [...HOLES].sort((a, b) => a.cy - b.cy);
@@ -781,7 +844,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
           isActive={isWaiting}
         />
         <Text style={ex.instrLine}>
-          Say "{round.word.toLowerCase()}" to whack a jellyfish
+          {round.word.split(' ').length <= 2
+            ? `Say "${round.word.toLowerCase()}" to whack a jellyfish`
+            : 'Say it loud to whack a jellyfish'}
         </Text>
       </View>
 
@@ -876,7 +941,7 @@ const ex = StyleSheet.create({
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────────
 
-export default function LoudnessDrillsExercise({ onComplete, onExit }) {
+export default function LoudnessDrillsExercise({ onComplete, onExit, tier = 1 }) {
   // TODO (production): read DEMO_KEY from AsyncStorage to only show once.
   // For testing, always show the demo first.
   const [showDemo, setShowDemo] = useState(true);
@@ -890,6 +955,7 @@ export default function LoudnessDrillsExercise({ onComplete, onExit }) {
       onExit={onExit}
       onShowDemo={() => setShowDemo(true)}
       onSkip={onComplete}
+      tier={tier}
     />
   );
 }

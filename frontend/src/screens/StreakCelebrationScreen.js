@@ -252,6 +252,16 @@ export default function StreakCelebrationScreen({ navigation, route }) {
     ? 'A STREAK\nIS BORN'
     : `${streakDays} DAY\nSTREAK`;
 
+  // Warm, day-specific sub-messages — short and human, never corporate.
+  function getStreakSub() {
+    if (isNewStreak)      return userName ? `Welcome back, ${userName}. Every day you show up counts.` : 'Every day you show up counts.';
+    if (streakDays === 3) return 'Three days running. This is how progress happens.';
+    if (streakDays === 7) return "A full week. You're building something real.";
+    if (streakDays % 7 === 0) return `${streakDays} days. That's real commitment.`;
+    return userName ? `You kept it burning, ${userName}.` : 'Keep going — consistency is everything.';
+  }
+  const streakSubMsg = getStreakSub();
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
@@ -343,13 +353,7 @@ export default function StreakCelebrationScreen({ navigation, route }) {
           <Text style={styles.streakLabel}>
             {streakDays === 1 ? 'DAY STREAK' : 'DAY STREAK'}
           </Text>
-          {userName ? (
-            <Text style={styles.streakSub}>
-              {isNewStreak
-                ? `You lit the flame, ${userName}.`
-                : `You kept it burning, ${userName}.`}
-            </Text>
-          ) : null}
+          <Text style={styles.streakSub}>{streakSubMsg}</Text>
         </Animated.View>
       </View>
 
@@ -416,11 +420,13 @@ const styles = StyleSheet.create({
   },
   streakSub: {
     color: MINT,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '400',
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
     marginTop: 10,
     opacity: 0.85,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 
   btnContainer: {

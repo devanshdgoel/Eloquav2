@@ -26,6 +26,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import SpeechEnhancementScreen from '../screens/SpeechEnhancementScreen';
 import SpeechDemoScreen from '../screens/SpeechDemoScreen';
 import AssessmentScreen from '../screens/AssessmentScreen';
+import CheckinScreen from '../screens/CheckinScreen';
 import VocalTrainingSessionScreen from '../screens/vocaltraining/VocalTrainingSessionScreen';
 import StreakCelebrationScreen from '../screens/StreakCelebrationScreen';
 import StreakCommitmentScreen from '../screens/StreakCommitmentScreen';
@@ -81,6 +82,7 @@ export default function AppNavigator() {
         />
         <Stack.Screen name="Progress" component={ProgressScreen} />
         <Stack.Screen name="Assessment" component={AssessmentScreen} />
+        <Stack.Screen name="Checkin" component={CheckinScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
         <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
         <Stack.Screen name="VocalTrainingSession" component={VocalTrainingSessionScreen} />

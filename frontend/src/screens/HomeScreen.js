@@ -148,7 +148,7 @@ export default function HomeScreen({ navigation }) {
     if (i === 0 && done === 0) {
       navigation.navigate('Assessment', { type: 'baseline' });
     } else if (i > 0 && i % LEVELS_EVERY === 0 && i === activeNode && done > lastCI) {
-      navigation.navigate('Assessment', { type: 'checkin' });
+      navigation.navigate('Checkin', { nodeIndex: i });
     } else {
       navigation.navigate('VocalTrainingSession', { nodeIndex: i });
     }
@@ -204,6 +204,15 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={[styles.root, { paddingTop: safeTop }]}>
       <StatusBar barStyle="light-content" />
+
+      {/* ── Greeting — warm, brief, appears only when no session done today ── */}
+      {!checkinDue && (
+        <Text style={styles.greeting}>
+          {isFirstSession
+            ? 'Welcome. Your voice journey starts here.'
+            : 'Good to see you. Your voice is ready when you are.'}
+        </Text>
+      )}
 
       {/* ── Smart Speech card — floating feature card, not a map heading ──── */}
       <TouchableOpacity
@@ -466,6 +475,17 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.bg,
+  },
+
+  // ── Greeting ──────────────────────────────────────────────────────────────
+  greeting: {
+    color: 'rgba(195,222,206,0.75)',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 6,
   },
 
   // ── Smart Speech floating card ────────────────────────────────────────────

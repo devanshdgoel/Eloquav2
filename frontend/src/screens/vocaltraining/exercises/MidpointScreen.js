@@ -20,7 +20,7 @@ const ORANGE    = '#FFA940';
 const WHITE     = '#FFFFFF';
 
 const MESSAGES = [
-  { emoji: '🌟', heading: 'Halfway there!', sub: "You've done 4 exercises. Three more to go. You've got this!" },
+  { emoji: '🌟', heading: 'Halfway there!', sub: "Breathe. You're doing great." },
 ];
 
 export default function MidpointScreen({ onComplete, onExit }) {

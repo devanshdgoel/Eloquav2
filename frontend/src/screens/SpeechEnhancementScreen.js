@@ -177,6 +177,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const [result,         setResult]         = useState(null);
   const [isPlaying,      setIsPlaying]      = useState(false);
   const [errorMsg,       setErrorMsg]       = useState('');
+  // First-play motivational message — shown the very first time enhanced audio plays.
+  const [firstPlayMsg,   setFirstPlayMsg]   = useState(null);
+  const FIRST_PLAY_KEY = 'eloqua_speech_first_play';
 
   // Transcription model preference loaded from Settings ("whisper" | "soniva")
   const transcriptionModelRef = useRef('whisper');
@@ -446,8 +449,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
       if (!rawText) {
         setErrorMsg(
           chunkErrorsRef.current > 0
-            ? 'Could not reach the server. Make sure your backend is running and try again.'
-            : 'No speech was detected. Please speak clearly and try again.'
+            ? "Couldn't connect right now. Check your connection and try again."
+            : "Nothing heard — tap again when you're ready."
         );
         setPhase(S.ERROR);
         return;
@@ -541,6 +544,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
           if (soundRef.current === sound) soundRef.current = null;
         }
       });
+
+      // First-time play: show motivational message for 4 s.
+      const alreadyPlayed = await AsyncStorage.getItem(FIRST_PLAY_KEY).catch(() => 'yes');
+      if (!alreadyPlayed) {
+        await AsyncStorage.setItem(FIRST_PLAY_KEY, 'true').catch(() => {});
+        setFirstPlayMsg("That's you — clearer, stronger.\nThis is what we're working toward.");
+        setTimeout(() => setFirstPlayMsg(null), 4000);
+      }
     } catch {
       Alert.alert('Playback Error', 'Could not play the enhanced audio.');
     }
@@ -595,7 +606,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {phase === S.IDLE && (
         <View style={styles.idleArea}>
           <MicGroup onPress={handleMicPress} isRecording={false} />
-          <Text style={styles.hintText}>Press mic to start</Text>
+          <Text style={styles.hintText}>Tap the mic to begin</Text>
         </View>
       )}
 
@@ -709,6 +720,13 @@ export default function SpeechEnhancementScreen({ navigation }) {
         resizeMode="contain"
         accessible={false}
       />
+
+      {/* First-play motivational overlay — fades in automatically */}
+      {firstPlayMsg ? (
+        <View style={styles.firstPlayOverlay} pointerEvents="none">
+          <Text style={styles.firstPlayText}>{firstPlayMsg}</Text>
+        </View>
+      ) : null}
     </LinearGradient>
   );
 }
@@ -929,4 +947,42 @@ const styles = StyleSheet.create({
     bottom: 24, right: Math.round(16 * SC),
     width: Math.round(146 * SC), height: Math.round(55 * SC),
   },
+
+  // First-play motivational overlay
+  firstPlayOverlay: {
+    position: 'absolute',
+    bottom: 100,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(28,64,71,0.92)',
+    borderRadius: 18,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  firstPlayText: {
+    color: WHITE,
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 26,
+    letterSpacing: 0.2,
+  },
+
+  // Error text size fixes for accessibility
+  errorSub: {
+    fontSize: 18,
+    color: 'rgba(28,64,71,0.7)',
+    textAlign: 'center',
+    lineHeight: 26,
+    paddingHorizontal: 32,
+  },
+  retryBtn: {
+    marginTop: 8,
+    backgroundColor: TEAL,
+    borderRadius: 14,
+    paddingHorizontal: 32,
+    paddingVertical: 18,  // ≥ 56px tall
+  },
+  retryText: { color: WHITE, fontSize: 18, fontWeight: '600' },
 });

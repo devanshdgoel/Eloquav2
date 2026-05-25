@@ -45,6 +45,17 @@ const MAX_PHONATE_MS  = 20000;
 const SILENCE_END_MS  = 800;
 const REST_MS         = 6500;
 
+// ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
+// targetSeconds: visual goal shown to the user during scoring
+// minVolume: minimum adaptive threshold floor (0–1 normalised dB scale)
+const PHONATION_TIERS = [
+  { targetSeconds: 4,  minVolume: 0.40 },  // Tier 1
+  { targetSeconds: 5,  minVolume: 0.45 },  // Tier 2
+  { targetSeconds: 7,  minVolume: 0.50 },  // Tier 3
+  { targetSeconds: 9,  minVolume: 0.55 },  // Tier 4
+  { targetSeconds: 12, minVolume: 0.60 },  // Tier 5
+];
+
 // ── Adaptive threshold bounds ──────────────────────────────────────────────────
 const MIN_THRESHOLD = 0.30;
 const MAX_THRESHOLD = 0.70;
@@ -518,7 +529,8 @@ const rdy = StyleSheet.create({
 // SP6+ — Exercise screen
 // ══════════════════════════════════════════════════════════════════════════════
 
-function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const tierConfig = PHONATION_TIERS[Math.max(0, Math.min(4, tier - 1))];
   const [score,     setScore]     = useState(0);
   const [bestScore, setBestScore] = useState(0);
   const [bars,      setBars]      = useState(Array(BARS_COUNT).fill(0.02));
@@ -621,7 +633,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
       }, BAR_INTERVAL_MS);
       calibrateTimerRef.current = setTimeout(finishCalibration, CALIBRATION_MS);
     } catch (_) {
-      adaptiveThreshRef.current = MIN_THRESHOLD;
+      adaptiveThreshRef.current = tierConfig.minVolume;
       phaseRef.current = 'listening';
       setPhase('listening');
     }
@@ -633,7 +645,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
     if (samples.length > 0) {
       const sorted = [...samples].sort((a, b) => a - b);
       const p90    = sorted[Math.floor(sorted.length * 0.90)] ?? MIN_THRESHOLD;
-      adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, p90 * 1.6 + 0.12));
+      adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 1.6 + 0.12));
     }
     phaseRef.current = 'listening';
     setPhase('listening');
@@ -712,7 +724,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
           Animated.timing(restOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
           phaseRef.current = 'done';
           setPhase('done');
-          setTimeout(onComplete, 1800);
+          // V2: pass exercise score — best hold time vs tier target (0–100)
+          setTimeout(() => {
+            const exerciseScore = Math.min(100, Math.round((bestRef.current / tierConfig.targetSeconds) * 100));
+            onComplete(exerciseScore);
+          }, 1800);
         }, REST_MS - 800);
       }, 6000);
       return;
@@ -825,6 +841,14 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
           <View style={exc.bestRow}>
             <Text style={exc.bestLabel}>Best  {bestScore}s</Text>
           </View>
+        )}
+
+        {/* Tier goal indicator */}
+        {isScoring && score < tierConfig.targetSeconds && (
+          <Text style={exc.goalHint}>Goal  {tierConfig.targetSeconds}s</Text>
+        )}
+        {isScoring && score >= tierConfig.targetSeconds && (
+          <Text style={exc.goalReached}>✓ Goal reached!</Text>
         )}
       </View>
 
@@ -949,6 +973,14 @@ const exc = StyleSheet.create({
     letterSpacing: 0.3, textAlign: 'center',
     paddingHorizontal: 32,
   },
+  goalHint: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 13, fontWeight: '400',
+    letterSpacing: 0.3, textAlign: 'center',
+  },
+  goalReached: {
+    color: '#68D88C', fontSize: 14, fontWeight: '700',
+    letterSpacing: 0.3, textAlign: 'center',
+  },
   cantDo: {},
 
   // Rest overlay
@@ -993,7 +1025,7 @@ const exc = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 // Root
 // ══════════════════════════════════════════════════════════════════════════════
-export default function SustainedPhonationExercise({ onComplete, onExit }) {
+export default function SustainedPhonationExercise({ onComplete, onExit, tier = 1 }) {
   const [step, setStep] = useState(STEP_TITLE);
 
   const handleSkip = onComplete; // skip this exercise = advance to next
@@ -1013,6 +1045,7 @@ export default function SustainedPhonationExercise({ onComplete, onExit }) {
       onExit={onExit}
       onShowDemo={() => setStep(STEP_DEMO)}
       onSkip={handleSkip}
+      tier={tier}
     />
   );
 }

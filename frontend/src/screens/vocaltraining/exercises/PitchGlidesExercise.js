@@ -1,20 +1,18 @@
 /**
  * PitchGlidesExercise — dolphin-through-hoops pitch training.
  *
- * Flow: Title (Pitch1) → Tutorial (Pitch2–4) → Exercise (Pitch5–8)
+ * Pitch detection: a hidden WebView runs Web Audio API autocorrelation
+ * (no native module needed — works in Expo Go). The WebView posts
+ * { pitch: Hz, vol: 0-1 } messages at ~80 ms intervals.
+ *
+ * Flow: Title → Tutorial → Exercise (calibrate 1.5 s → 4 hoops)
  *
  * Exercise mechanics:
- *   - 1.5 s calibration: user says "ahh" at their natural low pitch.
- *     The median of detected pitches becomes the baseline (low Hz).
- *   - The dolphin's position is controlled continuously by current pitch:
- *       level=0 (low pitch) → lower-left hoop position
- *       level=1 (high pitch) → upper-right hoop position
- *   - Rounds alternate targets: low → high → low → high (TOTAL_HOOPS times).
- *   - Holding pitch in the target zone for HOLD_MS completes a hoop.
- *   - Vertical orange volume bar on the left mirrors loudness.
- *   - Dual-colour progress bar at top: orange (done) + teal (remaining).
- *
- * Requires EAS / custom dev client (react-native-pitch-detector is a native module).
+ *   - 1.5 s calibration: median of detected Hz becomes the baseline (low).
+ *   - Dolphin position = (currentHz - baseline) / PITCH_RANGE_HZ, clamped 0–1.
+ *   - Rounds alternate: high → low → high → low (TOTAL_HOOPS times).
+ *   - Hold pitch in target zone for HOLD_MS to complete a hoop.
+ *   - Vertical orange volume bar mirrors loudness.
  */
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -26,56 +24,68 @@ import {
   Animated,
   Dimensions,
   Image,
+  Platform,
 } from 'react-native';
-import PitchDetector from 'react-native-pitch-detector';
+import { WebView } from 'react-native-webview';
 import Svg, { Ellipse, Path } from 'react-native-svg';
 import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-// ── Scale helpers (Figma frame: 402 × 874) ──────────────────────────────────
+// ── Scale helpers (Figma frame: 402 × 874) ───────────────────────────────────
 const FW = 402;
 const FH = 874;
 const fs = x => (x * W) / FW;
 const fv = y => (y * H) / FH;
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const TOTAL_HOOPS    = 4;    // hoops to fly through (alternating low ↔ high)
+const TOTAL_HOOPS    = 4;
 const CALIBRATION_MS = 1500;
-const HOLD_MS        = 700;  // ms to hold pitch in target zone to complete hoop
-const PITCH_RANGE_HZ = 100;  // span in Hz from baseline low to top of scale
-const MIN_VALID_HZ   = 70;   // Hz — below this = no voice
-const MAX_VALID_HZ   = 500;  // Hz — above this = noise / falsetto
-const DEFAULT_BASE   = 130;  // Hz fallback when calibration gathers no samples
-const TARGET_LO      = 0.22; // normalised level that counts as "at low hoop"
-const TARGET_HI      = 0.78; // normalised level that counts as "at high hoop"
+const HOLD_MS        = 700;
+const PITCH_RANGE_HZ = 100;  // Hz span from baseline low to top of scale
+const DEFAULT_BASE   = 130;  // Hz fallback if calibration gathers no samples
+const TARGET_LO      = 0.22; // normalised level for "at low hoop"
+const TARGET_HI      = 0.78; // normalised level for "at high hoop"
+const MIN_PITCH_HZ   = 70;
+const MAX_PITCH_HZ   = 600;
 
-// ── Colours ──────────────────────────────────────────────────────────────────
+// ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
+// pitchRangeHz: Hz span from calibrated baseline to the top of the scale.
+//               ±N Hz target → range = 2N (tier 1 is ±20 → 40Hz span).
+// holdMs:       milliseconds the pitch must stay in the target zone.
+// totalHoops:   number of hoops to complete the exercise.
+const PITCH_TIERS = [
+  { pitchRangeHz: 40,  holdMs:  700, totalHoops: 4 },  // Tier 1: ±20Hz
+  { pitchRangeHz: 60,  holdMs:  700, totalHoops: 4 },  // Tier 2: ±30Hz
+  { pitchRangeHz: 80,  holdMs:  700, totalHoops: 4 },  // Tier 3: ±40Hz
+  { pitchRangeHz: 100, holdMs:  700, totalHoops: 4 },  // Tier 4: ±50Hz (original)
+  { pitchRangeHz: 120, holdMs: 1200, totalHoops: 6 },  // Tier 5: ±60Hz, sustained
+];
+
+// ── Colours ───────────────────────────────────────────────────────────────────
 const TEAL_DARK  = '#1C4047';
 const TEAL_MID   = '#2D6974';
 const ORANGE     = '#FE9C2D';
 const WHITE      = '#FFFFFF';
 const GREEN_HOOP = '#45B013';
 
-// ── Hoop geometry (Figma Pitch2: Ellipse94 & Ellipse95) ─────────────────────
-// Ellipse94 lower-left: center (74, 564) in 402×874 Figma space
-// Ellipse95 upper-right: center (305, 362) in 402×874 Figma space
+// ── Hoop geometry ─────────────────────────────────────────────────────────────
 const HOOP_W  = fs(102);
 const HOOP_H  = fv(135);
 const HOOP_LL = { x: W * (74  / FW), y: H * (564 / FH) };
 const HOOP_UR = { x: W * (305 / FW), y: H * (362 / FH) };
 
-// ── Vertical volume bar geometry (Figma Pitch8) ──────────────────────────────
+// ── Volume bar geometry ───────────────────────────────────────────────────────
 const VBAR_LEFT = fs(35);
 const VBAR_TOP  = fv(245);
 const VBAR_W    = fs(25);
 const VBAR_H    = fv(507);
 
-// ── Dolphin image size ───────────────────────────────────────────────────────
+// ── Dolphin size ──────────────────────────────────────────────────────────────
 const DOLPH_W = fs(130);
 const DOLPH_H = fv(90);
 
-// ── Tutorial slides ──────────────────────────────────────────────────────────
+// ── Tutorial slides ───────────────────────────────────────────────────────────
 const SLIDES = [
   {
     dolphinX: W * (74  / FW),
@@ -85,14 +95,85 @@ const SLIDES = [
   {
     dolphinX: W * (228 / FW),
     dolphinY: H * (422 / FH),
-    instruction: "2.  Say \u2018ahh\u2019 continuously\u2014your pitch moves the dolphin",
+    instruction: "2.  Say ‘ahh’ continuously—your pitch moves the dolphin",
   },
   {
     dolphinX: W * (280 / FW),
     dolphinY: H * (396 / FH),
-    instruction: '3.  Glide your pitch\nlow \u2192 high to reach each hoop',
+    instruction: '3.  Glide your pitch\nlow → high to reach each hoop',
   },
 ];
+
+// ── WebView HTML: Web Audio API autocorrelation pitch detector ────────────────
+// Runs entirely in the WebView JS context. Posts { pitch, vol } every ~80 ms.
+// pitch = fundamental frequency in Hz, or -1 if silence / undetected.
+// vol   = RMS volume normalised to 0–1.
+const PITCH_HTML = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<script>
+(async function () {
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      video: false
+    });
+    var ctx    = new (window.AudioContext || window.webkitAudioContext)();
+    var src    = ctx.createMediaStreamSource(stream);
+    var an     = ctx.createAnalyser();
+    an.fftSize = 2048;
+    an.smoothingTimeConstant = 0;
+    src.connect(an);
+    var buf    = new Float32Array(an.fftSize);
+    var sr     = ctx.sampleRate;
+    var minP   = Math.floor(sr / ${MAX_PITCH_HZ});
+    var maxP   = Math.floor(sr / ${MIN_PITCH_HZ});
+    window.ReactNativeWebView.postMessage(JSON.stringify({ ready: true }));
+    setInterval(function () {
+      an.getFloatTimeDomainData(buf);
+      var n = buf.length;
+      // RMS
+      var sq = 0;
+      for (var i = 0; i < n; i++) sq += buf[i] * buf[i];
+      var rms = Math.sqrt(sq / n);
+      var vol = Math.min(1, rms * 7);
+      // Pitch
+      var pitch = -1;
+      if (rms > 0.008) {
+        var cap = Math.min(maxP, Math.floor(n / 2) - 1);
+        // Compute autocorrelation for each candidate period
+        var acLen = cap - minP + 1;
+        var acf = new Float32Array(acLen);
+        for (var k = 0; k < acLen; k++) {
+          var p = k + minP;
+          var sum = 0, len = n - p;
+          for (var i = 0; i < len; i++) sum += buf[i] * buf[i + p];
+          acf[k] = sum / len;
+        }
+        // Find first trough then first peak after it
+        var d = 0;
+        while (d < acLen - 1 && acf[d] > acf[d + 1]) d++;
+        var bv = -Infinity, bi = -1;
+        for (var i = d; i < acLen; i++) {
+          if (acf[i] > bv) { bv = acf[i]; bi = i; }
+        }
+        if (bv > 0.01 && bi >= 0) {
+          var t0 = bi + minP;
+          // Parabolic interpolation
+          if (bi > 0 && bi < acLen - 1) {
+            var c1 = acf[bi-1], c2 = acf[bi], c3 = acf[bi+1];
+            var den = 2*(2*c2 - c1 - c3);
+            if (Math.abs(den) > 1e-9) t0 += (c3 - c1) / den;
+          }
+          pitch = sr / t0;
+        }
+      }
+      window.ReactNativeWebView.postMessage(JSON.stringify({ pitch: pitch, vol: vol }));
+    }, 80);
+  } catch (e) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ error: e.message }));
+  }
+})();
+</script></body></html>`;
 
 // ── FadeIn wrapper ────────────────────────────────────────────────────────────
 function FadeIn({ children, duration = 300 }) {
@@ -122,7 +203,7 @@ function BottomWave() {
   );
 }
 
-// ── Dual-colour horizontal progress bar ──────────────────────────────────────
+// ── Dual-colour progress bar ──────────────────────────────────────────────────
 function DualProgressBar({ done, total }) {
   const barLeft  = fs(81);
   const barWidth = fs(256);
@@ -143,17 +224,14 @@ function DualProgressBar({ done, total }) {
   );
 }
 
-// ── Hoop ellipse ─────────────────────────────────────────────────────────────
+// ── Hoop ellipse ──────────────────────────────────────────────────────────────
 function HoopEllipse({ state }) {
-  // state: 'target' (bright mint) | 'dim'
   const w = HOOP_W, h = HOOP_H;
-  const rx = w / 2 - 3, ry = h / 2 - 3;
-  const cx = w / 2, cy = h / 2;
   const isTarget = state === 'target';
   return (
     <Svg width={w} height={h}>
       <Ellipse
-        cx={cx} cy={cy} rx={rx} ry={ry}
+        cx={w / 2} cy={h / 2} rx={w / 2 - 3} ry={h / 2 - 3}
         stroke={isTarget ? 'rgba(195,222,206,0.92)' : 'rgba(195,222,206,0.26)'}
         strokeWidth={isTarget ? 3.5 : 2.5}
         fill="none"
@@ -162,68 +240,36 @@ function HoopEllipse({ state }) {
   );
 }
 
-// ── Shared button styles ──────────────────────────────────────────────────────
+// ── Button styles ─────────────────────────────────────────────────────────────
 const BTN_SZ = Math.round(fs(53));
 const bs = StyleSheet.create({
-  close: {
-    width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.26)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  closeText: {
-    color: WHITE, fontSize: 20, fontWeight: '700',
-    includeFontPadding: false, textAlign: 'center', lineHeight: 20,
-  },
-  back: {
-    width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14,
-    backgroundColor: TEAL_MID,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  backText: {
-    color: WHITE, fontSize: 24, fontWeight: '700',
-    includeFontPadding: false, textAlign: 'center', lineHeight: 24,
-  },
-  question: {
-    width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2,
-    backgroundColor: ORANGE,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
-  },
-  questionText: {
-    color: WHITE, fontSize: 22, fontWeight: '900',
-    includeFontPadding: false, textAlign: 'center', lineHeight: 22,
-  },
+  close:        { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.26)', justifyContent: 'center', alignItems: 'center' },
+  closeText:    { color: WHITE, fontSize: 20, fontWeight: '700', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
+  back:         { width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14, backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center' },
+  backText:     { color: WHITE, fontSize: 24, fontWeight: '700', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
+  question:     { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2, backgroundColor: ORANGE, justifyContent: 'center', alignItems: 'center', shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 8 },
+  questionText: { color: WHITE, fontSize: 22, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Title screen  (Pitch1)
+// Title screen
 // ══════════════════════════════════════════════════════════════════════════════
 function TitleScreen({ onNext, onExit }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
         <StatusBar barStyle="light-content" />
-
         <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 20 }}>
-          <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}
-            accessibilityRole="button" accessibilityLabel="Exit exercise">
+          <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}>
             <Text style={bs.closeText}>✕</Text>
           </TouchableOpacity>
         </View>
-
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: fv(30) }}>
           <Text style={tts.title}>Pitch{'\n'}Glides</Text>
-
           <View style={{ marginTop: fv(24), alignItems: 'center' }}>
             <View style={{ position: 'absolute', right: -fs(22), top: fv(8) }}>
               <Svg width={fs(88)} height={fv(112)}>
-                <Ellipse
-                  cx={fs(44)} cy={fv(56)}
-                  rx={fs(40)} ry={fv(52)}
-                  stroke={GREEN_HOOP} strokeWidth={4} fill="none"
-                />
+                <Ellipse cx={fs(44)} cy={fv(56)} rx={fs(40)} ry={fv(52)} stroke={GREEN_HOOP} strokeWidth={4} fill="none" />
               </Svg>
             </View>
             <Image
@@ -232,43 +278,24 @@ function TitleScreen({ onNext, onExit }) {
             />
           </View>
         </View>
-
-        <TouchableOpacity style={tts.arrowBtn} onPress={onNext} activeOpacity={0.82}
-          accessibilityRole="button" accessibilityLabel="Start exercise">
+        <TouchableOpacity style={tts.arrowBtn} onPress={onNext} activeOpacity={0.82}>
           <Text style={tts.arrowText}>→</Text>
         </TouchableOpacity>
-
-        <View style={{
-          position: 'absolute', bottom: fv(29), left: fs(47),
-          width: fs(314), height: 12, borderRadius: 13,
-          backgroundColor: 'rgba(255,255,255,0.18)',
-        }}>
+        <View style={{ position: 'absolute', bottom: fv(29), left: fs(47), width: fs(314), height: 12, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)' }}>
           <View style={{ width: fs(128), height: '100%', borderRadius: 13, backgroundColor: ORANGE }} />
         </View>
       </View>
     </FadeIn>
   );
 }
-
 const tts = StyleSheet.create({
-  title: {
-    color: WHITE, fontSize: Math.round(fs(64)), fontWeight: '800',
-    letterSpacing: 3.2, textAlign: 'center', lineHeight: Math.round(fs(74)),
-  },
-  arrowBtn: {
-    alignSelf: 'center',
-    width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14,
-    backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center',
-    marginBottom: fv(86),
-  },
-  arrowText: {
-    color: WHITE, fontSize: 26, fontWeight: '700',
-    includeFontPadding: false, lineHeight: 26, textAlign: 'center',
-  },
+  title:    { color: WHITE, fontSize: Math.round(fs(64)), fontWeight: '800', letterSpacing: 3.2, textAlign: 'center', lineHeight: Math.round(fs(74)) },
+  arrowBtn: { alignSelf: 'center', width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14, backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center', marginBottom: fv(86) },
+  arrowText:{ color: WHITE, fontSize: 26, fontWeight: '700', includeFontPadding: false, lineHeight: 26, textAlign: 'center' },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tutorial screen  (Pitch2–4)
+// Tutorial screen
 // ══════════════════════════════════════════════════════════════════════════════
 function TutorialScreen({ onFinish, onExit }) {
   const [slideIdx, setSlideIdx] = useState(0);
@@ -280,155 +307,91 @@ function TutorialScreen({ onFinish, onExit }) {
       Animated.timing(fadeAnim, { toValue: 1, duration: 230, useNativeDriver: true }).start();
     });
   }
-
   function goNext() { if (slideIdx < SLIDES.length - 1) go(slideIdx + 1); else onFinish(); }
   function goBack()  { if (slideIdx > 0) go(slideIdx - 1); else onExit(); }
 
-  const s = SLIDES[slideIdx];
-
+  const sl = SLIDES[slideIdx];
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
         <StatusBar barStyle="light-content" />
-
         <BottomWave />
-        <View style={StyleSheet.absoluteFill}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)' }} />
-        </View>
+        <View style={StyleSheet.absoluteFill}><View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)' }} /></View>
 
         <View style={{ position: 'absolute', top: fv(25), left: fs(23), zIndex: 30 }}>
-          <TouchableOpacity style={bs.back} onPress={goBack} activeOpacity={0.8}
-            accessibilityRole="button" accessibilityLabel="Go back">
-            <Text style={bs.backText}>←</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={bs.back} onPress={goBack} activeOpacity={0.8}><Text style={bs.backText}>←</Text></TouchableOpacity>
         </View>
         <View style={{ position: 'absolute', top: fv(30), right: fs(23), zIndex: 30 }}>
-          <TouchableOpacity style={bs.question} onPress={goNext} activeOpacity={0.85}
-            accessibilityRole="button" accessibilityLabel="Continue">
-            <Text style={bs.questionText}>?</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={bs.question} onPress={goNext} activeOpacity={0.85}><Text style={bs.questionText}>?</Text></TouchableOpacity>
         </View>
 
         <Text style={tus.ahhText}>{'"ahh"'}</Text>
         <DualProgressBar done={slideIdx} total={SLIDES.length} />
 
-        {/* Lower-left hoop (dim) */}
-        <View style={{
-          position: 'absolute',
-          left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2, zIndex: 12,
-        }}>
+        <View style={{ position: 'absolute', left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2, zIndex: 12 }}>
           <HoopEllipse state="dim" />
         </View>
-
-        {/* Upper-right hoop (target) */}
-        <View style={{
-          position: 'absolute',
-          left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2, zIndex: 12,
-        }}>
+        <View style={{ position: 'absolute', left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2, zIndex: 12 }}>
           <HoopEllipse state="target" />
         </View>
 
-        {/* Dolphin at slide-specific position */}
-        <Animated.View style={{
-          position: 'absolute',
-          left: s.dolphinX - DOLPH_W / 2, top: s.dolphinY - DOLPH_H / 2,
-          opacity: fadeAnim, zIndex: 15,
-        }}>
-          <Image
-            source={require('../../../../assets/images/Dolphin2.png')}
-            style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }}
-          />
+        <Animated.View style={{ position: 'absolute', left: sl.dolphinX - DOLPH_W / 2, top: sl.dolphinY - DOLPH_H / 2, opacity: fadeAnim, zIndex: 15 }}>
+          <Image source={require('../../../../assets/images/Dolphin2.png')} style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }} />
         </Animated.View>
 
-        <Animated.Text style={[tus.instruction, { opacity: fadeAnim }]}>
-          {s.instruction}
-        </Animated.Text>
+        <Animated.Text style={[tus.instruction, { opacity: fadeAnim }]}>{sl.instruction}</Animated.Text>
 
-        <TouchableOpacity
-          style={{ position: 'absolute', bottom: fv(40), right: fs(40), zIndex: 30, ...tus.nextBtn }}
-          onPress={goNext} activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel={slideIdx < SLIDES.length - 1 ? 'Next' : 'Start exercise'}>
+        <TouchableOpacity style={{ position: 'absolute', bottom: fv(40), right: fs(40), zIndex: 30, ...tus.nextBtn }} onPress={goNext} activeOpacity={0.8}>
           <Text style={tus.nextText}>{slideIdx < SLIDES.length - 1 ? '→' : '✓'}</Text>
         </TouchableOpacity>
       </View>
     </FadeIn>
   );
 }
-
 const tus = StyleSheet.create({
-  ahhText: {
-    position: 'absolute', top: fv(137), left: 0, right: 0, zIndex: 25,
-    color: WHITE, fontSize: Math.round(fs(34)), fontWeight: '800',
-    letterSpacing: 1.7, textAlign: 'center',
-  },
-  instruction: {
-    position: 'absolute', bottom: fv(100), left: fs(24), right: fs(24), zIndex: 20,
-    color: WHITE, fontSize: Math.round(fs(28)), fontWeight: '800',
-    letterSpacing: 1.0, textAlign: 'center', lineHeight: Math.round(fs(40)),
-  },
-  nextBtn: {
-    width: Math.round(fs(64)), height: Math.round(fv(56)), borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  nextText: {
-    color: WHITE, fontSize: 22,
-    includeFontPadding: false, lineHeight: 22, textAlign: 'center',
-  },
+  ahhText:    { position: 'absolute', top: fv(137), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: Math.round(fs(34)), fontWeight: '800', letterSpacing: 1.7, textAlign: 'center' },
+  instruction:{ position: 'absolute', bottom: fv(100), left: fs(24), right: fs(24), zIndex: 20, color: WHITE, fontSize: Math.round(fs(28)), fontWeight: '800', letterSpacing: 1.0, textAlign: 'center', lineHeight: Math.round(fs(40)) },
+  nextBtn:    { width: Math.round(fs(64)), height: Math.round(fv(56)), borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)', justifyContent: 'center', alignItems: 'center' },
+  nextText:   { color: WHITE, fontSize: 22, includeFontPadding: false, lineHeight: 22, textAlign: 'center' },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Exercise screen  (Pitch5–8) — pitch-controlled dolphin
+// Exercise screen — real pitch detection via hidden WebView
 // ══════════════════════════════════════════════════════════════════════════════
-function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
+function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const tierConfig   = PITCH_TIERS[Math.max(0, Math.min(4, tier - 1))];
+  const TOTAL_HOOPS  = tierConfig.totalHoops;
+  const PITCH_RANGE_HZ = tierConfig.pitchRangeHz;
+  const HOLD_MS      = tierConfig.holdMs;
   const [hoopsDone, setHoopsDone] = useState(0);
   const [phase,     setPhase]     = useState('calibrating'); // calibrating|listening|done
   const [pitchHz,   setPitchHz]   = useState(0);
-  const [dbLevel,   setDbLevel]   = useState(0); // 0–1 for volume bar
+  const [micError,  setMicError]  = useState(false);
 
-  // Refs that are safe to use inside PitchDetector callback (no stale closures)
-  const hoopsDoneRef   = useRef(0);
-  const phaseRef       = useRef('calibrating');
-  const basePitchRef   = useRef(null);   // Hz — set after calibration
-  const calibSampRef   = useRef([]);     // raw Hz collected during calibration
-  const holdTimerRef   = useRef(null);   // setTimeout for hoop completion
-  const inTargetRef    = useRef(false);  // are we currently in the target zone?
+  const hoopsDoneRef  = useRef(0);
+  const phaseRef      = useRef('calibrating');
+  const basePitchRef  = useRef(null);
+  const calibSampRef  = useRef([]);
+  const holdTimerRef  = useRef(null);
+  const inTargetRef   = useRef(false);
 
-  // Animated values
   // pitchAnim: 0 = lower-left hoop, 1 = upper-right hoop
   const pitchAnim  = useRef(new Animated.Value(0)).current;
   const volBarAnim = useRef(new Animated.Value(0)).current;
 
-  // Derived animated positions for dolphin
-  const dolphinX = pitchAnim.interpolate({
-    inputRange: [0, 1], outputRange: [HOOP_LL.x, HOOP_UR.x],
-  });
-  const dolphinY = pitchAnim.interpolate({
-    inputRange: [0, 1], outputRange: [HOOP_LL.y, HOOP_UR.y],
-  });
+  const dolphinX = pitchAnim.interpolate({ inputRange: [0, 1], outputRange: [HOOP_LL.x, HOOP_UR.x] });
+  const dolphinY = pitchAnim.interpolate({ inputRange: [0, 1], outputRange: [HOOP_LL.y, HOOP_UR.y] });
 
   useEffect(() => {
-    let calibTimer;
-
-    PitchDetector.start(onPitchData);
-    calibTimer = setTimeout(finishCalibration, CALIBRATION_MS);
-
-    return () => {
-      clearTimeout(calibTimer);
-      clearHoldTimer();
-      PitchDetector.stop();
-    };
+    const t = setTimeout(finishCalibration, CALIBRATION_MS);
+    return () => { clearTimeout(t); clearHoldTimer(); };
   }, []);
 
-  // ── Normalise pitch Hz → 0–1 level ───────────────────────────────────────
   function normalisePitch(hz) {
     const base = basePitchRef.current ?? DEFAULT_BASE;
     return Math.max(0, Math.min(1, (hz - base) / PITCH_RANGE_HZ));
   }
 
-  // ── Finish calibration: compute median baseline ───────────────────────────
   function finishCalibration() {
     const samples = calibSampRef.current;
     if (samples.length > 0) {
@@ -442,131 +405,120 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
     setPhase('listening');
   }
 
-  // ── PitchDetector callback (called frequently on native thread) ───────────
-  function onPitchData({ tone, db }) {
-    // tone: Hz (negative or 0 = no pitch), db: dB
-    const hz = typeof tone === 'number' ? tone : 0;
-    const validPitch = hz >= MIN_VALID_HZ && hz <= MAX_VALID_HZ;
-
-    // Volume bar from dB (typically −160 to 0 dB)
-    const vol = Math.min(1, Math.max(0, ((db ?? -160) + 70) / 60));
-    setDbLevel(vol);
-    Animated.timing(volBarAnim, { toValue: vol, duration: 80, useNativeDriver: false }).start();
-
-    if (phaseRef.current === 'calibrating') {
-      if (validPitch) calibSampRef.current.push(hz);
-      return;
-    }
-
-    if (phaseRef.current !== 'listening') return;
-
-    if (!validPitch) {
-      // No voice — reset hold timer, keep dolphin where it is
-      clearHoldTimer();
-      inTargetRef.current = false;
-      return;
-    }
-
-    // Update dolphin position
-    const level = normalisePitch(hz);
-    setPitchHz(Math.round(hz));
-    Animated.timing(pitchAnim, { toValue: level, duration: 100, useNativeDriver: false }).start();
-
-    // Target: even hoopsDone → target high (UR), odd → target low (LL)
-    const targetHigh = hoopsDoneRef.current % 2 === 0;
-    const inZone = targetHigh ? level >= TARGET_HI : level <= TARGET_LO;
-
-    if (inZone && !inTargetRef.current) {
-      // Just entered target zone — start hold timer
-      inTargetRef.current = true;
-      holdTimerRef.current = setTimeout(completeHoop, HOLD_MS);
-    } else if (!inZone && inTargetRef.current) {
-      // Left target zone — cancel
-      inTargetRef.current = false;
-      clearHoldTimer();
-    }
-  }
-
   function clearHoldTimer() {
     if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
   }
 
-  // ── Hoop completed ─────────────────────────────────────────────────────────
   function completeHoop() {
     holdTimerRef.current = null;
     inTargetRef.current  = false;
-
     const next = hoopsDoneRef.current + 1;
     hoopsDoneRef.current = next;
     setHoopsDone(next);
-
     if (next >= TOTAL_HOOPS) {
       phaseRef.current = 'done';
       setPhase('done');
-      setTimeout(onComplete, 1400);
+      // V2: score is always 100 — exercise only completes when all hoops cleared
+      setTimeout(() => onComplete(100), 1400);
     }
   }
 
-  // ── Hoop display states ────────────────────────────────────────────────────
-  // Even hoopsDone → target is UR, odd → target is LL
-  const targetIsUR = hoopsDone % 2 === 0;
-  const llState    = phase === 'done' ? 'target' : (targetIsUR ? 'dim'    : 'target');
-  const urState    = phase === 'done' ? 'target' : (targetIsUR ? 'target' : 'dim');
+  // ── WebView message handler ─────────────────────────────────────────────────
+  function handleWebViewMessage(e) {
+    let data;
+    try { data = JSON.parse(e.nativeEvent.data); } catch { return; }
 
-  // ── Prompt text ────────────────────────────────────────────────────────────
+    if (data.error) { setMicError(true); return; }
+    if (data.ready) return;
+
+    const { pitch, vol } = data;
+
+    // Volume bar — always update
+    Animated.timing(volBarAnim, { toValue: vol, duration: 80, useNativeDriver: false }).start();
+
+    const validPitch = typeof pitch === 'number' && pitch > MIN_PITCH_HZ && pitch < MAX_PITCH_HZ;
+
+    if (phaseRef.current === 'calibrating') {
+      if (validPitch) calibSampRef.current.push(pitch);
+      return;
+    }
+    if (phaseRef.current !== 'listening') return;
+
+    if (!validPitch) {
+      clearHoldTimer();
+      inTargetRef.current = false;
+      return;
+    }
+
+    setPitchHz(Math.round(pitch));
+    const level = normalisePitch(pitch);
+    Animated.timing(pitchAnim, { toValue: level, duration: 100, useNativeDriver: false }).start();
+
+    // Even hoopsDone → target is high (UR), odd → low (LL)
+    const targetHigh = hoopsDoneRef.current % 2 === 0;
+    const inZone     = targetHigh ? level >= TARGET_HI : level <= TARGET_LO;
+
+    if (inZone && !inTargetRef.current) {
+      inTargetRef.current  = true;
+      holdTimerRef.current = setTimeout(completeHoop, HOLD_MS);
+    } else if (!inZone && inTargetRef.current) {
+      inTargetRef.current = false;
+      clearHoldTimer();
+    }
+  }
+
+  const targetHigh = hoopsDone % 2 === 0;
+  const llState    = phase === 'done' ? 'target' : (targetHigh ? 'dim'    : 'target');
+  const urState    = phase === 'done' ? 'target' : (targetHigh ? 'target' : 'dim');
+
   const promptText =
-    phase === 'done'        ? 'Amazing!'             :
-    phase === 'calibrating' ? 'Say "ahh" to start...' :
-    pitchHz > 0             ? `${pitchHz} Hz`         :
-    "Say 'ahh'...";
-
+    micError             ? 'Mic unavailable'    :
+    phase === 'done'     ? 'Amazing!'            :
+    phase === 'calibrating' ? 'Say "ahh" to start…' :
+    pitchHz > 0          ? `${pitchHz} Hz`       :
+    "Say 'ahh'…";
   const promptBig = phase === 'done' || (phase === 'listening' && pitchHz > 0);
 
   return (
     <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
       <StatusBar barStyle="light-content" />
-
       <BottomWave />
+
+      {/* Hidden WebView — handles mic + pitch detection */}
+      <View style={xs.webviewWrap} pointerEvents="none">
+        <WebView
+          source={{ html: PITCH_HTML, baseUrl: 'https://eloqua-backend.onrender.com' }}
+          originWhitelist={['*']}
+          javaScriptEnabled={true}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          mediaCapturePermissionGrantType={Platform.OS === 'ios' ? 'grant' : undefined}
+          onMessage={handleWebViewMessage}
+          onPermissionRequest={(e) => { e.nativeEvent.grant?.(e.nativeEvent.resources); }}
+        />
+      </View>
 
       {/* Header */}
       <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 30 }}>
-        <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}
-          accessibilityRole="button" accessibilityLabel="Exit exercise">
-          <Text style={bs.closeText}>✕</Text>
-        </TouchableOpacity>
+        <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}><Text style={bs.closeText}>✕</Text></TouchableOpacity>
       </View>
       <View style={{ position: 'absolute', top: fv(20), right: fs(14), zIndex: 30 }}>
-        <TouchableOpacity style={bs.question} onPress={onShowDemo} activeOpacity={0.85}
-          accessibilityRole="button" accessibilityLabel="Show instructions">
-          <Text style={bs.questionText}>?</Text>
-        </TouchableOpacity>
+        <TouchableOpacity style={bs.question} onPress={onShowDemo} activeOpacity={0.85}><Text style={bs.questionText}>?</Text></TouchableOpacity>
       </View>
 
-      {/* Prompt — shows Hz when speaking */}
-      <Text style={[exs.prompt, promptBig && exs.promptBig]}>
-        {promptText}
-      </Text>
+      <Text style={[exs.prompt, promptBig && exs.promptBig]}>{promptText}</Text>
 
-      {/* Progress bar */}
       <DualProgressBar done={hoopsDone} total={TOTAL_HOOPS} />
 
-      {/* Lower-left hoop */}
-      <View style={{
-        position: 'absolute',
-        left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2,
-      }}>
+      {/* Hoops */}
+      <View style={{ position: 'absolute', left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2 }}>
         <HoopEllipse state={llState} />
       </View>
-
-      {/* Upper-right hoop */}
-      <View style={{
-        position: 'absolute',
-        left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2,
-      }}>
+      <View style={{ position: 'absolute', left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2 }}>
         <HoopEllipse state={urState} />
       </View>
 
-      {/* Dolphin — position driven by pitchAnim */}
+      {/* Dolphin */}
       <Animated.View style={{
         position: 'absolute',
         transform: [
@@ -575,30 +527,18 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
         ],
         zIndex: 10,
       }}>
-        <Image
-          source={require('../../../../assets/images/Dolphin2.png')}
-          style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }}
-        />
+        <Image source={require('../../../../assets/images/Dolphin2.png')} style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }} />
       </Animated.View>
 
-      {/* Vertical volume bar */}
-      <View style={{
-        position: 'absolute',
-        left: VBAR_LEFT, top: VBAR_TOP,
-        width: VBAR_W, height: VBAR_H,
-        borderRadius: VBAR_W / 2,
-        backgroundColor: TEAL_MID,
-        overflow: 'hidden', justifyContent: 'flex-end',
-      }}>
+      {/* Volume bar */}
+      <View style={{ position: 'absolute', left: VBAR_LEFT, top: VBAR_TOP, width: VBAR_W, height: VBAR_H, borderRadius: VBAR_W / 2, backgroundColor: TEAL_MID, overflow: 'hidden', justifyContent: 'flex-end' }}>
         <Animated.View style={{
           width: '100%',
           height: volBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-          backgroundColor: ORANGE,
-          borderRadius: VBAR_W / 2,
+          backgroundColor: ORANGE, borderRadius: VBAR_W / 2,
         }} />
       </View>
 
-      {/* Can't do now */}
       <View style={{ position: 'absolute', bottom: fv(16), left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} />
       </View>
@@ -606,17 +546,21 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
   );
 }
 
+const xs = StyleSheet.create({
+  // Off-screen with real dimensions so the WebView fully initialises
+  webviewWrap: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    top: -600,
+    left: -600,
+    zIndex: -1,
+  },
+});
+
 const exs = StyleSheet.create({
-  prompt: {
-    position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25,
-    color: WHITE, fontSize: Math.round(fs(30)), fontWeight: '800',
-    letterSpacing: 1.5, textAlign: 'center',
-  },
-  promptBig: {
-    top: fv(137),
-    fontSize: Math.round(fs(34)),
-    letterSpacing: 1.7,
-  },
+  prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: Math.round(fs(30)), fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
+  promptBig: { top: fv(137), fontSize: Math.round(fs(34)), letterSpacing: 1.7 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -626,21 +570,17 @@ const STEP_TITLE    = 0;
 const STEP_TUTORIAL = 1;
 const STEP_EXERCISE = 2;
 
-export default function PitchGlidesExercise({ onComplete, onExit }) {
+export default function PitchGlidesExercise({ onComplete, onExit, tier = 1 }) {
   const [step, setStep] = useState(STEP_TITLE);
-
-  if (step === STEP_TITLE) {
-    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} />;
-  }
-  if (step === STEP_TUTORIAL) {
-    return <TutorialScreen onFinish={() => setStep(STEP_EXERCISE)} onExit={() => setStep(STEP_TITLE)} />;
-  }
+  if (step === STEP_TITLE)    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} />;
+  if (step === STEP_TUTORIAL) return <TutorialScreen onFinish={() => setStep(STEP_EXERCISE)} onExit={() => setStep(STEP_TITLE)} />;
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
       onShowDemo={() => setStep(STEP_TUTORIAL)}
       onSkip={onComplete}
+      tier={tier}
     />
   );
 }
