@@ -17,6 +17,7 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -26,6 +27,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
 import { setTiersFromAssessment } from '../services/difficultyService';
+import { getAuthHeaders } from '../utils/authHeaders';
+import { onSessionComplete } from '../services/notificationService';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -269,7 +272,12 @@ export default function AssessmentScreen({ navigation, route }) {
         form.append('task_type', currentTaskId);
         form.append('audio_duration_s', String(durationS));
 
-        const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, { method: 'POST', body: form });
+        const authHeaders = await getAuthHeaders();
+        const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: form,
+        });
         if (res.ok) {
           const d = await res.json();
           scores   = d.data?.scores   ?? scores;
@@ -307,16 +315,18 @@ export default function AssessmentScreen({ navigation, route }) {
 
   async function cloneVoiceFromAssessment(uris) {
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
       const form = new FormData();
       uris.forEach((uri, i) => {
         form.append('files', { uri, type: 'audio/m4a', name: `voice_sample_${i}.m4a` });
       });
-      form.append('user_id', uid);
       form.append('user_name', auth.currentUser?.displayName || 'User');
-      // No Content-Type header — fetch sets it automatically with the correct multipart boundary
-      await fetch(`${API_BASE_URL}/api/voice/clone`, { method: 'POST', body: form });
+      const authHeaders = await getAuthHeaders();
+      // No Content-Type override — fetch sets multipart/form-data with boundary automatically
+      await fetch(`${API_BASE_URL}/api/voice/clone`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: form,
+      });
     } catch (e) {
       console.warn('[Assessment] voice cloning failed (non-fatal):', e?.message);
     }
@@ -349,46 +359,58 @@ export default function AssessmentScreen({ navigation, route }) {
   async function finishAssessment() {
     setPhase('saving');
     try {
-      const uid = auth.currentUser?.uid;
-      if (uid) {
-        // V2: Initialise difficulty tiers from baseline scores so users don't
-        // waste sessions at tier 1 if their voice is already stronger in some areas.
-        // Also persist baseline_focus_key so TailoredExercise can break ties
-        // in favour of the user's weakest voice dimension.
+      if (auth.currentUser) {
         if (isBaseline && (composite.voice_power != null || composite.expression != null || composite.fluency != null)) {
-          // Map the voice score dimension (focus.key) → exercise key
           const FOCUS_DIM_TO_EXERCISE = {
             voice_power: 'phonation',
             expression:  'pitchGlides',
             fluency:     'speech',
           };
           const exerciseFocusKey = FOCUS_DIM_TO_EXERCISE[focus?.key] ?? null;
-          setTiersFromAssessment(composite, exerciseFocusKey).catch(() => {/* non-fatal */});
+          setTiersFromAssessment(composite, exerciseFocusKey).catch(() => {});
         }
 
-        // Save assessment scores
+        const authHeaders = await getAuthHeaders();
         const taskObj = {};
         for (const r of taskResultsRef.current) taskObj[r.task_id] = { scores: r.scores };
 
         const assessForm = new FormData();
         assessForm.append('assessment_type', type);
-        assessForm.append('user_id', uid);
         if (composite.voice_power != null) assessForm.append('voice_power', String(composite.voice_power));
         if (composite.expression  != null) assessForm.append('expression',  String(composite.expression));
         if (composite.fluency     != null) assessForm.append('fluency',     String(composite.fluency));
         assessForm.append('task_results_json', JSON.stringify(taskObj));
-        await fetch(`${API_BASE_URL}/api/save-assessment`, { method: 'POST', body: assessForm }).catch(() => {});
 
-        // Update roadmap progress via backend (Admin SDK — no Firestore rule issues)
+        const saveRes = await fetch(`${API_BASE_URL}/api/save-assessment`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: assessForm,
+        });
+        if (!saveRes.ok) throw new Error(`save-assessment: ${saveRes.status}`);
+
         const sessionForm = new FormData();
-        sessionForm.append('user_id', uid);
         sessionForm.append('assessment_type', type);
-        await fetch(`${API_BASE_URL}/api/complete-session`, { method: 'POST', body: sessionForm });
+        const sessionRes = await fetch(`${API_BASE_URL}/api/complete-session`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: sessionForm,
+        });
+        if (!sessionRes.ok) throw new Error(`complete-session: ${sessionRes.status}`);
+        onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       }
+      navigation.replace('Home');
     } catch (e) {
       console.error('[Assessment] finish:', e?.message);
+      setPhase('results');
+      Alert.alert(
+        'Could not save results',
+        'Check your connection and try again. Your scores are still shown above.',
+        [
+          { text: 'Try again', onPress: finishAssessment },
+          { text: 'Continue anyway', style: 'destructive', onPress: () => navigation.replace('Home') },
+        ]
+      );
     }
-    navigation.replace('Home');
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

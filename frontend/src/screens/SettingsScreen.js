@@ -10,6 +10,8 @@ import {
   Animated,
   Alert,
   Linking,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
@@ -18,6 +20,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { getUserProfile } from '../utils/storage';
 import { getVoiceStatus, deleteClonedVoice } from '../services/voiceService';
+import { getAuthHeaders } from '../utils/authHeaders';
+import { API_BASE_URL } from '../config/env';
+import {
+  requestPermission,
+  hasPermission,
+  formatTime,
+  applyNotificationPrefs,
+} from '../services/notificationService';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -42,9 +52,14 @@ const DEFAULT_PREFS = {
   enhancedVoice: true,
   hapticFeedback: true,
   largeText: false,
-  dailyReminder: false,
   audioCues: true,
   transcriptionModel: 'whisper',  // 'whisper' | 'soniva'
+  // notifications
+  dailyReminder: false,
+  reminderHour: 10,
+  reminderMinute: 0,
+  reengagementEnabled: true,
+  weeklySummaryEnabled: false,
 };
 
 // ── Preferences helpers ───────────────────────────────────────────────────────
@@ -207,6 +222,133 @@ const vt = StyleSheet.create({
   text: { fontSize: 12 * SC, fontWeight: '700', letterSpacing: 0.4 },
 });
 
+// ── Time picker modal ─────────────────────────────────────────────────────────
+// Generates times every 30 min from 6:00 AM to 10:00 PM.
+const TIME_OPTIONS = (() => {
+  const opts = [];
+  for (let h = 6; h <= 22; h++) {
+    for (const m of [0, 30]) {
+      if (h === 22 && m === 30) break;
+      opts.push({ hour: h, minute: m, label: formatTime(h, m) });
+    }
+  }
+  return opts;
+})();
+
+function TimePickerModal({ visible, currentHour, currentMinute, onSelect, onClose }) {
+  const selected = TIME_OPTIONS.findIndex(t => t.hour === currentHour && t.minute === currentMinute);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity style={tp.backdrop} activeOpacity={1} onPress={onClose} />
+      <View style={tp.sheet}>
+        <View style={tp.handle} />
+        <Text style={tp.heading}>Reminder time</Text>
+        <FlatList
+          data={TIME_OPTIONS}
+          keyExtractor={item => `${item.hour}:${item.minute}`}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingVertical: 8 }}
+          initialScrollIndex={Math.max(0, selected)}
+          getItemLayout={(_, i) => ({ length: 52, offset: 52 * i, index: i })}
+          renderItem={({ item }) => {
+            const active = item.hour === currentHour && item.minute === currentMinute;
+            return (
+              <TouchableOpacity
+                style={[tp.timeRow, active && tp.timeRowActive]}
+                onPress={() => onSelect(item.hour, item.minute)}
+                activeOpacity={0.75}
+              >
+                <Text style={[tp.timeText, active && tp.timeTextActive]}>
+                  {item.label}
+                </Text>
+                {active && <Text style={tp.checkmark}>✓</Text>}
+              </TouchableOpacity>
+            );
+          }}
+        />
+        <TouchableOpacity style={tp.closeBtn} onPress={onClose} activeOpacity={0.85}>
+          <Text style={tp.closeBtnText}>Done</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+const tp = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheet: {
+    backgroundColor: '#1A3C43',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 36,
+    maxHeight: '65%',
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  heading: {
+    color: WHITE,
+    fontSize: 17 * SC,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(195,222,206,0.10)',
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 28 * SC,
+    height: 52,
+  },
+  timeRowActive: {
+    backgroundColor: 'rgba(254,156,45,0.12)',
+  },
+  timeText: {
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 16 * SC,
+    fontWeight: '500',
+  },
+  timeTextActive: {
+    color: ORANGE,
+    fontWeight: '700',
+  },
+  checkmark: {
+    color: ORANGE,
+    fontSize: 16 * SC,
+    fontWeight: '700',
+  },
+  closeBtn: {
+    marginHorizontal: 20 * SC,
+    marginTop: 8,
+    backgroundColor: ORANGE,
+    borderRadius: 14 * SC,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  closeBtnText: {
+    color: '#1A1A1A',
+    fontSize: 16 * SC,
+    fontWeight: '700',
+  },
+});
+
 // ── Model picker ─────────────────────────────────────────────────────────────
 const MODEL_OPTIONS = [
   { value: 'whisper', label: 'Whisper', sublabel: 'OpenAI general' },
@@ -353,18 +495,21 @@ export default function SettingsScreen({ navigation }) {
   const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
   const { signOut, isGuest, user } = useAuth();
 
-  const [profile,       setProfile]       = useState(null);
-  const [voiceStatus,   setVoiceStatus]   = useState(null);
-  const [voiceLoading,  setVoiceLoading]  = useState(true);
-  const [deletingVoice, setDeletingVoice] = useState(false);
-  const [prefs,         setPrefs]         = useState(DEFAULT_PREFS);
+  const [profile,         setProfile]         = useState(null);
+  const [voiceStatus,     setVoiceStatus]     = useState(null);
+  const [voiceLoading,    setVoiceLoading]    = useState(true);
+  const [deletingVoice,   setDeletingVoice]   = useState(false);
+  const [prefs,           setPrefs]           = useState(DEFAULT_PREFS);
+  const [notifPermission, setNotifPermission] = useState(false);
+  const [timePickerOpen,  setTimePickerOpen]  = useState(false);
 
   useEffect(() => {
     getUserProfile().then(p => setProfile(p));
     loadPrefs().then(p => setPrefs(p));
+    hasPermission().then(setNotifPermission);
 
     if (!isGuest && user?.uid) {
-      getVoiceStatus(user.uid)
+      getVoiceStatus()
         .then(s => setVoiceStatus(s))
         .catch(() => setVoiceStatus(null))
         .finally(() => setVoiceLoading(false));
@@ -380,6 +525,38 @@ export default function SettingsScreen({ navigation }) {
       return next;
     });
   }, []);
+
+  const updateNotifPref = useCallback(async (key, value) => {
+    let granted = notifPermission;
+    if (!granted) {
+      granted = await requestPermission();
+      setNotifPermission(granted);
+      if (!granted) {
+        Alert.alert(
+          'Notifications blocked',
+          'Enable notifications for Eloqua in your device settings to use this feature.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+    }
+    setPrefs(prev => {
+      const next = { ...prev, [key]: value };
+      savePrefs(next);
+      applyNotificationPrefs(next, profile?.name ?? '').catch(() => {});
+      return next;
+    });
+  }, [notifPermission, profile]);
+
+  const updateReminderTime = useCallback(async (hour, minute) => {
+    setTimePickerOpen(false);
+    setPrefs(prev => {
+      const next = { ...prev, reminderHour: hour, reminderMinute: minute };
+      savePrefs(next);
+      applyNotificationPrefs(next, profile?.name ?? '').catch(() => {});
+      return next;
+    });
+  }, [profile]);
 
   function handleSignOut() {
     Alert.alert(
@@ -411,10 +588,9 @@ export default function SettingsScreen({ navigation }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            if (!user?.uid) return;
             setDeletingVoice(true);
             try {
-              await deleteClonedVoice(user.uid);
+              await deleteClonedVoice();
               setVoiceStatus(v => ({ ...v, has_cloned_voice: false, voice_id: null }));
             } catch {
               Alert.alert('Error', 'Could not delete voice clone. Try again later.');
@@ -439,13 +615,23 @@ export default function SettingsScreen({ navigation }) {
           onPress: () =>
             Alert.alert(
               'Are you sure?',
-              'All your data will be erased.',
+              'All your data will be erased and cannot be recovered.',
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Yes, delete everything',
                   style: 'destructive',
                   onPress: async () => {
+                    try {
+                      const headers = await getAuthHeaders();
+                      await fetch(`${API_BASE_URL}/api/account`, {
+                        method: 'DELETE',
+                        headers,
+                      });
+                    } catch {
+                      // Proceed with local sign-out even if backend call fails.
+                      // Firebase Auth user may still exist — backend deletion is best-effort.
+                    }
                     await signOut();
                     navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                   },
@@ -582,18 +768,51 @@ export default function SettingsScreen({ navigation }) {
           )}
         </Section>
 
-        {/* ── Training ── */}
-        <Section label="TRAINING">
+        {/* ── Notifications ── */}
+        <Section label="NOTIFICATIONS">
           <Row
             label="Daily reminder"
-            sublabel="Get nudged to train each day"
+            sublabel="Remind me to practice each day"
             right={
               <Toggle
                 value={prefs.dailyReminder}
-                onValueChange={v => updatePref('dailyReminder', v)}
+                onValueChange={v => updateNotifPref('dailyReminder', v)}
               />
             }
           />
+          {prefs.dailyReminder && (
+            <Row
+              label="Reminder time"
+              sublabel="Tap to change"
+              onPress={() => setTimePickerOpen(true)}
+              right={<ValueTag label={formatTime(prefs.reminderHour, prefs.reminderMinute)} color={ORANGE} />}
+            />
+          )}
+          <Row
+            label="Re-engagement nudge"
+            sublabel="One gentle nudge after 3 missed days"
+            right={
+              <Toggle
+                value={prefs.reengagementEnabled}
+                onValueChange={v => updateNotifPref('reengagementEnabled', v)}
+              />
+            }
+          />
+          <Row
+            label="Weekly summary"
+            sublabel="Sunday evenings — how you did this week"
+            isLast
+            right={
+              <Toggle
+                value={prefs.weeklySummaryEnabled}
+                onValueChange={v => updateNotifPref('weeklySummaryEnabled', v)}
+              />
+            }
+          />
+        </Section>
+
+        {/* ── Training ── */}
+        <Section label="TRAINING">
           <Row
             label="Haptic feedback"
             sublabel="Vibrations during exercises and milestones"
@@ -710,6 +929,14 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
       </ScrollView>
+
+      <TimePickerModal
+        visible={timePickerOpen}
+        currentHour={prefs.reminderHour}
+        currentMinute={prefs.reminderMinute}
+        onSelect={updateReminderTime}
+        onClose={() => setTimePickerOpen(false)}
+      />
     </View>
   );
 }

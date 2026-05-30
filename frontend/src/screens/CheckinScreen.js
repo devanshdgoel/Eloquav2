@@ -20,6 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
 import { API_BASE_URL } from '../config/env';
+import { getAuthHeaders } from '../utils/authHeaders';
+import { onSessionComplete } from '../services/notificationService';
 import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../utils/storage';
 import { completeSession } from '../services/progressService';
 import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, DEFAULT_TIERS } from '../services/difficultyService';
@@ -250,7 +252,12 @@ export default function CheckinScreen({ navigation }) {
         form.append('file', { uri, type: 'audio/m4a', name: 'checkin.m4a' });
         form.append('task_type', 'reading');
         form.append('audio_duration_s', String(durationS));
-        const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, { method: 'POST', body: form });
+        const authHeaders = await getAuthHeaders();
+        const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: form,
+        });
         if (res.ok) {
           const d = await res.json();
           scores = d.data?.scores ?? scores;
@@ -300,13 +307,22 @@ export default function CheckinScreen({ navigation }) {
         await adjustDifficultyAfterCheckin(preScores, postScores);
       }
       const result  = await completeSession();
+      onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
       navigation.replace('StreakCelebration', {
         streakDays: result.streak_days,
         userName: profile?.name ?? '',
       });
     } catch {
-      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+      setFinishing(false);
+      Alert.alert(
+        'Could not save check-in',
+        'Check your connection and try again. Your recorded audio is not lost.',
+        [
+          { text: 'Try again', onPress: handleFinish },
+          { text: 'Go home', style: 'destructive', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) },
+        ]
+      );
     }
   }
 

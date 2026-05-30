@@ -495,8 +495,23 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           mediaCapturePermissionGrantType={Platform.OS === 'ios' ? 'grant' : undefined}
           onMessage={handleWebViewMessage}
           onPermissionRequest={(e) => { e.nativeEvent.grant?.(e.nativeEvent.resources); }}
+          onError={() => setMicError(true)}
+          onHttpError={() => setMicError(true)}
         />
       </View>
+
+      {/* Mic error fallback — shown when WebView or getUserMedia fails */}
+      {micError && (
+        <View style={xs.micErrorOverlay}>
+          <Text style={xs.micErrorTitle}>Microphone unavailable</Text>
+          <Text style={xs.micErrorBody}>
+            Allow microphone access in your device settings, then restart the exercise.
+          </Text>
+          <TouchableOpacity style={xs.micErrorBtn} onPress={onSkip} activeOpacity={0.85}>
+            <Text style={xs.micErrorBtnText}>Skip this exercise</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Header */}
       <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 30 }}>
@@ -555,6 +570,40 @@ const xs = StyleSheet.create({
     top: -600,
     left: -600,
     zIndex: -1,
+  },
+  micErrorOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: TEAL_DARK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: fs(32),
+    zIndex: 50,
+  },
+  micErrorTitle: {
+    color: WHITE,
+    fontSize: fs(22),
+    fontWeight: '700',
+    marginBottom: fv(12),
+    textAlign: 'center',
+  },
+  micErrorBody: {
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: fs(15),
+    textAlign: 'center',
+    lineHeight: fv(22),
+    marginBottom: fv(32),
+  },
+  micErrorBtn: {
+    backgroundColor: ORANGE,
+    paddingHorizontal: fs(28),
+    paddingVertical: fv(14),
+    borderRadius: fs(22),
+  },
+  micErrorBtnText: {
+    color: '#1A1A1A',
+    fontSize: fs(15),
+    fontWeight: '700',
   },
 });
 

@@ -49,7 +49,7 @@ export default function SignUpScreen({ navigation }) {
     setLoading(true);
     try {
       await registerWithEmail(trimEmail, trimPassword, name.trim());
-      navigation.replace('Personalise');
+      navigation.replace('SetupPermissions');
     } catch (error) {
       Alert.alert('Registration failed', error.message);
     } finally {

@@ -19,6 +19,7 @@
     "expo-crypto": "^15.0.8",
     "expo-haptics": "~15.0.8",
     "expo-linear-gradient": "^15.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-secure-store": "^15.0.8",
     "expo-speech": "~13.0.1",
     "expo-status-bar": "~3.0.9",

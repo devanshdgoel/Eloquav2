@@ -1,10 +1,12 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
   StatusBar,
   StyleSheet,
+  Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { colors } from '../../theme';
@@ -16,7 +18,8 @@ import SplashButtons from './SplashButtons';
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen({ navigation }) {
-  const { isSignedIn, hasCompletedOnboarding } = useAuth();
+  const { isSignedIn, hasCompletedOnboarding, authError } = useAuth();
+  const [showTimeoutBanner, setShowTimeoutBanner] = useState(false);
 
   // Animated values
   const dolphinY = useRef(new Animated.Value(height + 60)).current;
@@ -56,6 +59,9 @@ export default function SplashScreen({ navigation }) {
         navigation.replace('Opening');
         return;
       }
+
+      // Auth timed out — show a banner above the sign-in buttons
+      if (authError) setShowTimeoutBanner(true);
 
       // Phase 2 (new users only): brand reveal + buttons
       Animated.sequence([
@@ -124,6 +130,14 @@ export default function SplashScreen({ navigation }) {
         waveLogoOpacity={waveLogoOpacity}
         navigation={navigation}
       />
+
+      {showTimeoutBanner && (
+        <View style={styles.timeoutBanner}>
+          <Text style={styles.timeoutText}>
+            Trouble restoring your session — please sign in again.
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -131,5 +145,22 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  timeoutBanner: {
+    position: 'absolute',
+    bottom: 100,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  timeoutText: {
+    color: 'rgba(255,255,255,0.80)',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
   },
 });

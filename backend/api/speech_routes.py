@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from config import MAX_AUDIO_SIZE_MB
 from services.clarity_speech import clarity_transcript, clarity_transcript_chunked, clarity_final_pass
@@ -10,6 +10,7 @@ from services.soniva_service import transcribe_soniva
 from services.speech_service import TranscriptionError, transcribe_audio
 from services.voice_cloning_service import get_user_voice_id, has_cloned_voice
 from services.voice_profile_service import DEFAULT_PROFILE, analyze_voice
+from utils.auth_dep import get_current_user
 from utils.file_handler import cleanup_old_files, save_uploaded_audio
 from utils.responses import error_response, success_response
 from utils.validators import is_valid_audio
@@ -61,7 +62,6 @@ def _is_hallucination(text: str, previous_enhanced_text: str = "") -> bool:
             return True
 
     # Multiple dollar amounts = random price-list hallucination
-    # e.g. "$25 lunch, $30 lunch, $50 lunch..."
     if lower.count("$") >= 3:
         return True
 
@@ -73,7 +73,6 @@ def _is_hallucination(text: str, previous_enhanced_text: str = "") -> bool:
     # Repetition of the previous context — Whisper echoing back what it heard
     if previous_enhanced_text:
         prev_tail = previous_enhanced_text.lower()[-300:]
-        # If the new text appears verbatim in the recent context, it's a repeat
         if lower.rstrip(".,!? ") in prev_tail:
             return True
 
@@ -87,6 +86,7 @@ async def transcribe_chunk(
     previous_text: str = Form(""),
     previous_enhanced_text: str = Form(""),
     model: str = Form("whisper"),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Transcribe one 4-second audio chunk and immediately apply clarity enhancement.
@@ -104,7 +104,6 @@ async def transcribe_chunk(
 
     contents = await file.read()
 
-    # Silence detection: skip Whisper for near-empty audio files
     if len(contents) < _MIN_CHUNK_BYTES:
         return success_response({
             "raw_text": "",
@@ -132,7 +131,6 @@ async def transcribe_chunk(
             })
         raise HTTPException(status_code=503, detail=e.message)
 
-    # Reject known Whisper hallucinations produced on silence/noise
     if _is_hallucination(raw_text, previous_enhanced_text):
         logger.info("Hallucination filtered at chunk %d: %r", chunk_index, raw_text)
         return success_response({
@@ -141,7 +139,6 @@ async def transcribe_chunk(
             "chunk_index": chunk_index,
         })
 
-    # Run per-chunk GPT clarity with sentence-boundary context
     enhanced_text = clarity_transcript_chunked(raw_text, previous_enhanced_text)
 
     return success_response({
@@ -155,7 +152,7 @@ async def transcribe_chunk(
 async def enhance_text_route(
     raw_transcript: str = Form(...),
     enhanced_transcript: str = Form(""),
-    user_id: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Final step of the chunked pipeline: generate ElevenLabs TTS audio.
@@ -168,18 +165,16 @@ async def enhance_text_route(
     if not raw_transcript.strip():
         raise HTTPException(status_code=400, detail="raw_transcript is empty.")
 
-    # Prefer the pre-enhanced transcript; fall back to a fresh clarity pass on raw
+    user_id = current_user["uid"]
+
     if enhanced_transcript.strip():
         final_transcript = enhanced_transcript.strip()
-        # Run one final coherence pass to fix cross-chunk seam artifacts
-        # (duplicate words at chunk joins, punctuation inconsistencies).
-        # Falls back to the pre-pass text on any error — transcript is never lost.
         logger.info("Running final coherence pass on accumulated enhanced transcript")
         final_transcript = clarity_final_pass(final_transcript)
     else:
         final_transcript = clarity_transcript(raw_transcript)
 
-    if user_id and has_cloned_voice(user_id):
+    if has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)
         logger.info("enhance-text: using cloned voice for user %s", user_id[:8])
     else:
@@ -214,11 +209,12 @@ async def enhance_text_route(
 @router.post("/process-audio")
 async def process_audio(
     file: UploadFile = File(...),
-    user_id: Optional[str] = Form(None),
     model: str = Form("whisper"),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Legacy single-shot endpoint: transcribe, enhance, and synthesise in one call.
+    Used by FunctionalSpeechExercise for hear-and-repeat scoring.
     """
     cleanup_old_files()
 
@@ -237,6 +233,7 @@ async def process_audio(
         )
     await file.seek(0)
 
+    user_id = current_user["uid"]
     audio_path = save_uploaded_audio(file)
 
     try:
@@ -253,7 +250,7 @@ async def process_audio(
 
     cleaned_transcript = clarity_transcript(raw_transcript)
 
-    if user_id and has_cloned_voice(user_id):
+    if has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)
         voice_settings = {
             "stability":        0.65,
@@ -262,12 +259,9 @@ async def process_audio(
             "speed":            1.0,
         }
         profile = DEFAULT_PROFILE
-        logger.info("Using cloned voice for user %s", user_id[:8] if user_id else "unknown")
+        logger.info("Using cloned voice for user %s", user_id[:8])
     else:
-        logger.info(
-            "No cloned voice for user %s — using profile matching.",
-            user_id[:8] if user_id else "none",
-        )
+        logger.info("No cloned voice for user %s — using profile matching.", user_id[:8])
         try:
             profile, voice_settings = analyze_voice(
                 str(audio_path), raw_transcript, audio_duration_s

@@ -2,7 +2,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from config import MAX_AUDIO_SIZE_MB
 from services.voice_cloning_service import (
@@ -12,14 +12,13 @@ from services.voice_cloning_service import (
     get_user_voice_id,
     has_cloned_voice,
 )
+from utils.auth_dep import get_current_user
 from utils.validators import is_valid_audio
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Temporary storage for voice samples during the cloning request.
-# Files are deleted immediately after ElevenLabs processes them.
 VOICE_SAMPLES_DIR = Path("temp_audio/voice_samples")
 VOICE_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -27,8 +26,8 @@ VOICE_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 @router.post("/voice/clone")
 async def clone_voice(
     files: list[UploadFile] = File(...),
-    user_id: str = Form(...),
     user_name: str = Form(default="User"),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Upload voice samples and create an ElevenLabs Instant Voice Clone.
@@ -36,12 +35,13 @@ async def clone_voice(
     Accepts 1-25 audio files (wav, mp3, m4a). More audio yields better quality;
     ElevenLabs recommends at least 30 seconds of clean speech in total.
     The cloned voice_id is stored server-side and used automatically in
-    /api/process-audio whenever the same user_id is provided.
+    /api/process-audio for the authenticated user.
     """
+    user_id = current_user["uid"]
+
     if not files:
         raise HTTPException(status_code=400, detail="No audio files provided.")
 
-    # Save each valid audio file to disk before forwarding to ElevenLabs.
     max_bytes = MAX_AUDIO_SIZE_MB * 1024 * 1024
     saved_paths = []
     for f in files:
@@ -72,7 +72,6 @@ async def clone_voice(
         status_code = 503 if e.error_type == "network" else 500
         raise HTTPException(status_code=status_code, detail=e.message)
     finally:
-        # Always clean up local samples regardless of success or failure.
         for path in saved_paths:
             try:
                 path.unlink()
@@ -87,15 +86,13 @@ async def clone_voice(
 
 
 @router.get("/voice/status")
-async def voice_status(user_id: str):
+async def voice_status(
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Check whether a user has a cloned voice on file.
-
-    Returns:
-        has_cloned_voice: True if a clone exists.
-        voice_id: The active voice_id (cloned or default).
-        is_default: True when falling back to the shared default voice.
+    Check whether the authenticated user has a cloned voice on file.
     """
+    user_id = current_user["uid"]
     cloned = has_cloned_voice(user_id)
     return {
         "has_cloned_voice": cloned,
@@ -105,12 +102,14 @@ async def voice_status(user_id: str):
 
 
 @router.delete("/voice/clone")
-async def remove_cloned_voice(user_id: str):
+async def remove_cloned_voice(
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Delete a user's cloned voice from ElevenLabs and remove the local profile.
-
-    Returns 404 if no cloned voice exists for this user.
+    Delete the authenticated user's cloned voice from ElevenLabs and remove the local profile.
+    Returns 404 if no cloned voice exists.
     """
+    user_id = current_user["uid"]
     deleted = delete_cloned_voice(user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="No cloned voice found for this user.")

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { completeSession } from '../../services/progressService';
+import { onSessionComplete } from '../../services/notificationService';
 import {
   nudgeTiersFromRecentScores,
   DEFAULT_TIERS,
@@ -197,6 +198,7 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     }
     try {
       const result  = await completeSession();
+      onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
       navigation.replace('StreakCelebration', {
         streakDays: result.streak_days,

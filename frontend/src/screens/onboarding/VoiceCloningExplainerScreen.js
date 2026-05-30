@@ -7,54 +7,42 @@ import {
   StatusBar,
   Dimensions,
   Linking,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Audio } from 'expo-av';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
 
-const TEAL_DARK = '#1C4047';
-const TEAL_MID  = '#2D6974';
-const ORANGE    = '#FFA940';
-const WHITE     = '#FFFFFF';
-const DIM       = 'rgba(255,255,255,0.60)';
-const CARD_BG   = 'rgba(255,255,255,0.07)';
-const CARD_BORD = 'rgba(195,222,206,0.20)';
+const TEAL_DARK  = '#1C4047';
+const TEAL_MID   = '#326F77';
+const ORANGE     = '#FFA940';
+const MINT       = '#C3DECE';
+const WHITE      = '#FFFFFF';
+const DIM        = 'rgba(255,255,255,0.60)';
+const CARD_BG    = 'rgba(255,255,255,0.07)';
+const CARD_BORD  = 'rgba(195,222,206,0.20)';
 
-const WHY_POINTS = [
+const POINTS = [
   {
-    icon: '🎤',
-    title: 'Voice exercises',
-    body: 'Each daily session records short sounds and words to measure your loudness, pitch range, and clarity.',
+    icon: '🎙',
+    title: 'Why we record your voice',
+    body: "During setup, you'll read two short passages aloud. We use those recordings to create a personalised voice model — so the Speech Enhancement feature plays back in a voice that sounds like yours.",
   },
   {
-    icon: '🔊',
-    title: 'Speech enhancement',
-    body: "When you use Speech Enhancement, we record what you say, clean it up, and play it back in your voice.",
+    icon: '🔒',
+    title: 'How your voice is stored',
+    body: 'Your voice model is processed by ElevenLabs, a voice AI service. Recordings are deleted from our server immediately after processing. ElevenLabs stores only the voice model, not your original audio.',
+  },
+  {
+    icon: '🗑',
+    title: 'You are always in control',
+    body: 'You can delete your voice model at any time from Settings. Deleting your account removes it permanently from all systems.',
   },
 ];
 
-export default function SetupPermissionsScreen({ navigation }) {
+export default function VoiceCloningExplainerScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
-
-  async function handleAllow() {
-    const { status } = await Audio.requestPermissionsAsync();
-    if (status === 'granted') {
-      navigation.navigate('SetupAboutYou');
-    } else {
-      Alert.alert(
-        'Microphone access needed',
-        'Eloqua cannot run voice exercises or speech enhancement without the microphone. You can enable it in Settings at any time.',
-        [
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          { text: 'Not now', style: 'cancel' },
-        ],
-      );
-    }
-  }
 
   return (
     <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
@@ -63,13 +51,15 @@ export default function SetupPermissionsScreen({ navigation }) {
       <View style={[s.inner, { paddingTop: top + 32, paddingBottom: bottom + 32 }]}>
 
         <View style={s.header}>
-          <Text style={s.eyebrow}>MICROPHONE ACCESS</Text>
-          <Text style={s.title}>One permission,{'\n'}clearly explained.</Text>
-          <Text style={s.subtitle}>Here is exactly why Eloqua needs your microphone.</Text>
+          <Text style={s.eyebrow}>YOUR VOICE & PRIVACY</Text>
+          <Text style={s.title}>Your voice stays{'\n'}your voice.</Text>
+          <Text style={s.subtitle}>
+            Here is what happens to your recordings and why.
+          </Text>
         </View>
 
-        <View style={s.cards}>
-          {WHY_POINTS.map((p) => (
+        <View style={s.points}>
+          {POINTS.map((p) => (
             <View key={p.icon} style={s.card}>
               <Text style={s.cardIcon}>{p.icon}</Text>
               <View style={s.cardText}>
@@ -80,14 +70,19 @@ export default function SetupPermissionsScreen({ navigation }) {
           ))}
         </View>
 
-        <View style={s.note}>
-          <Text style={s.noteText}>
-            Your audio is processed on our secure server and never shared or sold.
-          </Text>
-        </View>
+        <TouchableOpacity
+          style={s.privacyLink}
+          onPress={() => Linking.openURL('https://eloqua.app/privacy')}
+        >
+          <Text style={s.privacyText}>Read our full Privacy Policy →</Text>
+        </TouchableOpacity>
 
-        <TouchableOpacity style={s.btn} onPress={handleAllow} activeOpacity={0.85}>
-          <Text style={s.btnText}>Allow microphone  →</Text>
+        <TouchableOpacity
+          style={s.btn}
+          onPress={() => navigation.navigate('SetupPermissions')}
+          activeOpacity={0.85}
+        >
+          <Text style={s.btnText}>I understand, let's begin</Text>
         </TouchableOpacity>
 
       </View>
@@ -124,7 +119,7 @@ const s = StyleSheet.create({
     lineHeight: 22 * SC,
   },
 
-  cards: { gap: 12 * SC },
+  points: { gap: 12 * SC },
   card: {
     backgroundColor: CARD_BG,
     borderRadius: 16 * SC,
@@ -140,17 +135,8 @@ const s = StyleSheet.create({
   cardTitle: { color: WHITE, fontSize: 14 * SC, fontWeight: '700' },
   cardBody:  { color: DIM,   fontSize: 13 * SC, lineHeight: 19 * SC },
 
-  note: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 12 * SC,
-    padding: 14 * SC,
-  },
-  noteText: {
-    color: DIM,
-    fontSize: 13 * SC,
-    lineHeight: 20 * SC,
-    textAlign: 'center',
-  },
+  privacyLink: { alignSelf: 'flex-start', paddingVertical: 2 },
+  privacyText: { color: MINT, fontSize: 13 * SC, fontWeight: '600' },
 
   btn: {
     backgroundColor: ORANGE,

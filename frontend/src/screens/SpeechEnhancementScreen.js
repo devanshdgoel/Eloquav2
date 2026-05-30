@@ -17,8 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
+import { getAuthHeaders } from '../utils/authHeaders';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -284,8 +284,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
       if (previousRawText)      form.append('previous_text',          previousRawText);
       if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/transcribe-chunk`, {
         method: 'POST',
+        headers: authHeaders,
         body: form,
       });
 
@@ -471,11 +473,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
       const form = new FormData();
       form.append('raw_transcript', rawText);
       if (enhancedText) form.append('enhanced_transcript', enhancedText);
-      const uid = auth.currentUser?.uid;
-      if (uid) form.append('user_id', uid);
 
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/enhance-text`, {
         method: 'POST',
+        headers: authHeaders,
         body: form,
       });
 
@@ -513,11 +515,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
       form.append('task_type', 'free_speech');
       form.append('transcript', transcript);
       form.append('audio_duration_s', String(Math.round(durationS)));
-      const uid = auth.currentUser?.uid;
-      if (uid) form.append('user_id', uid);
 
+      const authHeaders = await getAuthHeaders();
       await fetch(`${API_BASE_URL}/api/analyze-voice`, {
         method: 'POST',
+        headers: authHeaders,
         body: form,
       });
     } catch (e) {

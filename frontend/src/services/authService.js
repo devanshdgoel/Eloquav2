@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
   signInWithCredential,
@@ -56,6 +57,14 @@ export async function signInWithGoogleCredential(idToken, accessToken) {
     const credential = GoogleAuthProvider.credential(idToken, accessToken);
     const userCred = await signInWithCredential(auth, credential);
     return userCred.user;
+  } catch (error) {
+    throw new Error(friendlyError(error));
+  }
+}
+
+export async function resetPassword(email) {
+  try {
+    await firebaseSendPasswordResetEmail(auth, email);
   } catch (error) {
     throw new Error(friendlyError(error));
   }

@@ -14,36 +14,33 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { auth } from '../../config/firebase';
 import { saveUserProfileToFirestore } from '../../services/userService';
-import { saveUserProfile, setOnboardingComplete } from '../../utils/storage';
+import { saveUserProfile } from '../../utils/storage';
 
 const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
 ];
 
 export default function SetupAboutYouScreen({ navigation }) {
-  const [name, setName]                 = useState('');
+  // Pre-fill name from Firebase auth so the user doesn't have to type it again.
+  const [name, setName]                 = useState(auth.currentUser?.displayName ?? '');
   const [age, setAge]                   = useState('');
-  const [phone, setPhone]               = useState('');
   const [ageModalVisible, setAgeModalVisible] = useState(false);
 
   async function handleNext() {
-    const trimmedName  = name.trim();
-    const trimmedPhone = phone.trim();
+    const trimmedName = name.trim();
 
-    // Persist locally for offline access.
-    await saveUserProfile({ name: trimmedName, age, phone: trimmedPhone });
+    await saveUserProfile({ name: trimmedName, age });
 
-    // Persist to Firestore so the profile is accessible from any device
-    // and visible in the Firebase console. Failure is non-fatal.
     try {
-      await saveUserProfileToFirestore({ name: trimmedName, age, phone: trimmedPhone });
+      await saveUserProfileToFirestore({ name: trimmedName, age });
     } catch (err) {
       console.warn('Failed to save profile to Firestore:', err.message);
     }
 
-    await setOnboardingComplete();
-    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+    // Onboarding is not marked complete here — SetupVoice (the final step) does it.
+    navigation.navigate('SetupVoice');
   }
 
   const canProceed = name.trim().length > 0;
@@ -67,39 +64,27 @@ export default function SetupAboutYouScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.title}>About you</Text>
+          <Text style={styles.subtitle}>Just two quick things to personalise your experience.</Text>
 
           {/* Preferred Name */}
-          <Text style={styles.label}>Preferred Name:</Text>
+          <Text style={styles.label}>What should we call you?</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
-              placeholder="Name / Nickname"
+              placeholder="Name or nickname"
               placeholderTextColor="rgba(28,64,71,0.4)"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
-              returnKeyType="next"
+              returnKeyType="done"
               accessibilityLabel="Preferred name"
             />
           </View>
 
-          {/* Phone Number */}
-          <Text style={styles.label}>Phone Number (optional):</Text>
-          <View style={styles.inputCard}>
-            <TextInput
-              style={styles.input}
-              placeholder="+44 7700 900000"
-              placeholderTextColor="rgba(28,64,71,0.4)"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              returnKeyType="done"
-              accessibilityLabel="Phone number"
-            />
-          </View>
-
           {/* Age Range */}
-          <Text style={styles.label}>How old are you? <Text style={styles.optional}>(optional)</Text></Text>
+          <Text style={styles.label}>
+            How old are you? <Text style={styles.optional}>(optional)</Text>
+          </Text>
           <TouchableOpacity
             style={styles.selectCard}
             onPress={() => setAgeModalVisible(true)}
@@ -113,14 +98,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             <Text style={styles.chevron}>▾</Text>
           </TouchableOpacity>
 
-          {/* Progress dots */}
-          <View style={styles.dotsRow}>
-            <View style={styles.dotActive} />
-            <View style={styles.dotInactive} />
-            <View style={styles.dotInactive} />
-          </View>
-
-          {/* Orange next button */}
+          {/* Continue button */}
           <TouchableOpacity
             style={[styles.nextBtn, !canProceed && styles.nextBtnDisabled]}
             onPress={handleNext}
@@ -199,7 +177,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1C4047',
     letterSpacing: 1,
-    marginBottom: 32,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: 'rgba(28,64,71,0.65)',
+    marginBottom: 36,
+    lineHeight: 24,
+    letterSpacing: 0.2,
   },
 
   label: {
@@ -259,28 +244,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#FFA940',
     fontWeight: '700',
-  },
-
-  dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
-  },
-  dotActive: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#1C4047',
-  },
-  dotInactive: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#1C4047',
   },
 
   nextBtn: {

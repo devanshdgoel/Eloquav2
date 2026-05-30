@@ -3,22 +3,25 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException
 
+from utils.auth_dep import get_current_user
 from utils.responses import success_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+TOTAL_NODES = 20
+
 
 @router.post("/save-assessment")
 async def save_assessment(
     assessment_type: str = Form("baseline"),   # "baseline" | "checkin"
-    user_id: str = Form(...),
     voice_power: Optional[int] = Form(None),
     expression: Optional[int] = Form(None),
     fluency: Optional[int] = Form(None),
     task_results_json: str = Form("{}"),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Persist a structured voice assessment (baseline or periodic check-in).
@@ -30,8 +33,7 @@ async def save_assessment(
     Baseline: written to users/{uid}/assessments/baseline (single doc).
     Check-in: appended to users/{uid}/check_ins/{auto_id}.
     """
-    if not user_id:
-        raise HTTPException(status_code=400, detail="user_id is required.")
+    user_id = current_user["uid"]
 
     try:
         task_results = json.loads(task_results_json)
@@ -70,21 +72,17 @@ async def save_assessment(
         raise HTTPException(status_code=500, detail="Could not save assessment.")
 
 
-TOTAL_NODES = 20
-
-
 @router.post("/complete-session")
 async def complete_session(
-    user_id: str = Form(...),
     assessment_type: str = Form("baseline"),  # "baseline" | "checkin"
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Increment sessions_completed, maintain streak, update roadmap node.
     Uses Admin SDK so it bypasses Firestore security rules.
     If assessment_type == 'checkin', also records last_checkin_session.
     """
-    if not user_id:
-        raise HTTPException(status_code=400, detail="user_id is required.")
+    user_id = current_user["uid"]
 
     try:
         from firebase_admin import firestore
@@ -137,7 +135,9 @@ async def complete_session(
 
 
 @router.get("/progress-data")
-async def get_progress_data(user_id: Optional[str] = None):
+async def get_progress_data(
+    current_user: dict = Depends(get_current_user),
+):
     """
     Fetch baseline + check-ins + recent passive sessions for the Progress screen.
 
@@ -147,12 +147,10 @@ async def get_progress_data(user_id: Optional[str] = None):
       check_ins     — all periodic check-ins (ascending for sparkline)
       recent_sessions — last 10 passive voice_sessions
     """
-    if not user_id:
-        raise HTTPException(status_code=400, detail="user_id is required.")
+    user_id = current_user["uid"]
 
     try:
         from firebase_admin import firestore
-        from datetime import datetime, timezone
         db = firestore.client()
         user_ref = db.collection("users").document(user_id)
 
@@ -166,14 +164,12 @@ async def get_progress_data(user_id: Optional[str] = None):
                 return datetime.fromtimestamp(ts.timestamp(), tz=timezone.utc).isoformat()
             return None
 
-        # Baseline
         baseline_doc = user_ref.collection("assessments").document("baseline").get()
         baseline = None
         if baseline_doc.exists:
             baseline = baseline_doc.to_dict()
             baseline["recorded_at"] = _ts(baseline)
 
-        # Check-ins — ascending so sparkline renders left → right
         checkin_docs = (
             user_ref.collection("check_ins")
             .order_by("recorded_at", direction=firestore.Query.ASCENDING)
@@ -187,7 +183,6 @@ async def get_progress_data(user_id: Optional[str] = None):
             d["doc_id"] = doc.id
             check_ins.append(d)
 
-        # Recent passive sessions (descending — latest first)
         session_docs = (
             user_ref.collection("voice_sessions")
             .order_by("recorded_at", direction=firestore.Query.DESCENDING)
@@ -209,6 +204,64 @@ async def get_progress_data(user_id: Optional[str] = None):
         })
 
     except Exception as exc:
-        logger.error("Failed to fetch progress data for %s: %s",
-                     user_id[:8] if user_id else "?", exc)
+        logger.error("Failed to fetch progress data for %s: %s", user_id[:8], exc)
         raise HTTPException(status_code=500, detail="Could not load progress data.")
+
+
+@router.delete("/account")
+async def delete_account(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Permanently delete the authenticated user's account.
+
+    Deletes in order:
+      1. ElevenLabs voice clone (non-fatal if missing)
+      2. Firestore sub-collections: voice_sessions, assessments, check_ins
+      3. Firestore documents: users/{uid}, user_progress/{uid}
+      4. Firebase Auth user record
+
+    Returns 200 on success. Any individual deletion failure is logged but
+    does not abort the sequence — the Auth record is always deleted last
+    so the user cannot re-authenticate with a partial data state.
+    """
+    user_id = current_user["uid"]
+
+    from firebase_admin import auth as firebase_auth, firestore
+    db = firestore.client()
+
+    # 1. Delete ElevenLabs voice clone (non-fatal)
+    try:
+        from services.voice_cloning_service import delete_cloned_voice, has_cloned_voice
+        if has_cloned_voice(user_id):
+            delete_cloned_voice(user_id)
+            logger.info("Deleted ElevenLabs voice clone for %s", user_id[:8])
+    except Exception as exc:
+        logger.warning("Voice clone deletion failed for %s: %s", user_id[:8], exc)
+
+    # 2. Delete Firestore sub-collections under users/{uid}
+    user_ref = db.collection("users").document(user_id)
+    for subcol in ["voice_sessions", "assessments", "check_ins"]:
+        try:
+            docs = user_ref.collection(subcol).stream()
+            for doc in docs:
+                doc.reference.delete()
+        except Exception as exc:
+            logger.warning("Failed to delete subcollection %s for %s: %s", subcol, user_id[:8], exc)
+
+    # 3. Delete top-level documents
+    for ref in [user_ref, db.collection("user_progress").document(user_id)]:
+        try:
+            ref.delete()
+        except Exception as exc:
+            logger.warning("Failed to delete doc %s for %s: %s", ref.path, user_id[:8], exc)
+
+    # 4. Delete Firebase Auth user (must be last)
+    try:
+        firebase_auth.delete_user(user_id)
+        logger.info("Firebase Auth user deleted: %s", user_id[:8])
+    except Exception as exc:
+        logger.error("Failed to delete Auth user %s: %s", user_id[:8], exc)
+        raise HTTPException(status_code=500, detail="Account deletion incomplete. Contact support.")
+
+    return success_response({"message": "Account permanently deleted."})

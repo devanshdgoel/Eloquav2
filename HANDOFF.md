@@ -422,3 +422,105 @@ git push origin main
 - `ELEVENLABS_API_KEY`
 - `FIREBASE_ADMIN_KEY` (or path to service account JSON)
 - `ALLOWED_ORIGINS` (frontend origins for CORS)
+
+---
+
+## Session 4 — V3 (2026-05-30): Auth, Account Management, Onboarding
+
+### What Was Built / Fixed
+
+#### V3.1 — Auth Guards on All Backend Routes
+All backend routes (analysis, assessment, voice, speech) now require a Firebase ID token via `Authorization: Bearer <token>`. Previously, speech and analysis endpoints were open to unauthenticated callers, creating unbounded API cost exposure. `user_id` form params were removed from all request bodies — the backend now derives UID exclusively from the verified token via `get_current_user`. A new `getAuthHeaders()` utility (`frontend/src/utils/authHeaders.js`) centralises token retrieval across all frontend screens.
+
+#### V3.2 — Dead Backend Files Deleted
+Three legacy files from the pre-Firebase (SQLite + PyJWT) architecture were deleted:
+- `backend/api/auth_routes.py`
+- `backend/api/progress_routes.py`
+- `backend/database.py`
+
+These were never called by the current frontend and were creating misleading import targets.
+
+#### V3.3 — Password Reset
+`sendPasswordResetEmail(email)` wired into `authService.js`. A "Forgot password?" link added to `SignInScreen.js` — prompts user for email via `Alert.prompt`, calls Firebase Auth password reset, surfaces result as an alert.
+
+#### V3.4 — Account Deletion
+New `DELETE /api/account` endpoint in `assessment_routes.py`. On a verified auth token, the backend deletes: Firestore progress doc, voice sessions, assessments, check-ins, ElevenLabs voice clone, and finally the Firebase Auth account. Frontend `SettingsScreen.handleDeleteAccount` shows a two-step confirmation, calls the endpoint with the auth token, then calls `signOut()`. Hard delete with no recovery path.
+
+#### V3.5 — Cold Start Health Check
+`AuthContext.js` fires a non-fatal `GET /api/health` ping (10-second timeout) on auth state change, warming up the Render free-tier instance before the user reaches a recording screen. `AppNavigator` shows a "Connecting to server…" inline spinner while the ping is in flight — non-blocking, user can navigate freely.
+
+#### V3.6 — Three Onboarding Explainer Screens
+`WhatIsEloquaScreen`, `HowItWorksScreen`, and `VoiceCloningExplainerScreen` added to the new-user onboarding flow, inserted between `SignUpScreen` and `PersonaliseScreen`. Required for App Store review: the `VoiceCloningExplainerScreen` provides a privacy-first framing of why voice recordings are collected.
+
+---
+
+### New Files Created
+
+| File | Purpose |
+|---|---|
+| `frontend/src/utils/authHeaders.js` | `getAuthHeaders()` — centralised Firebase token header builder |
+| `frontend/src/screens/onboarding/WhatIsEloquaScreen.js` | Onboarding explainer: what Eloqua is |
+| `frontend/src/screens/onboarding/HowItWorksScreen.js` | Onboarding explainer: 3-step overview |
+| `frontend/src/screens/onboarding/VoiceCloningExplainerScreen.js` | Onboarding explainer: voice data privacy |
+| `SPEECH_ENHANCEMENT.md` | Full documentation for the Speech Enhancement feature and chunked pipeline |
+
+### Files Deleted
+
+| File | Reason |
+|---|---|
+| `backend/api/auth_routes.py` | Legacy JWT/SQLite auth — replaced by Firebase Auth |
+| `backend/api/progress_routes.py` | Legacy SQLite progress — replaced by Firestore + Admin SDK |
+| `backend/database.py` | SQLite ORM layer — no longer used |
+
+### Files Modified (Key Changes)
+
+| File | Change |
+|---|---|
+| `backend/api/speech_routes.py` | Added `get_current_user` dependency to all routes; removed `user_id` form param |
+| `backend/api/analysis_routes.py` | Added `get_current_user` dependency; derive uid from token |
+| `backend/api/assessment_routes.py` | Added `get_current_user` dependency; added `DELETE /api/account` endpoint |
+| `backend/api/voice_routes.py` | Added `get_current_user` dependency to clone, status, and delete routes |
+| `frontend/src/context/AuthContext.js` | Added health-check ping on auth state change |
+| `frontend/src/navigation/AppNavigator.js` | Registered 3 new onboarding screens; added connecting spinner |
+| `frontend/src/services/authService.js` | Added `sendPasswordResetEmail` export |
+| `frontend/src/screens/onboarding/SignInScreen.js` | Added "Forgot password?" link |
+| `frontend/src/screens/SettingsScreen.js` | Added `handleDeleteAccount` with two-step confirmation + API call |
+
+---
+
+### Still Pending
+
+The following items remain open after Session 4:
+
+1. **Firestore security rules deployment** — Rules are still in open test mode. Must be manually deployed from the Firebase console before any public launch. Code-ready rules are documented in `VOCAL_TRAINING.md § V3 Still Needs Work`.
+
+2. **Apple EAS credentials** — iOS distribution build profile (`ios-preview`) is configured in `eas.json` but Apple Developer team credentials (Apple ID, team ID, provisioning profile) have not been configured in the EAS dashboard.
+
+3. **App Store assets** — 1024×1024 icon, 6.7" iPhone screenshots (min 3, target 5–6), app description, subtitle, keywords, Privacy Policy URL, and content rating questionnaire are not yet prepared.
+
+4. **Push notifications** — No push notification infrastructure. Daily training reminders are a high-engagement feature not yet implemented.
+
+5. **iOS privacy manifest** — Apple requires a `PrivacyInfo.xcprivacy` file declaring API usage (microphone, network access) for App Store submissions from Xcode 15 onwards. Not yet added to the EAS build config.
+
+6. **Streaming TTS** — ElevenLabs streaming API integration to reduce playback latency.
+
+7. **Fine-tuned dysarthric ASR** — SONIVA available as toggle, but a TORGO-trained Whisper fine-tune would meaningfully improve transcription quality for dysarthric users.
+
+---
+
+### How to Deploy After Session 4
+
+```bash
+# OTA update to Expo Go testers
+cd frontend
+eas update --branch main
+
+# Backend auto-deploys on Render when pushed to connected git branch
+git push origin main
+```
+
+Backend environment variables on Render (unchanged from prior sessions):
+- `OPENAI_API_KEY`
+- `ELEVENLABS_API_KEY`
+- `FIREBASE_ADMIN_KEY`
+- `ALLOWED_ORIGINS`

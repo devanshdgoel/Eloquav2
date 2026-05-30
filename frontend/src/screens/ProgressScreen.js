@@ -21,9 +21,9 @@ import Svg, { Path, Circle, Polyline } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
 import { fetchProgress, TOTAL_NODES } from '../services/progressService';
+import { getAuthHeaders } from '../utils/authHeaders';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -307,24 +307,29 @@ export default function ProgressScreen({ navigation }) {
   const [prog,     setProg]     = useState({ current_node: 0, streak_days: 0, sessions_completed: 0 });
   const [pdata,    setPdata]    = useState(null);
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(false);
 
-  useFocusEffect(useCallback(() => {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    const uid = auth.currentUser?.uid;
+    setError(false);
+    try {
+      const headers = await getAuthHeaders();
+      const [p, pd] = await Promise.all([
+        fetchProgress(),
+        fetch(`${API_BASE_URL}/api/progress-data`, { headers })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null),
+      ]);
+      setProg(p);
+      setPdata(pd?.data ?? null);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    Promise.all([
-      fetchProgress(),
-      uid
-        ? fetch(`${API_BASE_URL}/api/progress-data?user_id=${uid}`).then(r => r.ok ? r.json() : null).catch(() => null)
-        : Promise.resolve(null),
-    ])
-      .then(([p, pd]) => {
-        setProg(p);
-        setPdata(pd?.data ?? null);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []));
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const sessions      = prog.sessions_completed ?? 0;
   const streak        = prog.streak_days        ?? 0;
@@ -387,6 +392,19 @@ export default function ProgressScreen({ navigation }) {
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={ORANGE} />
+        </View>
+      ) : error ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 }}>
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+            Could not load your progress.{'\n'}Check your connection and try again.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: ORANGE, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 22 }}
+            onPress={loadData}
+            activeOpacity={0.85}
+          >
+            <Text style={{ color: '#1A1A1A', fontSize: 15, fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView

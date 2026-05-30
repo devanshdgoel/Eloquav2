@@ -23,9 +23,9 @@ import {
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth } from '../../../config/firebase';
 import CantDoNow from '../../../components/CantDoNow';
 import { API_BASE_URL } from '../../../config/env';
+import { getAuthHeaders } from '../../../utils/authHeaders';
 
 const { width: W, height: H } = Dimensions.get('window');
 const SC = W / 402;
@@ -429,9 +429,19 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     try {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: 'speech.m4a' });
-      const uid = auth.currentUser?.uid;
-      if (uid) form.append('user_id', uid);
-      const res = await fetch(`${API_BASE_URL}/api/process-audio`, { method: 'POST', body: form });
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/process-audio`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: form,
+      });
+
+      if (!res.ok) {
+        console.error('[FunctionalSpeech] API error:', res.status);
+        doAdvance();
+        return;
+      }
+
       const data = await res.json();
       const transcript = (data.raw_transcript || data.cleaned_transcript || '').toLowerCase().trim();
 

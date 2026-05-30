@@ -452,3 +452,169 @@ backend/
   services/
     voice_analysis_service.py — Praat + librosa scoring pipeline
 ```
+
+---
+
+## V3 — Changes Made (2026-05-30)
+
+### V3.1 — Auth Guards on All Backend Routes
+
+**Files:** All route files under `backend/api/`; `frontend/src/utils/authHeaders.js` (new)
+
+All analysis, assessment, voice, and speech routes now require a valid Firebase ID token. Previously, endpoints such as `/api/analyze-voice`, `/api/save-assessment`, and `/api/process-audio` were unauthenticated — any caller with the URL could trigger Whisper, GPT-4o, and ElevenLabs API spend.
+
+**Backend change:** The `get_current_user` dependency (`backend/utils/auth_dep.py`) is now applied to every route in:
+- `analysis_routes.py`
+- `assessment_routes.py`
+- `voice_routes.py`
+- `speech_routes.py`
+
+`user_id` form parameters have been removed from all request bodies. The backend now derives the user's UID exclusively from `current_user['uid']` — the result of `firebase_admin.auth.verify_id_token(token)`. Requests without a valid token receive `HTTP 401 Unauthorized`.
+
+**Frontend change:** New utility `frontend/src/utils/authHeaders.js` exports `getAuthHeaders()`:
+
+```js
+export async function getAuthHeaders() {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const token = await user.getIdToken();
+  return { Authorization: `Bearer ${token}` };
+}
+```
+
+All screens that call backend endpoints (`SpeechEnhancementScreen`, `AssessmentScreen`, `CheckinScreen`, `FunctionalSpeechExercise`, `SettingsScreen`) now use `getAuthHeaders()` and include the `Authorization: Bearer <token>` header on every request.
+
+---
+
+### V3.2 — Dead Backend Files Deleted
+
+**Files deleted:**
+- `backend/api/auth_routes.py`
+- `backend/api/progress_routes.py`
+- `backend/database.py`
+
+These files were legacy code from the pre-Firebase architecture (SQLite + PyJWT). They were not referenced by any current route and were never called by the frontend. Removing them eliminates dead import paths and reduces confusion about the active authentication model.
+
+---
+
+### V3.3 — Password Reset
+
+**Files:** `frontend/src/services/authService.js`, `frontend/src/screens/onboarding/SignInScreen.js`
+
+`sendPasswordResetEmail(email)` from Firebase Auth is now exported from `authService.js`. A "Forgot password?" link has been added below the sign-in form in `SignInScreen.js`. When tapped, it prompts the user for their email address via an `Alert.prompt` and calls `sendPasswordResetEmail`. Firebase delivers a reset link to the provided address. Success and failure states surface as alerts.
+
+---
+
+### V3.4 — Account Deletion
+
+**Files:** `backend/api/assessment_routes.py` (new endpoint); `frontend/src/screens/SettingsScreen.js`
+
+**New endpoint:** `DELETE /api/account`
+
+Requires `Authorization: Bearer <token>`. On a verified request, the backend performs the following in sequence:
+
+1. Deletes the Firestore document `user_progress/{uid}`
+2. Deletes all documents in `users/{uid}/voice_sessions`, `users/{uid}/assessments`, `users/{uid}/check_ins`
+3. Calls the ElevenLabs API to delete the user's cloned voice (if `voice_id` is set)
+4. Calls `firebase_admin.auth.delete_user(uid)` to remove the Firebase Auth account
+
+This is a hard delete — there is no recovery path.
+
+**Frontend:** `SettingsScreen.handleDeleteAccount` shows a two-step confirmation `Alert`. On confirmation, it calls `DELETE /api/account` with the auth token, waits for a `200` response, then calls `signOut()` to clear local state and return to the Splash screen. If the backend call fails, the user is shown an error and their account is not deleted.
+
+---
+
+### V3.5 — Cold Start Health Check
+
+**Files:** `frontend/src/context/AuthContext.js`, `frontend/src/navigation/AppNavigator.js`
+
+On every auth state change (sign-in or app foreground), `AuthContext` fires a `GET /api/health` request to the backend:
+
+```js
+useEffect(() => {
+  if (isSignedIn) {
+    fetch(`${API_BASE_URL}/api/health`, { signal: AbortSignal.timeout(10000) })
+      .catch(() => {}); // Non-fatal: app continues regardless
+  }
+}, [isSignedIn]);
+```
+
+The ping has a 10-second timeout and is fully non-fatal — a failure does not block navigation or show an error to the user. Its sole purpose is to wake the Render free-tier instance so it is warm before the user reaches a recording screen.
+
+`AppNavigator` shows a "Connecting to server…" inline spinner (not a blocking modal) while the ping is in flight, then removes it once the ping resolves or times out. The user can navigate freely during the ping.
+
+---
+
+### V3.6 — Three Onboarding Explainer Screens (built, not yet wired in)
+
+**New files (ready as backup — not currently in the navigation stack):**
+- `frontend/src/screens/onboarding/WhatIsEloquaScreen.js`
+- `frontend/src/screens/onboarding/HowItWorksScreen.js`
+- `frontend/src/screens/onboarding/VoiceCloningExplainerScreen.js`
+
+These screens are complete and polished but are **not currently registered in `AppNavigator.js`**. The live onboarding flow goes directly `SignUp → Personalise` as before.
+
+**To activate before App Store submission:**
+1. Import all three in `AppNavigator.js` and add `<Stack.Screen>` entries.
+2. Change `SignUpScreen` line 52: `navigation.replace('Personalise')` → `navigation.replace('WhatIsEloqua')`.
+3. Update the navigator comment to reflect the new flow.
+
+**Intended navigation order when activated:**
+```
+Splash → SignUp → WhatIsEloqua → HowItWorks → VoiceCloningExplainer → Personalise → ...
+```
+
+**Screen purposes:**
+
+| Screen | Content |
+|---|---|
+| `WhatIsEloquaScreen` | Parkinson's context, LSVT foundation, single CTA to HowItWorks. Skip link goes directly to Personalise. |
+| `HowItWorksScreen` | Three-step card list: Train → Speak Enhanced → Track Progress. Skip link goes directly to Personalise. |
+| `VoiceCloningExplainerScreen` | Privacy-first explanation of why voice samples are collected, ElevenLabs storage details, delete controls. No skip link — user must tap "I understand" to continue. Required for App Store review plausibility. |
+
+---
+
+## V3 — Re-evaluation: What Remains After Fixes
+
+### Was a Gap, Is Now Resolved
+
+- ✅ Auth guards on all backend routes — resolved in V3.1
+- ✅ Password reset — resolved in V3.3
+- ✅ Account deletion — resolved in V3.4
+- ✅ Cold start health check (wake ping) — resolved in V3.5
+- ✅ Onboarding explainer screens for App Store review — resolved in V3.6
+
+### Still Needs Work (Priority Order)
+
+**Infrastructure (must do before public launch):**
+
+6. **Firestore security rules open** — Rules are still in test mode. Must be locked down via the Firebase console before any real users access the app. This cannot be resolved in code alone — it requires a manual deployment of rules from the Firebase console. Suggested rules:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{userId}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+       match /user_progress/{userId} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+     }
+   }
+   ```
+
+7. **ElevenLabs voice cloning slots** — Free tier caps at ~10 concurrent slots. Needs quota management before scaling beyond a test cohort.
+
+8. **Android PitchGlides untested** — WebView mic permission on Android Chromium WebView needs explicit device testing.
+
+**Features (post-launch candidates):**
+
+9. **Streaming TTS** — ElevenLabs streaming API would reduce perceived playback latency from ~4 s to near-instant.
+
+10. **Fine-tuned dysarthric ASR** — Whisper degrades on dysarthric speech. A model fine-tuned on the TORGO dataset would improve accuracy for PD and stroke users.
+
+11. **Push notifications / daily reminders** — Not yet implemented. High engagement value for a daily training app.
+
+12. **Apple Sign-In / Google Sign-In** — Both still show "Coming soon" alerts.
+
+13. **Android Play Store** — EAS Android build configured but store listing not started.

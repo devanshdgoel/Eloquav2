@@ -5,6 +5,7 @@ import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/
 
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Splash
 import SplashScreen from '../screens/splash/SplashScreen';
@@ -14,10 +15,12 @@ import SignUpScreen from '../screens/onboarding/SignUpScreen';
 import SignInScreen from '../screens/onboarding/SignInScreen';
 
 // Onboarding flow
-import PersonaliseScreen from '../screens/onboarding/PersonaliseScreen';
+import WhatIsEloquaScreen from '../screens/onboarding/WhatIsEloquaScreen';
+import HowItWorksScreen from '../screens/onboarding/HowItWorksScreen';
+import VoiceCloningExplainerScreen from '../screens/onboarding/VoiceCloningExplainerScreen';
 import SetupPermissionsScreen from '../screens/onboarding/SetupPermissionsScreen';
-import AboutYouIntroScreen from '../screens/onboarding/AboutYouIntroScreen';
 import SetupAboutYouScreen from '../screens/onboarding/SetupAboutYouScreen';
+import SetupVoiceScreen from '../screens/onboarding/SetupVoiceScreen';
 
 // Main app
 import HomeScreen from '../screens/HomeScreen';
@@ -46,22 +49,31 @@ export default function AppNavigator() {
   }
 
   return (
+    <ErrorBoundary>
     <NavigationContainer>
       {/*
        * Single flat stack — always starts at Splash.
-       * Navigation flow:
-       *   Splash → SignIn → Home (existing users)
-       *   Splash → SignUp → Personalise → SetupPermissions → AboutYouIntro
-       *          → SetupAboutYou → Home (new users, voice captured in Assessment)
+       * Navigation flow (new users):
+       *   Splash → SignUp → SetupPermissions → SetupAboutYou → SetupVoice → Home
+       * Navigation flow (returning users):
+       *   Splash → SignIn → Opening → Home
+       * Navigation flow (returning, onboarding incomplete):
+       *   Splash → SignIn → SetupPermissions (restarts onboarding)
+       *
+       * WhatIsEloqua / HowItWorks / VoiceCloningExplainer are registered but not
+       * in the active onboarding path — kept as backup for a future "About Eloqua"
+       * entry point in Settings.
        */}
       <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="SignIn" component={SignInScreen} />
-        <Stack.Screen name="Personalise" component={PersonaliseScreen} />
+        <Stack.Screen name="WhatIsEloqua" component={WhatIsEloquaScreen} />
+        <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
+        <Stack.Screen name="VoiceCloningExplainer" component={VoiceCloningExplainerScreen} />
         <Stack.Screen name="SetupPermissions" component={SetupPermissionsScreen} />
-        <Stack.Screen name="AboutYouIntro" component={AboutYouIntroScreen} />
         <Stack.Screen name="SetupAboutYou" component={SetupAboutYouScreen} />
+        <Stack.Screen name="SetupVoice" component={SetupVoiceScreen} />
         <Stack.Screen name="Opening" component={OpeningScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen
@@ -90,6 +102,7 @@ export default function AppNavigator() {
         <Stack.Screen name="StreakCommitment" component={StreakCommitmentScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    </ErrorBoundary>
   );
 }
 

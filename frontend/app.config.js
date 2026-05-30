@@ -23,6 +23,14 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.eloqua.app',
+      infoPlist: {
+        NSMicrophoneUsageDescription:
+          'Eloqua needs the microphone to record your voice for training and speech enhancement.',
+        NSCameraUsageDescription:
+          'Eloqua may use the camera for future features.',
+        NSUserNotificationsUsageDescription:
+          'Eloqua sends a daily reminder to help you stay consistent with your voice practice.',
+      },
     },
     android: {
       package: 'com.eloqua.app',
@@ -31,6 +39,16 @@ module.exports = {
         backgroundColor: '#ffffff',
       },
     },
+    plugins: [
+      [
+        'expo-notifications',
+        {
+          icon: './assets/icon.png',
+          color: '#1C4047',
+          sounds: [],
+        },
+      ],
+    ],
     web: {
       favicon: './assets/favicon.png',
     },

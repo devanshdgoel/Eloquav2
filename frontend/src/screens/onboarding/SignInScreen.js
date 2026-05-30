@@ -13,14 +13,42 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { loginWithEmail } from '../../services/authService';
+import { loginWithEmail, resetPassword } from '../../services/authService';
 import { isOnboardingComplete } from '../../utils/storage';
 
 export default function SignInScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const passwordRef = useRef(null);
+
+  function handleForgotPassword() {
+    const trimEmail = email.trim();
+    if (!trimEmail) {
+      Alert.alert('Enter your email', 'Type your email address above, then tap "Forgot password?".');
+      return;
+    }
+    Alert.alert(
+      'Reset password?',
+      `We'll send a reset link to ${trimEmail}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send link',
+          onPress: async () => {
+            try {
+              await resetPassword(trimEmail);
+              setResetSent(true);
+              Alert.alert('Email sent', 'Check your inbox for a password reset link.');
+            } catch (error) {
+              Alert.alert('Could not send email', error.message);
+            }
+          },
+        },
+      ]
+    );
+  }
 
   async function handleLogin() {
     const trimEmail = email.trim();
@@ -36,7 +64,7 @@ export default function SignInScreen({ navigation }) {
       if (onboarded) {
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
       } else {
-        navigation.replace('Personalise');
+        navigation.replace('SetupPermissions');
       }
     } catch (error) {
       Alert.alert('Sign in failed', error.message);
@@ -110,6 +138,10 @@ export default function SignInScreen({ navigation }) {
               ? <ActivityIndicator color="#1C4047" size="small" />
               : <Text style={styles.arrowText}>→</Text>
             }
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.forgotLink} onPress={handleForgotPassword}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
           <Text style={styles.orText}>or</Text>
@@ -261,4 +293,7 @@ const styles = StyleSheet.create({
 
   createLink: { marginTop: 24, paddingVertical: 8 },
   createText: { color: 'rgba(255,255,255,0.7)', fontSize: 15 },
+
+  forgotLink: { alignSelf: 'flex-end', paddingVertical: 4, marginTop: -6 },
+  forgotText: { color: 'rgba(255,255,255,0.55)', fontSize: 14 },
 });

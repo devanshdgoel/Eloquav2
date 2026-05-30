@@ -139,6 +139,7 @@ export default function HomeScreen({ navigation }) {
     sessions_completed:   0,
     last_checkin_session: 0,
   });
+  const [progressError, setProgressError] = useState(false);
 
   const activeNode = Math.max(0, Math.min(progress.current_node, TOTAL_NODES - 1));
 
@@ -180,6 +181,7 @@ export default function HomeScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      setProgressError(false);
       fetchProgress()
         .then(data => {
           setProgress(data);
@@ -191,7 +193,7 @@ export default function HomeScreen({ navigation }) {
           setCanScrollUp(initial > 0);
           setCanScrollDown(initial < maxOffset);
         })
-        .catch(() => {});
+        .catch(() => setProgressError(true));
     }, [viewportH, maxOffset])
   );
 
@@ -231,6 +233,25 @@ export default function HomeScreen({ navigation }) {
         </View>
         <Text style={styles.speechArrow}>›</Text>
       </TouchableOpacity>
+
+      {/* ── Progress load error banner ───────────────────────────────────── */}
+      {progressError && (
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={() => {
+            setProgressError(false);
+            fetchProgress()
+              .then(data => {
+                setProgress(data);
+                setProgressError(false);
+              })
+              .catch(() => setProgressError(true));
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.errorBannerText}>Could not load progress — tap to retry</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── Roadmap viewport ──────────────────────────────────────────────── */}
       <View style={styles.viewport} onLayout={onViewportLayout}>
@@ -475,6 +496,25 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.bg,
+  },
+
+  // ── Progress error banner ─────────────────────────────────────────────────
+  errorBanner: {
+    backgroundColor: 'rgba(254,156,45,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(254,156,45,0.35)',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  errorBannerText: {
+    color: '#FE9C2D',
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   // ── Greeting ──────────────────────────────────────────────────────────────

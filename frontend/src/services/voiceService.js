@@ -1,14 +1,14 @@
 import { API_BASE_URL } from '../config/env';
+import { getAuthHeaders } from '../utils/authHeaders';
 
 /**
  * Upload voice samples and create a cloned voice via ElevenLabs.
  *
  * @param {string[]} audioUris - Array of local audio file URIs (m4a).
- * @param {string} userId - Firebase UID of the authenticated user.
  * @param {string} userName - User's display name (used as the voice label in ElevenLabs).
  * @returns {Promise<{ status: string, voice_id: string, message: string }>}
  */
-export async function cloneVoice(audioUris, userId, userName = 'User') {
+export async function cloneVoice(audioUris, userName = 'User') {
   const formData = new FormData();
 
   audioUris.forEach((uri, index) => {
@@ -19,14 +19,14 @@ export async function cloneVoice(audioUris, userId, userName = 'User') {
     });
   });
 
-  formData.append('user_id', userId);
   formData.append('user_name', userName);
 
+  const authHeaders = await getAuthHeaders();
   // Do NOT set Content-Type manually — fetch auto-sets multipart/form-data
-  // with the correct boundary when the body is FormData. Overriding it strips
-  // the boundary and FastAPI cannot parse the form, causing silent 422 errors.
+  // with the correct boundary when the body is FormData.
   const response = await fetch(`${API_BASE_URL}/api/voice/clone`, {
     method: 'POST',
+    headers: authHeaders,
     body: formData,
   });
 
@@ -39,15 +39,15 @@ export async function cloneVoice(audioUris, userId, userName = 'User') {
 }
 
 /**
- * Check whether a user has a cloned voice on the server.
+ * Check whether the authenticated user has a cloned voice on the server.
  *
- * @param {string} userId - Firebase UID of the authenticated user.
  * @returns {Promise<{ has_cloned_voice: boolean, voice_id: string, is_default: boolean }>}
  */
-export async function getVoiceStatus(userId) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/voice/status?user_id=${encodeURIComponent(userId)}`
-  );
+export async function getVoiceStatus() {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/voice/status`, {
+    headers: authHeaders,
+  });
 
   if (!response.ok) {
     throw new Error('Failed to check voice status.');
@@ -57,16 +57,16 @@ export async function getVoiceStatus(userId) {
 }
 
 /**
- * Delete the user's cloned voice from ElevenLabs and the server.
+ * Delete the authenticated user's cloned voice from ElevenLabs and the server.
  *
- * @param {string} userId - Firebase UID of the authenticated user.
  * @returns {Promise<{ status: string, message: string }>}
  */
-export async function deleteClonedVoice(userId) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/voice/clone?user_id=${encodeURIComponent(userId)}`,
-    { method: 'DELETE' }
-  );
+export async function deleteClonedVoice() {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/voice/clone`, {
+    method: 'DELETE',
+    headers: authHeaders,
+  });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));

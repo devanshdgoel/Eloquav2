@@ -35,18 +35,18 @@
 
 ## 2. Partial or Broken
 
-| Item | File | Problem |
+| Item | File | Status |
 |---|---|---|
-| `TailoredExercise` | `exercises/TailoredExercise.js` | Picks a random exercise — no performance tracking, not adaptive |
-| Achievement badges | `ProgressScreen.js` | All 6 badges hardcoded `unlocked: false`, not wired to Firestore |
-| `PitchGlidesExercise` | `exercises/PitchGlidesExercise.js` | Imports `react-native-pitch-detector` (native module) — crashes Expo Go, requires EAS custom dev client |
-| `/api/process-audio` | `api/speech_routes.py` | No auth check — any caller triggers Whisper + ElevenLabs API spend |
-| EAS iOS build | `eas.json` | No `ios` profile, no Apple credentials, no TestFlight configuration |
-| App Store config | `app.config.js` | Missing `ios.infoPlist.NSMicrophoneUsageDescription` (App Store hard reject) |
-| Firestore rules | Firebase console | Still in test mode (open read/write) |
-| Render cold starts | Render free tier | ~30 s cold start after 15 min idle — kills perceived latency for first daily use |
-| Old splash screen | `screens/SplashScreen.js` | Duplicate monolithic version, superseded, should be deleted |
-| Dead backend code | `database.py`, `api/auth_routes.py`, `api/progress_routes.py` | Legacy JWT/SQLite code, never called by frontend |
+| `TailoredExercise` | `exercises/TailoredExercise.js` | DONE — V2: adaptive tier selection + baseline focus tie-breaking |
+| Achievement badges | `ProgressScreen.js` | Remaining — hardcoded `unlocked: false`, not yet wired to Firestore |
+| `PitchGlidesExercise` | `exercises/PitchGlidesExercise.js` | DONE — V2: replaced native module with WebView + Web Audio API autocorrelation |
+| `/api/process-audio` auth check | `api/speech_routes.py` | DONE — V3: all routes auth-gated via Firebase Bearer token (V3.1) |
+| EAS iOS build | `eas.json` | DONE — `ios-preview` profile added (V3) |
+| App Store config | `app.config.js` | DONE — `NSMicrophoneUsageDescription` added (V3) |
+| Firestore rules | Firebase console | Remaining — still in test mode; must be deployed manually from Firebase console |
+| Render cold starts | Render free tier | MITIGATED — health-check ping on auth state change warms backend (V3.5); upgrade to paid tier eliminates spin-down |
+| Old splash screen | `screens/SplashScreen.js` | DONE — deleted (V3) |
+| Dead backend code | `database.py`, `api/auth_routes.py`, `api/progress_routes.py` | DONE — all three deleted (V3.2) |
 
 ---
 
@@ -183,6 +183,43 @@ Wire into `AppNavigator.js` before `Personalise` for new users only.
 - Run `eas build --platform ios --profile production`
 - Submit via `eas submit --platform ios` or App Store Connect upload
 - Complete App Store Connect listing (screenshots, description, privacy policy URL, support URL)
+
+---
+
+### Session 4 (2026-05-30): Auth, Account Management, Onboarding
+
+The following items from the sprint plan were completed in Session 4:
+
+**From Block A:**
+
+- **Auth gate on all backend routes (Day 1–2):** Complete. `get_current_user` dependency applied to all routes in `speech_routes.py`, `analysis_routes.py`, `assessment_routes.py`, and `voice_routes.py`. `user_id` form params removed; UID derived from verified token. Frontend `getAuthHeaders()` utility added (`frontend/src/utils/authHeaders.js`). All screens updated.
+- **Delete dead backend code (Day 3):** Complete. `database.py`, `api/auth_routes.py`, `api/progress_routes.py` deleted.
+- **Delete old splash screen (Day 3):** Complete. `screens/SplashScreen.js` removed.
+
+**From Block C:**
+
+- **New onboarding screens (Day 16–17):** Complete. `WhatIsEloquaScreen`, `HowItWorksScreen`, `VoiceCloningExplainerScreen` added. Wired into `AppNavigator.js` for new users only.
+- **iOS EAS build config (Day 19):** Complete. `ios-preview` profile added to `eas.json`. `NSMicrophoneUsageDescription` added to `app.config.js`.
+
+**Additional (not in original plan):**
+
+- **Password reset:** `sendPasswordResetEmail` added to `authService.js`; "Forgot password?" link added to `SignInScreen.js`.
+- **Account deletion:** `DELETE /api/account` endpoint added. Full cascade delete: Firestore docs → ElevenLabs voice → Firebase Auth account. `SettingsScreen` wired with two-step confirmation.
+- **Cold start health check:** `AuthContext.js` pings `GET /api/health` on auth state change. `AppNavigator` shows non-blocking "Connecting to server…" indicator.
+
+**Items from original sprint plan still open:**
+
+| Item | Block | Notes |
+|---|---|---|
+| Render upgrade to paid tier | Block A Day 3 | Cold start mitigated via health ping; upgrade still recommended before launch |
+| Latency reduction (SSE / parallel calls) | Block A Day 4–5 | Not yet implemented |
+| Stroke-trained ASR (SONIVA) | Block A Day 6–7 | SONIVA toggle exists in Settings; fine-tuned model not yet integrated |
+| ProgressScreen achievement badges | Block B Day 11 | Still hardcoded `unlocked: false` |
+| UI theme consistency pass | Block B Day 13–14 | Partial; inline hex values may remain in newer screens |
+| Firestore security rules | Block B Day 15 | Must be deployed from Firebase console — not a code change |
+| App Store assets | Block C Day 18 | Screenshots, description, keywords, Privacy Policy URL not yet prepared |
+| TestFlight build + smoke test | Block C Day 20–21 | Apple credentials not yet configured in EAS dashboard |
+| Production EAS build + submission | Block C Day 22 | Blocked on TestFlight smoke test |
 
 ---
 
