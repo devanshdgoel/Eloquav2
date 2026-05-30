@@ -449,8 +449,8 @@ New `DELETE /api/account` endpoint in `assessment_routes.py`. On a verified auth
 #### V3.5 — Cold Start Health Check
 `AuthContext.js` fires a non-fatal `GET /api/health` ping (10-second timeout) on auth state change, warming up the Render free-tier instance before the user reaches a recording screen. `AppNavigator` shows a "Connecting to server…" inline spinner while the ping is in flight — non-blocking, user can navigate freely.
 
-#### V3.6 — Three Onboarding Explainer Screens
-`WhatIsEloquaScreen`, `HowItWorksScreen`, and `VoiceCloningExplainerScreen` added to the new-user onboarding flow, inserted between `SignUpScreen` and `PersonaliseScreen`. Required for App Store review: the `VoiceCloningExplainerScreen` provides a privacy-first framing of why voice recordings are collected.
+#### V3.6 — Three Onboarding Explainer Screens (backup)
+`WhatIsEloquaScreen`, `HowItWorksScreen`, and `VoiceCloningExplainerScreen` were created this session. They are registered in `AppNavigator` but are **not in the active onboarding path** — kept as backup for a future "About Eloqua" entry in Settings. See Session 5 for the final onboarding flow.
 
 ---
 
@@ -520,6 +520,188 @@ git push origin main
 ```
 
 Backend environment variables on Render (unchanged from prior sessions):
+- `OPENAI_API_KEY`
+- `ELEVENLABS_API_KEY`
+- `FIREBASE_ADMIN_KEY`
+- `ALLOWED_ORIGINS`
+
+---
+
+## Session 5 — V3 (2026-05-30): Error Handling, Push Notifications, Onboarding Redesign
+
+### What Was Built / Fixed
+
+#### V5.1 — Comprehensive Error Handling
+
+All major failure paths that previously failed silently now surface a user-visible Alert with retry. See `ERROR_HANDLING.md` for the full failure-mode table.
+
+**Frontend:**
+- **`AuthContext.js`** — 15-second timeout on `onAuthStateChanged`. If Firebase never resolves (network offline, token stuck), `authError: true` is set and `isLoading` clears. `SplashScreen` shows a "Trouble restoring your session" banner + sign-in buttons instead of spinning forever.
+- **`AssessmentScreen.finishAssessment()`** — wraps save-assessment and complete-session calls in try/catch; shows Alert with "Try again / Continue anyway" on failure. Removed all `.catch(() => {})` silent suppression.
+- **`CheckinScreen.handleFinish()`** — same pattern: Alert with retry on save failure instead of silently resetting to Home.
+- **`ProgressScreen`** — added `error` state + `loadData()` retry function; shows "Could not load your progress" + orange Retry button on fetch failure.
+- **`HomeScreen`** — added `progressError` state; shows tappable orange retry banner if `fetchProgress()` fails.
+- **`FunctionalSpeechExercise`** — checks `res.ok` before parsing JSON; a 401/500 now skips the exercise cleanly instead of attempting to parse an empty/error response body and silently advancing.
+- **`PitchGlidesExercise`** — added `onError` / `onHttpError` handlers to the WebView; if mic access fails to initialise, a full-screen "Microphone unavailable" overlay appears with a Skip button instead of leaving the user on a blank screen.
+- **`AppNavigator`** — wrapped `<NavigationContainer>` in the existing `<ErrorBoundary>` component.
+
+**Backend:**
+- **`main.py`** — global `exception_handler(Exception)` returns consistent `{ status: "error", message: "..." }` JSON on any unhandled 500 and logs the full traceback.
+- **`firebase_config.py`** — Firebase Admin SDK init wrapped in try/except; raises `RuntimeError` with a clear message on startup failure rather than crashing with an opaque import error.
+- **`utils/auth_dep.py`** — distinguishes expired (401) vs revoked (403) tokens; adds `WWW-Authenticate` header on 401 per RFC 6750; logs auth failures.
+
+---
+
+#### V5.2 — Push Notifications
+
+New `frontend/src/services/notificationService.js` implements three notification types using `expo-notifications`:
+
+| Type | Schedule | Copy |
+|---|---|---|
+| Daily reminder | Repeating, user-set time (default 10:00) | "Time for your Eloqua session, [name]." |
+| Re-engagement nudge | One-time, fires 3 days after last session | "Your voice practice is here whenever you're ready." |
+| Weekly summary | Repeating, Mondays 18:00 | "Check how you did this week →" |
+
+**Key design decisions (Parkinson's users):**
+- Calm/warm copy — no streak threats, no guilt, no "you broke your streak"
+- User sets their own preferred time (not app-imposed)
+- Contextual opt-in: permission requested only when the user first enables a notification toggle in Settings
+- Caregiver/carer notifications deferred to V2
+
+**Session completion hooks:** `onSessionComplete()` (resets the 3-day re-engagement clock) is now called after every completion path — `VocalTrainingSessionScreen.finishSession()`, `CheckinScreen.handleFinish()`, `AssessmentScreen.finishAssessment()`.
+
+**`SettingsScreen`** — new **NOTIFICATIONS** section above TRAINING with:
+- Daily reminder toggle
+- Reminder time picker (6:00 AM – 10:00 PM, 30-min intervals, bottom-sheet modal)
+- Re-engagement nudge toggle
+- Weekly summary toggle
+
+**`app.config.js`** — added `expo-notifications` plugin entry + iOS `NSUserNotificationsUsageDescription`.
+
+**Package installed:** `expo-notifications` (via `npx expo install`).
+
+---
+
+#### V5.3 — Onboarding Redesign
+
+**Problem:** The old flow had 3 consecutive empty "intro to next screen" screens (`PersonaliseScreen`, vague `SetupPermissionsScreen`, `AboutYouIntroScreen`) adding 3 pointless taps. `SetupVoiceScreen` was completely unreachable — `SetupAboutYouScreen` called `setOnboardingComplete()` and navigated directly to Home, bypassing voice setup entirely.
+
+**Benchmark research:** Duolingo, Headspace, Calm, Woebot/Wysa all converge on the same pattern: ≤3 screens before first value, contextual permissions (not upfront), no standalone tutorial sequences, profile setup minimal. Only collect what the app immediately needs.
+
+**New active flow:**
+```
+SignUp → SetupPermissions → SetupAboutYou → SetupVoice → Home
+```
+
+**Changes per screen:**
+
+| Screen | Change |
+|---|---|
+| `SignUpScreen` | Routes to `SetupPermissions` after register (was `Personalise`) |
+| `SignInScreen` | Routes to `SetupPermissions` if onboarding incomplete (was `Personalise`) |
+| `SetupPermissionsScreen` | **Fully rewritten.** Explains exactly why mic is needed (voice exercises + speech enhancement) with two card items before the OS dialog. Design matches the rest of the onboarding system. Routes to `SetupAboutYou`. |
+| `SetupAboutYouScreen` | Name pre-filled from `auth.currentUser.displayName` (no double-entry). Phone field removed. 3-dot progress indicator removed (vestigial). Navigates to `SetupVoice` instead of Home. No longer calls `setOnboardingComplete()`. |
+| `SetupVoiceScreen` | Now reachable. `setOnboardingComplete()` called here — the true end of onboarding. Skip button still works (navigates to Home, marks onboarding complete). |
+
+**Backup screens (not in active flow):**
+`WhatIsEloquaScreen`, `HowItWorksScreen`, `VoiceCloningExplainerScreen` remain registered in `AppNavigator` for a future "About Eloqua" entry in Settings, or for App Store review if needed. Their skip links and forward buttons are wired to consistent targets so they can be inserted into the flow at any time.
+
+**Dead screens (files kept, not imported):**
+`PersonaliseScreen.js`, `AboutYouIntroScreen.js` — no longer imported by `AppNavigator`. Files retained to avoid any merge conflicts with other branches.
+
+---
+
+### New Files Created (Session 5)
+
+| File | Purpose |
+|---|---|
+| `frontend/src/services/notificationService.js` | Daily, re-engagement, and weekly push notifications |
+| `ERROR_HANDLING.md` | Full failure-mode reference table with fallback routes |
+
+### Files Modified (Key Changes, Session 5)
+
+| File | Change |
+|---|---|
+| `backend/main.py` | Global exception handler → consistent 500 JSON |
+| `backend/firebase_config.py` | Admin SDK init in try/except; RuntimeError on failure |
+| `backend/utils/auth_dep.py` | Expired vs revoked token distinction; WWW-Authenticate header |
+| `frontend/src/context/AuthContext.js` | 15s auth timeout; `authError` state |
+| `frontend/src/screens/splash/SplashScreen.js` | `authError` timeout banner |
+| `frontend/src/screens/AssessmentScreen.js` | Retry Alert on save failure; `onSessionComplete()` call |
+| `frontend/src/screens/CheckinScreen.js` | Retry Alert on handleFinish failure; `onSessionComplete()` call |
+| `frontend/src/screens/ProgressScreen.js` | Error state + retry button |
+| `frontend/src/screens/HomeScreen.js` | `progressError` state + retry banner |
+| `frontend/src/screens/vocaltraining/exercises/FunctionalSpeechExercise.js` | `res.ok` guard before JSON parse |
+| `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js` | WebView `onError`/`onHttpError` → mic-unavailable overlay |
+| `frontend/src/screens/vocaltraining/VocalTrainingSessionScreen.js` | `onSessionComplete()` call in `finishSession()` |
+| `frontend/src/navigation/AppNavigator.js` | `ErrorBoundary` wrapper; 3 backup screens registered; flow comment updated |
+| `frontend/src/screens/SettingsScreen.js` | Full NOTIFICATIONS section with toggles + time picker modal |
+| `frontend/app.config.js` | `expo-notifications` plugin + iOS usage string |
+| `frontend/package.json` / `package-lock.json` | `expo-notifications` added |
+| `frontend/src/screens/onboarding/SignUpScreen.js` | Routes to `SetupPermissions` |
+| `frontend/src/screens/onboarding/SignInScreen.js` | Routes to `SetupPermissions` if not onboarded |
+| `frontend/src/screens/onboarding/SetupPermissionsScreen.js` | Fully rewritten; contextual mic explanation |
+| `frontend/src/screens/onboarding/SetupAboutYouScreen.js` | Name pre-filled; phone removed; routes to `SetupVoice` |
+| `frontend/src/screens/onboarding/WhatIsEloquaScreen.js` | Skip link wired to `VoiceCloningExplainer` |
+| `frontend/src/screens/onboarding/HowItWorksScreen.js` | Skip link wired to `VoiceCloningExplainer` |
+| `frontend/src/screens/onboarding/VoiceCloningExplainerScreen.js` | Button wired to `SetupPermissions` |
+
+---
+
+### Updated Navigation Flow (Post Session 5)
+
+```
+New users:
+  Splash → SignUp → SetupPermissions → SetupAboutYou → SetupVoice → Home
+
+Returning users (onboarding complete):
+  Splash → SignIn → Opening → Home
+
+Returning users (onboarding incomplete):
+  Splash → SignIn → SetupPermissions (restarts onboarding)
+
+Backup screens (not in active flow — registered for future use):
+  WhatIsEloqua → HowItWorks → VoiceCloningExplainer → SetupPermissions
+```
+
+---
+
+### Still Pending (Post Session 5)
+
+1. **Firestore security rules** — Still in open test mode. Must lock down in Firebase console before any public launch.
+
+2. **Apple EAS credentials** — iOS distribution profile configured but Apple Developer credentials not yet set up in EAS dashboard.
+
+3. **App Store assets** — Icon (1024×1024), screenshots, description, Privacy Policy URL, content rating not yet prepared.
+
+4. **iOS privacy manifest** — `PrivacyInfo.xcprivacy` not yet added for App Store submissions.
+
+5. **401 auto-refresh on frontend** — Expired Firebase tokens generate 401s from the backend. Currently these surface as errors to the user. The correct fix is to intercept 401 responses in `getAuthHeaders()`, call `user.getIdToken(true)` to force-refresh, and retry the original request once. Documented in `ERROR_HANDLING.md`.
+
+6. **NetInfo offline detection** — `@react-native-community/netinfo` not installed. Screens currently rely on fetch errors to surface offline state rather than proactive detection.
+
+7. **SetupVoice duplicate voice clone** — If a user exits and re-enters the onboarding flow, `SetupVoiceScreen` may attempt to create a second ElevenLabs voice clone without checking if one already exists. Add a Firestore check for existing `voice_id` before calling `/api/voice/clone`.
+
+8. **Streaming TTS** — ElevenLabs streaming API not yet integrated (reduces perceived playback latency).
+
+9. **Caregiver notifications** — Deferred to V2.
+
+10. **Adaptive notification timing** — ML-inferred optimal send time based on usage patterns. Deferred to V2.
+
+---
+
+### How to Deploy After Session 5
+
+```bash
+# OTA update to Expo Go testers (no build required for JS-only changes)
+cd frontend
+eas update --branch main
+
+# Backend auto-deploys on Render when pushed to connected git branch
+git push origin main
+```
+
+Backend environment variables on Render (unchanged):
 - `OPENAI_API_KEY`
 - `ELEVENLABS_API_KEY`
 - `FIREBASE_ADMIN_KEY`
