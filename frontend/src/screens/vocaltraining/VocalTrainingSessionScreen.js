@@ -231,10 +231,18 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       setTransitioning(true);
       setTimeout(async () => {
         setTransitioning(false);
-        if (isLast) {
-          await finishSession();
-        } else {
-          setExerciseIndex(nextIndex);
+        try {
+          if (isLast) {
+            await finishSession();
+          } else {
+            setExerciseIndex(nextIndex);
+          }
+        } catch {
+          Alert.alert(
+            'Could not save session',
+            'Check your connection and try again.',
+            [{ text: 'Go home', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }]
+          );
         }
       }, 1500);
     } else {

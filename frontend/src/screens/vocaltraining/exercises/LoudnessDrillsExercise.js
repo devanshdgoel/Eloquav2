@@ -111,7 +111,7 @@ const BG        = '#1C4047';
 const CYL_FILL  = '#4493A0';
 const CYL_HIGH  = '#5DBDCD';
 const HOLE_DARK = '#061318';
-const ORANGE    = '#FE9C2D';
+const ORANGE    = '#FFA940';
 const WHITE     = '#FFFFFF';
 const WORD_COL  = '#1F4850';
 const PILL_DONE = '#45B013';
@@ -490,9 +490,9 @@ function DemoScreen({ onFinish, onExit }) {
 
 const ds = StyleSheet.create({
   backBtn: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
   bigTitle: {
@@ -537,13 +537,13 @@ const ds = StyleSheet.create({
     alignItems: 'center', paddingHorizontal: 32, zIndex: 10,
   },
   navBtn: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
   navNext: { backgroundColor: '#2D6974', borderColor: '#2D6974' },
-  arrowText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center' },
+  arrowText: { color: WHITE, fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center' },
   dots: { flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center' },
   dot:  { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.28)' },
   dotActive: { backgroundColor: WHITE, width: 10, height: 10, borderRadius: 5 },
@@ -879,21 +879,21 @@ const ex = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   xBtn: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
-  xText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  xText: { color: WHITE, fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
   counter: {
     color: WHITE, fontSize: 22, fontWeight: '800', letterSpacing: 1.0,
   },
   helpBtn: {
-    width: 60, height: 60, borderRadius: 30,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
     shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   helpText: { color: WHITE, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
   cardWrap: {
@@ -942,9 +942,7 @@ const ex = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────────
 
 export default function LoudnessDrillsExercise({ onComplete, onExit, tier = 1 }) {
-  // TODO (production): read DEMO_KEY from AsyncStorage to only show once.
-  // For testing, always show the demo first.
-  const [showDemo, setShowDemo] = useState(true);
+  const [showDemo, setShowDemo] = useState(false);
 
   function finishDemo() { setShowDemo(false); }
 

@@ -37,7 +37,7 @@ const FLAME_PATH =
 const FLAME_W = 220;
 const FLAME_H = FLAME_W * (55 / 50);
 
-const ORANGE  = '#FE9C2D';
+const ORANGE  = '#FFA940';
 const TEAL    = '#1C4047';
 const WHITE   = '#FFFFFF';
 const MINT    = '#C3DECE';
@@ -351,7 +351,7 @@ export default function StreakCelebrationScreen({ navigation, route }) {
         >
           <Text style={styles.streakNumber}>{streakDays}</Text>
           <Text style={styles.streakLabel}>
-            {streakDays === 1 ? 'DAY STREAK' : 'DAY STREAK'}
+            {streakDays === 1 ? 'DAY STREAK' : 'DAYS STREAK'}
           </Text>
           <Text style={styles.streakSub}>{streakSubMsg}</Text>
         </Animated.View>
@@ -434,13 +434,13 @@ const styles = StyleSheet.create({
   },
   continueBtn: {
     backgroundColor: ORANGE,
-    borderRadius: 16,
-    paddingVertical: 18,
+    borderRadius: 28,
+    paddingVertical: 20,
     alignItems: 'center',
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
     elevation: 8,
   },
   continueBtnText: {

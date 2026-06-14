@@ -102,7 +102,7 @@ export default function OpeningScreen({ navigation }) {
 
   const displayGreeting = theme.isMorning
     ? `Morning,\n${name || 'there'}!`
-    : `Evening\n${name || 'there'}!`;
+    : `Evening,\n${name || 'there'}!`;
 
   return (
     <View style={styles.root}>
