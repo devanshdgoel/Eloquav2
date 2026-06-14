@@ -132,5 +132,5 @@ const s = StyleSheet.create({
   },
 
   skipLink: { paddingVertical: 8 },
-  skipText: { color: 'rgba(255,255,255,0.40)', fontSize: 14 * SC },
+  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 14 * SC },
 });

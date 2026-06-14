@@ -36,7 +36,7 @@ const SCALE_SMALL = 0.34;
 const SCALE_LARGE = 1.0;
 
 // ── Shared gradient ───────────────────────────────────────────────────────────
-const BG_GRADIENT  = ['#2D858B', '#37767A', '#0A1618'];
+const BG_GRADIENT  = ['#37767A', '#1C4047', '#0A1618'];
 const BG_LOCATIONS = [0.2, 0.44, 1.0];
 const BG_START     = { x: 1, y: 0.1 };
 const BG_END       = { x: 0, y: 0.9 };
@@ -70,7 +70,7 @@ const sb = StyleSheet.create({
     width: W - 94, height: 12, borderRadius: 13,
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  fill: { height: '100%', borderRadius: 13, backgroundColor: '#FE9C2D' },
+  fill: { height: '100%', borderRadius: 13, backgroundColor: '#FFA940' },
 });
 
 // ── Cycle progress pills ──────────────────────────────────────────────────────
@@ -100,18 +100,18 @@ const cp = StyleSheet.create({
 // ── Shared header button styles — larger for accessibility ────────────────────
 const hb = StyleSheet.create({
   closeBtn: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
-  closeText: { color: '#FFFFFF', fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  closeText: { color: '#FFFFFF', fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
   helpBtn: {
-    width: 60, height: 60, borderRadius: 30,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: '#FFA940',
     justifyContent: 'center', alignItems: 'center',
     shadowColor: '#FFA940', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   helpText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 });
@@ -163,7 +163,7 @@ const ts = StyleSheet.create({
     letterSpacing: 1.5, textAlign: 'center', marginBottom: 12,
   },
   motivational: {
-    color: '#C3DECE', fontSize: 15, fontWeight: '400',
+    color: '#C3DECE', fontSize: 17, fontWeight: '400',
     letterSpacing: 0.4, textAlign: 'center', opacity: 0.85,
     marginBottom: 32,
   },
@@ -233,17 +233,17 @@ const vs = StyleSheet.create({
     gap: 10,
   },
   iconBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center', justifyContent: 'center',
   },
-  iconBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '300' },
+  iconBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '500' },
   pill: {
     flex: 1, backgroundColor: '#FFA940', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 5, alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
   },
-  pillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
+  pillText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
   heading: {
     color: 'rgba(255,255,255,0.90)', fontSize: 20, fontWeight: '700',
     textAlign: 'center', letterSpacing: 0.4, lineHeight: 28,
@@ -257,20 +257,20 @@ const vs = StyleSheet.create({
   },
   instrRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   stepBadge: {
-    width: 30, height: 30, borderRadius: 15,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#FFA940',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  stepNum: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  stepNum: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   instrText: {
     flex: 1, color: 'rgba(255,255,255,0.85)',
-    fontSize: 15, lineHeight: 22, fontWeight: '400',
+    fontSize: 16, lineHeight: 23, fontWeight: '400',
   },
   startBtn: {
     alignSelf: 'center', marginTop: 32,
-    backgroundColor: '#FE9C2D', borderRadius: 14,
+    backgroundColor: '#FFA940', borderRadius: 14,
     paddingHorizontal: 40, paddingVertical: 16,
-    shadowColor: '#FE9C2D', shadowOffset: { width: 0, height: 5 },
+    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   startText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', letterSpacing: 0.4 },

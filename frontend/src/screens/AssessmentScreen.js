@@ -33,7 +33,7 @@ import { onSessionComplete } from '../services/notificationService';
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
 
-const ORANGE = '#FE9C2D';
+const ORANGE = '#FFA940';
 const MINT   = '#C3DECE';
 const WHITE  = '#FFFFFF';
 
@@ -50,38 +50,53 @@ const SILENCE_THRESHOLD = 0.18;  // below = silence
 const MIN_SPEAK_FRAMES  = 3;     // must have spoken this many frames before silence detection
 const SILENCE_FRAMES    = Math.round(1800 / BAR_INTERVAL_MS); // ~22 frames = 1.8s silence → stop
 
+// 3 rounds of sustained_a give a best-of-3 reading for voice_power — more robust than a
+// single attempt (first attempt has anxiety/warm-up variability). Reading and free_speech
+// each appear once and drive expression + fluency scores.
 const TASKS = [
   {
-    id:          'sustained_a',
-    title:       'Sustained Sound',
+    id: 'sustained_a', round: 1, totalRounds: 3,
+    title: 'Sustained Sound',
     instruction: 'Take a deep breath.\nThen say "Aaah" for as long as you can.',
-    hint:        'Recording will stop automatically when you finish',
-    minS:        4,
-    maxS:        12,
-    color:       ORANGE,
-    autostop:    true,
+    hint: 'Recording stops automatically when you finish',
+    minS: 4, maxS: 12, color: ORANGE, autostop: true,
   },
   {
-    id:          'reading',
-    title:       'Reading Aloud',
+    id: 'sustained_a', round: 2, totalRounds: 3,
+    title: 'Sustained Sound',
+    instruction: 'Once more — deep breath first.\nSay "Aaah" for as long as you can.',
+    hint: 'Try to hold it a little longer this time',
+    minS: 4, maxS: 12, color: ORANGE, autostop: true,
+  },
+  {
+    id: 'sustained_a', round: 3, totalRounds: 3,
+    title: 'Sustained Sound',
+    instruction: 'One last time — big breath.\nGive your best "Aaah".',
+    hint: 'Last round — give it your all',
+    minS: 4, maxS: 12, color: ORANGE, autostop: true,
+  },
+  {
+    id: 'reading', groupLabel: 'Task 2 of 3',
+    title: 'Reading Aloud',
     instruction: 'Read this sentence aloud\nat your natural pace.',
-    passage:     '"When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow."',
-    hint:        'Read clearly and at a comfortable pace',
-    minS:        5,
-    maxS:        35,
-    color:       MINT,
-    autostop:    false,
+    passage: '"When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow."',
+    hint: 'Read clearly and at a comfortable pace',
+    minS: 5, maxS: 35, color: MINT, autostop: false,
   },
   {
-    id:          'free_speech',
-    title:       'Free Speech',
+    id: 'free_speech', groupLabel: 'Task 3 of 3',
+    title: 'Free Speech',
     instruction: 'Tell us about your favourite\nplace in the world.',
-    hint:        'Speak for at least 20 seconds',
-    minS:        10,
-    maxS:        60,
-    color:       WHITE,
-    autostop:    false,
+    hint: 'Speak for at least 20 seconds',
+    minS: 10, maxS: 60, color: WHITE, autostop: false,
   },
+];
+
+// Three grouped items shown in the intro task list.
+const INTRO_ITEMS = [
+  { color: ORANGE, badge: '×3', title: 'Sustained Sound',  hint: '3 rounds — recording auto-stops each time' },
+  { color: MINT,   badge: '2',  title: 'Reading Aloud',    hint: 'Read clearly at a comfortable pace' },
+  { color: WHITE,  badge: '3',  title: 'Free Speech',      hint: 'Speak for at least 20 seconds' },
 ];
 
 // ── Score arc ─────────────────────────────────────────────────────────────────
@@ -122,7 +137,7 @@ function ScoreArc({ score, color, label }) {
 const arc = StyleSheet.create({
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   num:    { fontSize: 24 * SC, fontWeight: '800', lineHeight: 26 * SC },
-  label:  { color: 'rgba(255,255,255,0.55)', fontSize: 11 * SC, fontWeight: '600', letterSpacing: 0.5, textAlign: 'center' },
+  label:  { color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '600', letterSpacing: 0.5, textAlign: 'center' },
 });
 
 // ── Main screen ───────────────────────────────────────────────────────────────
@@ -273,19 +288,29 @@ export default function AssessmentScreen({ navigation, route }) {
         form.append('audio_duration_s', String(durationS));
 
         const authHeaders = await getAuthHeaders();
-        const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: form,
-        });
-        if (res.ok) {
-          const d = await res.json();
-          scores   = d.data?.scores   ?? scores;
-          features = d.data?.features ?? {};
+        const controller  = new AbortController();
+        const timeoutId   = setTimeout(() => controller.abort(), 30000); // 30s hard timeout
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+            method: 'POST',
+            headers: authHeaders,
+            body: form,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const d = await res.json();
+            scores   = d.data?.scores   ?? scores;
+            features = d.data?.features ?? {};
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          // Timeout or network error — continue with null scores (non-fatal)
+          console.warn('[Assessment] analyze-voice failed/timed out:', fetchErr?.message);
         }
       }
     } catch (e) {
-      console.error('[Assessment] analyze error (non-fatal):', e?.message);
+      console.error('[Assessment] stopRecording error:', e?.message);
     }
 
     taskResultsRef.current = [
@@ -335,9 +360,15 @@ export default function AssessmentScreen({ navigation, route }) {
   // ── Score helpers ──────────────────────────────────────────────────────────
 
   function computeComposite(results) {
-    const keys = ['voice_power', 'expression', 'fluency'];
-    const out  = {};
-    for (const k of keys) {
+    // voice_power: best of the 3 sustained_a runs (best-of-3 reflects true capability)
+    const phonationVP = results
+      .filter(r => r.task_id === 'sustained_a')
+      .map(r => r.scores?.voice_power)
+      .filter(v => v != null && Number.isFinite(v));
+    const out = { voice_power: phonationVP.length ? Math.max(...phonationVP) : null };
+
+    // expression + fluency: average across all tasks (reading + free_speech drive these)
+    for (const k of ['expression', 'fluency']) {
       const vals = results.map(r => r.scores?.[k]).filter(v => v != null && Number.isFinite(v));
       out[k] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
     }
@@ -372,7 +403,10 @@ export default function AssessmentScreen({ navigation, route }) {
 
         const authHeaders = await getAuthHeaders();
         const taskObj = {};
-        for (const r of taskResultsRef.current) taskObj[r.task_id] = { scores: r.scores };
+        taskResultsRef.current.forEach((r, i) => {
+          const key = r.task_id === 'sustained_a' ? `sustained_a_${i + 1}` : r.task_id;
+          taskObj[key] = { scores: r.scores };
+        });
 
         const assessForm = new FormData();
         assessForm.append('assessment_type', type);
@@ -421,23 +455,31 @@ export default function AssessmentScreen({ navigation, route }) {
       {/* ── INTRO ───────────────────────────────────────────────────────── */}
       {phase === 'intro' && (
         <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
+          <TouchableOpacity
+            style={s.backBtn}
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Text style={s.backBtnText}>←</Text>
+          </TouchableOpacity>
           <Text style={s.eyebrow}>{isBaseline ? 'VOICE ASSESSMENT' : 'PROGRESS CHECK-IN'}</Text>
           <Text style={s.heroTitle}>{isBaseline ? "Let's hear\nyour voice" : "How's your\nvoice today?"}</Text>
           <Text style={s.bodyText}>
             {isBaseline
-              ? 'Three short recordings — about 2 minutes. We use these to personalise your training plan.'
+              ? 'Three tasks — about 3 minutes. We use these to personalise your training plan.'
               : "Same three tasks as before. Let's see how far you've come."}
           </Text>
 
           <View style={s.taskList}>
-            {TASKS.map((t, i) => (
-              <View key={t.id} style={s.taskRow}>
-                <View style={[s.taskBadge, { borderColor: t.color + '66', backgroundColor: t.color + '18' }]}>
-                  <Text style={[s.taskBadgeNum, { color: t.color }]}>{i + 1}</Text>
+            {INTRO_ITEMS.map((item, i) => (
+              <View key={i} style={s.taskRow}>
+                <View style={[s.taskBadge, { borderColor: item.color + '66', backgroundColor: item.color + '18' }]}>
+                  <Text style={[s.taskBadgeNum, { color: item.color }]}>{item.badge}</Text>
                 </View>
-                <View>
-                  <Text style={s.taskRowTitle}>{t.title}</Text>
-                  <Text style={s.taskRowHint}>{t.hint}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.taskRowTitle}>{item.title}</Text>
+                  <Text style={s.taskRowHint}>{item.hint}</Text>
                 </View>
               </View>
             ))}
@@ -453,6 +495,27 @@ export default function AssessmentScreen({ navigation, route }) {
       {(phase === 'active' || phase === 'processing') && (
         <View style={[s.page, { flex: 1, paddingBottom: bottom + 32 }]}>
 
+          {/* Exit — shown during active only (not while analysing) */}
+          {phase === 'active' && (
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => {
+                Alert.alert(
+                  'Leave assessment?',
+                  'Your recordings so far will be lost.',
+                  [
+                    { text: 'Stay', style: 'cancel' },
+                    { text: 'Leave', style: 'destructive', onPress: () => navigation.goBack() },
+                  ]
+                );
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Exit assessment"
+            >
+              <Text style={s.backBtnText}>✕</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Step dots */}
           <View style={s.dotRow}>
             {TASKS.map((_, i) => (
@@ -463,7 +526,11 @@ export default function AssessmentScreen({ navigation, route }) {
             ))}
           </View>
 
-          <Text style={s.stepLabel}>Step {taskIndex + 1} of {TASKS.length}</Text>
+          <Text style={s.stepLabel}>
+            {task.round
+              ? `Round ${task.round} of ${task.totalRounds}`
+              : (task.groupLabel ?? `Step ${taskIndex + 1} of ${TASKS.length}`)}
+          </Text>
           <Text style={[s.taskTitle, { color: task.color }]}>{task.title}</Text>
 
           {task.passage ? (
@@ -601,9 +668,26 @@ const s = StyleSheet.create({
     gap: 16,
   },
 
+  backBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.20)',
+    borderRadius: 28,
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backBtnText: {
+    color: WHITE,
+    fontSize: 20,
+    fontWeight: '500',
+  },
+
   eyebrow: {
     color: ORANGE,
-    fontSize: 11 * SC,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
   },
@@ -633,7 +717,7 @@ const s = StyleSheet.create({
   },
   taskBadgeNum: { fontSize: 17 * SC, fontWeight: '800' },
   taskRowTitle: { color: WHITE, fontSize: 16 * SC, fontWeight: '700' },
-  taskRowHint:  { color: 'rgba(255,255,255,0.40)', fontSize: 12 * SC, marginTop: 1 },
+  taskRowHint:  { color: 'rgba(255,255,255,0.38)', fontSize: 16, marginTop: 1 },
 
   primaryBtn: {
     backgroundColor: ORANGE,
@@ -660,8 +744,8 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
   primaryBtnTextDim: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 15 * SC,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
   },
 
   dotRow:    { flexDirection: 'row', gap: 8, marginTop: 4 },
@@ -670,8 +754,8 @@ const s = StyleSheet.create({
   dotDone:   { backgroundColor: MINT },
 
   stepLabel: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 13 * SC,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
@@ -706,8 +790,8 @@ const s = StyleSheet.create({
   },
 
   hintText: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: 13 * SC,
+    color: 'rgba(255,255,255,0.38)',
+    fontSize: 16,
     textAlign: 'center',
     fontStyle: 'italic',
   },
@@ -750,7 +834,7 @@ const s = StyleSheet.create({
   },
   recText: {
     color: 'rgba(255,255,255,0.80)',
-    fontSize: 15 * SC,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
@@ -785,7 +869,7 @@ const s = StyleSheet.create({
   },
   focusEyebrow: {
     color: ORANGE,
-    fontSize: 11 * SC,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
   },
@@ -796,14 +880,14 @@ const s = StyleSheet.create({
   },
   focusTip: {
     color: 'rgba(255,255,255,0.80)',
-    fontSize: 15 * SC,
-    lineHeight: 23 * SC,
+    fontSize: 16,
+    lineHeight: 24,
   },
   baselineNote: {
     color: 'rgba(255,255,255,0.38)',
-    fontSize: 13 * SC,
+    fontSize: 16,
     textAlign: 'center',
-    lineHeight: 20 * SC,
+    lineHeight: 24,
     paddingHorizontal: 8,
   },
 });

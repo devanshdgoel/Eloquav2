@@ -69,7 +69,7 @@ const BAR_W  = Math.max(3, Math.floor((W - 48) / BARS_COUNT) - 2);
 const DARK_TEAL  = '#1C4047';
 const DARK_GREEN = '#1E3828';
 const TEAL_MID   = '#2D6974';
-const ORANGE     = '#FE9C2D';
+const ORANGE     = '#FFA940';
 const MINT       = '#C3DECE';
 const WHITE      = '#FFFFFF';
 const GREEN_BAR  = 'rgba(72,210,140,0.90)';
@@ -107,8 +107,8 @@ const hb = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   orangeText: {
-    color: WHITE, fontSize: 22, fontWeight: '900',
-    includeFontPadding: false, textAlign: 'center', lineHeight: 22,
+    color: WHITE, fontSize: 24, fontWeight: '900',
+    includeFontPadding: false, textAlign: 'center', lineHeight: 24,
   },
 });
 
@@ -189,8 +189,8 @@ function TitleScreen({ onNext, onExit, onSkip }) {
 const ts = StyleSheet.create({
   header: { paddingTop: 56, paddingHorizontal: 20, flexDirection: 'row' },
   tag: {
-    color: MINT, fontSize: 11, fontWeight: '700',
-    letterSpacing: 3, opacity: 0.7, marginBottom: 12,
+    color: MINT, fontSize: 16, fontWeight: '700',
+    letterSpacing: 2, opacity: 0.7, marginBottom: 12,
   },
   title: {
     color: WHITE, fontSize: 48, fontWeight: '800',
@@ -198,8 +198,8 @@ const ts = StyleSheet.create({
     marginBottom: 14, lineHeight: 56,
   },
   subtitle: {
-    color: 'rgba(255,255,255,0.55)', fontSize: 15, fontWeight: '400',
-    letterSpacing: 0.3, textAlign: 'center', lineHeight: 22,
+    color: 'rgba(255,255,255,0.60)', fontSize: 17, fontWeight: '400',
+    letterSpacing: 0.3, textAlign: 'center', lineHeight: 24,
     marginBottom: 40,
   },
   waveWrap: { width: '100%', paddingHorizontal: 12 },
@@ -278,8 +278,8 @@ function Slide3() {
 
 const sl = StyleSheet.create({
   stepNum: {
-    color: MINT, fontSize: 12, fontWeight: '800',
-    letterSpacing: 3, opacity: 0.6, marginBottom: 16,
+    color: MINT, fontSize: 16, fontWeight: '800',
+    letterSpacing: 2, opacity: 0.6, marginBottom: 16,
   },
   title1: {
     color: WHITE, fontSize: 28, fontWeight: '700',
@@ -312,9 +312,9 @@ const sl = StyleSheet.create({
     backgroundColor: 'rgba(254,156,45,0.18)',
     borderRadius: 20, borderWidth: 1, borderColor: 'rgba(254,156,45,0.35)',
   },
-  scoreTagText: { color: ORANGE, fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
+  scoreTagText: { color: ORANGE, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   andRemember: {
-    color: 'rgba(255,255,255,0.45)', fontSize: 17,
+    color: 'rgba(255,255,255,0.60)', fontSize: 17,
     fontStyle: 'italic', letterSpacing: 1.5, marginBottom: 16,
   },
   thinkLoud: {
@@ -397,14 +397,14 @@ const dm = StyleSheet.create({
   },
   pill: {
     flex: 1, backgroundColor: ORANGE, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 5, alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
   },
-  pillText: { color: WHITE, fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
+  pillText: { color: WHITE, fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
   stepWrap: {
-    width: 48, alignItems: 'center',
+    width: 52, alignItems: 'center',
   },
   stepText: {
-    color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: '600',
+    color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '600',
   },
   footer: {
     paddingHorizontal: 32, paddingBottom: 16,
@@ -419,7 +419,7 @@ const dm = StyleSheet.create({
     backgroundColor: TEAL_MID,
     borderWidth: 1, borderColor: 'rgba(195,222,206,0.25)',
   },
-  nextText: { color: WHITE, fontSize: 15, fontWeight: '700', letterSpacing: 0.4 },
+  nextText: { color: WHITE, fontSize: 16, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -503,7 +503,7 @@ function ReadyScreen({ onDone, onSkip, onExit }) {
 
 const rdy = StyleSheet.create({
   preLabel: {
-    color: 'rgba(255,255,255,0.50)', fontSize: 16, fontWeight: '500', letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '500', letterSpacing: 0.5,
   },
   vowel: {
     color: WHITE, fontSize: 52, fontWeight: '800', letterSpacing: 1,
@@ -725,7 +725,16 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           phaseRef.current = 'done';
           setPhase('done');
           // V2: pass exercise score — best hold time vs tier target (0–100)
-          setTimeout(() => {
+          setTimeout(async () => {
+            // Release mic before onComplete so the next exercise (PitchGlides WebView) can claim it
+            if (barTimerRef.current) { clearInterval(barTimerRef.current); barTimerRef.current = null; }
+            try {
+              if (recordingRef.current) {
+                await recordingRef.current.stopAndUnloadAsync();
+                recordingRef.current = null;
+              }
+              await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+            } catch (_) {}
             const exerciseScore = Math.min(100, Math.round((bestRef.current / tierConfig.targetSeconds) * 100));
             onComplete(exerciseScore);
           }, 1800);
@@ -765,7 +774,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         }
       });
     try {
-      if (recordingRef.current) { await recordingRef.current.stopAndUnloadAsync(); recordingRef.current = null; }
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
     } catch (_) {}
   }
 
@@ -934,7 +947,7 @@ const exc = StyleSheet.create({
     textShadowRadius: 24,
   },
   phaseLabel: {
-    color: 'rgba(255,255,255,0.55)', fontSize: 26, fontWeight: '600',
+    color: 'rgba(255,255,255,0.60)', fontSize: 26, fontWeight: '600',
     letterSpacing: 0.8, includeFontPadding: false, textAlign: 'center',
     paddingHorizontal: 32,
   },
@@ -944,7 +957,7 @@ const exc = StyleSheet.create({
   },
   bestRow: { marginTop: 4 },
   bestLabel: {
-    color: 'rgba(255,255,255,0.38)', fontSize: 14, letterSpacing: 0.8,
+    color: 'rgba(255,255,255,0.38)', fontSize: 16, letterSpacing: 0.8,
     includeFontPadding: false,
   },
 
@@ -969,16 +982,16 @@ const exc = StyleSheet.create({
     gap: 16,
   },
   tapHint: {
-    color: 'rgba(255,255,255,0.35)', fontSize: 13, fontWeight: '400',
+    color: 'rgba(255,255,255,0.38)', fontSize: 16, fontWeight: '400',
     letterSpacing: 0.3, textAlign: 'center',
     paddingHorizontal: 32,
   },
   goalHint: {
-    color: 'rgba(255,255,255,0.35)', fontSize: 13, fontWeight: '400',
+    color: 'rgba(255,255,255,0.38)', fontSize: 16, fontWeight: '400',
     letterSpacing: 0.3, textAlign: 'center',
   },
   goalReached: {
-    color: '#68D88C', fontSize: 14, fontWeight: '700',
+    color: '#68D88C', fontSize: 16, fontWeight: '700',
     letterSpacing: 0.3, textAlign: 'center',
   },
   cantDo: {},

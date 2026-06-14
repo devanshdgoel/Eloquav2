@@ -736,14 +736,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const TEAL   = '#1C4047';
 const WHITE  = '#FFFFFF';
-const ORANGE = '#FE9C2D';
+const ORANGE = '#FFA940';
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
   backBtn: {
     position: 'absolute', top: 52, left: 20, zIndex: 10,
-    width: 60, height: 60, borderRadius: 30,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.45)',
     borderWidth: 1.5, borderColor: 'rgba(28,64,71,0.18)',
     justifyContent: 'center', alignItems: 'center',
@@ -842,7 +842,7 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
   },
   liveCardLabel: {
-    fontSize: 10 * SC,
+    fontSize: 16,
     fontWeight: '700',
     color: 'rgba(28,64,71,0.45)',
     letterSpacing: 1.5,
@@ -892,7 +892,7 @@ const styles = StyleSheet.create({
   },
   transcriptPad: { padding: 20 },
   transcriptLabel: {
-    fontSize: 10 * SC,
+    fontSize: 16,
     fontWeight: '800',
     color: 'rgba(28,64,71,0.40)',
     letterSpacing: 2,
@@ -928,7 +928,7 @@ const styles = StyleSheet.create({
   actionLabel: { color: WHITE, fontSize: Math.round(20 * SC), fontWeight: '700', letterSpacing: 1.8 },
   actionIcon:  { fontSize: Math.round(20 * SC) },
   actionUnavailable: {
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.60)',
     fontSize: Math.round(11 * SC),
     letterSpacing: 0.5,
     marginLeft: -6,

@@ -706,3 +706,182 @@ Backend environment variables on Render (unchanged):
 - `ELEVENLABS_API_KEY`
 - `FIREBASE_ADMIN_KEY`
 - `ALLOWED_ORIGINS`
+
+---
+
+## Session 6 — Design System & Accessibility Pass (2026-06-05)
+
+### Overview
+
+Two-phase session:
+
+1. **Font size enforcement (WCAG 2.1)** — All text below 16px raised to the accessibility minimum across all exercise and component screens.
+2. **Global design system** — `theme/index.js` rewritten as the canonical single source of truth for every visual token, then applied globally across all 20+ screens.
+
+---
+
+### Phase 1: Font Size Fixes
+
+All font sizes below 16px were raised to ≥ 16px. SC-scaled text (which could drop below threshold on small devices) was replaced with fixed sizes.
+
+| File | Properties fixed |
+|---|---|
+| `BreathingExercise.js` | pillText 11→16, stepNum 14→16, stepBadge 30→32, instrText 15→16, motivational 15→17 |
+| `SustainedPhonationExercise.js` | tag 11→16, subtitle 15→17, stepNum 12→16, scoreTagText 13→16, pillText 11→16, stepText 13→16, nextText 15→16, bestLabel 14→16, tapHint/goalHint 13→16, goalReached 14→16 |
+| `DolphinVowelsExercise.js` | badge.text 12→16, vowel label 14→16, subHint 13→16 |
+| `CantDoNow.js` | triggerText 14→16, body 15→17, skipSub 13→16, stayText 14→16 |
+| `PitchGlidesExercise.js` | micErrorBody 15→17, micErrorBtnText 15→17 |
+| `FunctionalSpeechExercise.js` | readyBtnText 15*SC→17, phaseHint 16*SC→16 |
+
+---
+
+### Phase 2: Design System (`theme/index.js`)
+
+**`frontend/src/theme/index.js`** completely rewritten. Was a dead file with purple/unused colours. Now the canonical source for all visual tokens.
+
+#### Palette (internal `_p`)
+| Token | Value | Use |
+|---|---|---|
+| teal950 | `#0A1618` | Gradient end |
+| teal900 | `#1C4047` | Primary dark bg |
+| teal800 | `#243E44` | Session/assessment screens |
+| teal700 | `#2D6974` | Cards/surfaces |
+| teal600 | `#326F77` | Auth gradient start |
+| teal500 | `#37767A` | App gradient start |
+| teal400 | `#68B39F` | Mint teal (speech/onboarding) |
+| teal300 | `#9FCFBD` | Light mint |
+| teal200 | `#C3DECE` | Pale mint (accent labels) |
+| teal100 | `#E0ECDE` | Lightest mint (form screens) |
+| forest | `#1E3828` | Exercise score zone top |
+| orange | `#FFA940` | **The one orange** — energy, streaks, CTA |
+| green | `#48D28C` | Success, waveform bars |
+| red | `#E05252` | Error, destructive |
+
+#### Semantic `colors` export
+- Backgrounds: `bgDark`, `bgDeep`, `bgSession`, `bgForest`, `bgLight`
+- Surfaces: `surface` (#2D6974), `surfaceSubtle` (rgba white 7%), `surfaceMid` (translucent teal)
+- Borders: `border` (mint @18%), `borderMid` (mint @25%), `borderLight` (white @18%)
+- Text on dark: `textPrimary` (#FFF), `textSecondary` (white @60%), `textFaint` (white @38%)
+- Text on light: `textDark`, `textDarkDim`, `textDarkFaint` (teal900 with opacity)
+- Gradients: `darkApp`, `auth`, `lightForm`, `speech`, `session`, `instruction`, `ready`
+
+#### Typography `type` export
+All sizes ≥ 16px (WCAG 2.1 floor):
+
+| Token | Size | Weight | Use |
+|---|---|---|---|
+| score | 128 | 900 | Score display, countdown |
+| display | 56 | 800 | "THINK LOUD", exercise titles |
+| h1 | 38 | 800 | Page titles |
+| h2 | 32 | 800 | Screen headings |
+| h3 | 24 | 700 | Section headings |
+| h4 | 20 | 700 | Sub-headings |
+| bodyLg | 18 | 400 | Body / instructions |
+| body | 17 | 400 | Standard body |
+| bodySm | 16 | 400 | Captions, secondary body |
+| buttonLg | 20 | 800 | Large CTA labels |
+| button | 18 | 700 | Standard button labels |
+| label | 16 | 600 | Form labels |
+| caption | 16 | 700 | Pills, eyebrow labels |
+| icon | 20 | 500 | Icon button glyphs |
+| iconLg | 24 | 900 | Large icon glyphs |
+
+#### Spacing (`space`) — 4-pt grid
+`xs:4`, `sm:8`, `md:16`, `lg:24`, `xl:32`, `xxl:48`
+
+#### Border radius (`radius`)
+`sm:12`, `md:16`, `lg:24`, `xl:28`, `full:999`
+
+#### Component objects (`ui`)
+| Object | Description |
+|---|---|
+| `ghostBtn` | 56×56, r28, rgba(white,0.10) bg, border @0.20 — back/close buttons |
+| `orangeBtn` | 56×56, r28, #FFA940 bg, shadow — help/info buttons |
+| `primaryBtn` | Full-width, #FFA940, paddingV:20, r28, shadow — main CTAs |
+| `card` | rgba(white,0.07), r16, border mint@0.18 — cards on dark |
+| `labelPill` | #FFA940, r10, padding 14×6 — orange label pills |
+| `progressTrack` / `progressFill` | Session progress bar components |
+
+---
+
+### Global Changes Applied
+
+#### Orange unification
+`#FE9C2D` → `#FFA940` across all JS files. Now one canonical orange everywhere.
+
+#### Text opacity standardization
+- `color: rgba(255,255,255,0.55/0.50/0.45)` → `0.60` (secondary text)
+- `color: rgba(255,255,255,0.40/0.35)` → `0.38` (faint/hint text)
+- Borders and shadows were NOT touched — only `color:` properties.
+
+#### `SettingsScreen.js`
+- DIM constant: 0.45 → 0.60
+- backBtn: 44×44/r22 → 56×56/r28 ghost
+- Section cards: borderRadius 18*SC → 16
+- Modal close button: r14*SC → r28, paddingVertical 14 → 20, orange shadow
+
+#### `ProgressScreen.js`
+- DIM constant: 0.40 → 0.38
+- backBtn: 44×44 → 56×56
+- All cards (ScoreCard, MilestoneBadge, StatCard, noBaselineCard): borderRadius → 16, borderColor → 0.18
+- Retry button: r22 → r28, paddingVertical 13 → 20
+
+#### `SpeechEnhancementScreen.js`
+- backBtn: 60×60/r30 → 56×56/r28
+
+#### `StreakCelebrationScreen.js`
+- continueBtn: r16 → r28, paddingVertical 18 → 20, shadow standardized
+
+#### `StreakCommitmentScreen.js`
+- shareBtn and commitBtn: standardized to design system pill CTAs
+
+#### `HomeScreen.js`
+- speechCard: borderRadius 22 → 16, borderColor 0.22 → 0.18
+
+#### Onboarding screens
+
+| Screen | Change |
+|---|---|
+| `SplashScreen.js` | StatusBar: dark-content → light-content |
+| `SignUpScreen.js` | backBtn → 56×56 ghost; inputCard r10→16; CTA → orange pill "Create Account →"; arrowText 32px→18px |
+| `SignInScreen.js` | Same pattern; socialCard r10→16; CTA "Sign In →" |
+| `SetupAboutYouScreen.js` | backBtn → light ghost (rgba(28,64,71,0.12)); inputCard/selectCard r10→16; nextBtn → full-width pill "Continue →" |
+| `SetupPermissionsScreen.js` | CARD_BORD 0.20→0.18 |
+
+#### Session/exercise screens
+
+| Screen | Change |
+|---|---|
+| `CheckinScreen.js` | sentenceCard.borderColor → rgba(195,222,206,0.18) |
+| `BreathingExercise.js` | closeBtn/helpBtn 60→56, r30→28; iconBtn 44→56, r22→28; gradients updated to theme tokens |
+| `SustainedPhonationExercise.js` | orangeText 22→24; pill padding standardized; letterSpacing 1.0→0.8 |
+| `DolphinVowelsExercise.js` | BTN 52→56; ghost/orange buttons standardized; badge pill standardized; INSTRUCTION_BG → '#1C3242' |
+| `LoudnessDrillsExercise.js` | All icon buttons 60→56, r30→28; arrowText/xText 22→20 |
+| `PitchGlidesExercise.js` | BTN_SZ: `Math.round(fs(53))` → fixed 56; close button standardized |
+| `AssessmentScreen.js` | No changes needed — already compliant |
+
+---
+
+### Still Pending (Post Session 6)
+
+1. **EAS update** — `cd frontend && eas update --branch main --message "Style guide implementation"` (run from `frontend/` dir, not `frontend/src/`)
+2. **Firestore security rules** — Still open test mode. Must lock down before public launch.
+3. **Apple EAS credentials** — Not configured in EAS dashboard.
+4. **App Store assets** — Icon, screenshots, description, Privacy Policy URL not yet prepared.
+5. **iOS privacy manifest** — `PrivacyInfo.xcprivacy` not yet added.
+6. **401 auto-refresh** — Expired tokens surface as errors; should intercept and retry with `user.getIdToken(true)`.
+7. **SetupVoice duplicate clone guard** — Check for existing `voice_id` before calling `/api/voice/clone` on re-entry.
+8. **VoiceOver / TalkBack audit** — Screen reader behaviour not fully tested. Arc score labels need `accessibilityLabel`.
+9. **Dynamic text scaling** — App uses fixed font sizes; does not respond to OS "Larger Text" setting.
+
+---
+
+### How to Deploy After Session 6
+
+```bash
+# OTA update to Expo Go testers (run from frontend/ directory)
+cd frontend
+eas update --branch main --message "Style guide implementation"
+
+# Backend unchanged — no Render deploy needed
+```

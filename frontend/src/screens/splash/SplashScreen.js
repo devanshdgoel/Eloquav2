@@ -91,7 +91,7 @@ export default function SplashScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
 
       <LinearGradient
         colors={[colors.splash.gradientStart, colors.splash.gradientEnd]}
@@ -133,9 +133,7 @@ export default function SplashScreen({ navigation }) {
 
       {showTimeoutBanner && (
         <View style={styles.timeoutBanner}>
-          <Text style={styles.timeoutText}>
-            Trouble restoring your session — please sign in again.
-          </Text>
+          <Text style={styles.timeoutText}>Session timed out — please sign in.</Text>
         </View>
       )}
     </View>
@@ -158,9 +156,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timeoutText: {
-    color: 'rgba(255,255,255,0.80)',
-    fontSize: 13,
+    color: 'rgba(255,255,255,0.90)',
+    fontSize: 17,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 24,
   },
 });

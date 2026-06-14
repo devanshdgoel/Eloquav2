@@ -16,7 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../../config/firebase';
 import { saveUserProfileToFirestore } from '../../services/userService';
-import { saveUserProfile } from '../../utils/storage';
+import { saveUserProfile, setOnboardingComplete } from '../../utils/storage';
 
 const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
@@ -39,8 +39,8 @@ export default function SetupAboutYouScreen({ navigation }) {
       console.warn('Failed to save profile to Firestore:', err.message);
     }
 
-    // Onboarding is not marked complete here — SetupVoice (the final step) does it.
-    navigation.navigate('SetupVoice');
+    await setOnboardingComplete();
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
 
   const canProceed = name.trim().length > 0;
@@ -64,10 +64,9 @@ export default function SetupAboutYouScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.title}>About you</Text>
-          <Text style={styles.subtitle}>Just two quick things to personalise your experience.</Text>
+          <Text style={styles.subtitle}>A couple of quick details to get started.</Text>
 
-          {/* Preferred Name */}
-          <Text style={styles.label}>What should we call you?</Text>
+          <Text style={styles.label}>Your name</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
@@ -81,10 +80,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             />
           </View>
 
-          {/* Age Range */}
-          <Text style={styles.label}>
-            How old are you? <Text style={styles.optional}>(optional)</Text>
-          </Text>
+          <Text style={styles.label}>Age <Text style={styles.optional}>(optional)</Text></Text>
           <TouchableOpacity
             style={styles.selectCard}
             onPress={() => setAgeModalVisible(true)}
@@ -107,7 +103,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Continue"
           >
-            <Text style={styles.nextArrow}>→</Text>
+            <Text style={styles.nextArrow}>Continue  →</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -154,16 +150,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 52,
     left: 20,
-    backgroundColor: '#1C4047',
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(28,64,71,0.12)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(28,64,71,0.20)',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 10,
   },
   backArrow: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    color: '#1C4047',
+    fontSize: 20,
+    fontWeight: '500',
   },
 
   scroll: {
@@ -180,15 +180,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: 'rgba(28,64,71,0.65)',
     marginBottom: 36,
-    lineHeight: 24,
+    lineHeight: 26,
     letterSpacing: 0.2,
   },
 
   label: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: '#1C4047',
     marginBottom: 10,
@@ -197,7 +197,9 @@ const styles = StyleSheet.create({
 
   inputCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(28,64,71,0.10)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
@@ -214,7 +216,9 @@ const styles = StyleSheet.create({
 
   selectCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(28,64,71,0.10)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
@@ -228,7 +232,7 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   optional: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '400',
     color: 'rgba(28,64,71,0.55)',
   },
@@ -247,26 +251,25 @@ const styles = StyleSheet.create({
   },
 
   nextBtn: {
-    alignSelf: 'center',
+    alignSelf: 'stretch',
     backgroundColor: '#FFA940',
-    width: 72,
-    height: 72,
-    borderRadius: 16,
+    borderRadius: 28,
+    paddingVertical: 20,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#FFA940',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
   nextBtnDisabled: {
     opacity: 0.45,
   },
   nextArrow: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
+    color: '#1C4047',
+    fontSize: 18,
+    fontWeight: '800',
   },
 
   modalOverlay: {
@@ -308,7 +311,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCancelText: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#888',
   },
 });

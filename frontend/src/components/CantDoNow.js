@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
   },
   triggerText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
     textAlign: 'center',
@@ -198,9 +198,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   body: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 15,
-    lineHeight: 22,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 17,
+    lineHeight: 24,
     letterSpacing: 0.2,
     marginBottom: 28,
   },
@@ -224,18 +224,18 @@ const styles = StyleSheet.create({
   },
   skipSub: {
     color: 'rgba(195,222,206,0.65)',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '400',
   },
 
   // End session — orange
   endBtn: {
-    backgroundColor: '#FE9C2D',
+    backgroundColor: '#FFA940',
     borderRadius: 16,
     paddingVertical: 18,
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#FE9C2D',
+    shadowColor: '#FFA940',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
@@ -254,8 +254,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   stayText: {
-    color: 'rgba(255,255,255,0.40)',
-    fontSize: 14,
+    color: 'rgba(255,255,255,0.38)',
+    fontSize: 16,
     fontWeight: '500',
     letterSpacing: 0.3,
   },

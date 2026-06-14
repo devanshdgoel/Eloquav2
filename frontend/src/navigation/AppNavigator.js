@@ -54,15 +54,16 @@ export default function AppNavigator() {
       {/*
        * Single flat stack — always starts at Splash.
        * Navigation flow (new users):
-       *   Splash → SignUp → SetupPermissions → SetupAboutYou → SetupVoice → Home
+       *   Splash → SignUp → SetupPermissions → SetupAboutYou → Home
        * Navigation flow (returning users):
        *   Splash → SignIn → Opening → Home
        * Navigation flow (returning, onboarding incomplete):
        *   Splash → SignIn → SetupPermissions (restarts onboarding)
        *
-       * WhatIsEloqua / HowItWorks / VoiceCloningExplainer are registered but not
-       * in the active onboarding path — kept as backup for a future "About Eloqua"
-       * entry point in Settings.
+       * Voice cloning happens during the baseline Assessment (first session).
+       * SetupVoice is registered but not in the active flow.
+       * WhatIsEloqua / HowItWorks / VoiceCloningExplainer are backup screens for
+       * a future "About Eloqua" Settings entry point.
        */}
       <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
         <Stack.Screen name="Splash" component={SplashScreen} />

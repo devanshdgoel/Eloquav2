@@ -33,7 +33,7 @@ const COLORS = {
   pathColor:    '#C3DECE',
   nodeBg:       '#C3DECE',   // background circle behind all nodes
   nodeActiveBg: '#2D6974',   // dolphin background
-  orange:       '#FE9C2D',
+  orange:       '#FFA940',
   white:        '#FFFFFF',
   levelText:    'rgba(255,255,255,0.65)',
   levelLine:    'rgba(255,255,255,0.25)',
@@ -124,7 +124,8 @@ export default function HomeScreen({ navigation }) {
   const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
   const tabBarH = 72 + safeBottom;
 
-  const [viewportH, setViewportH] = useState(400);
+  const [viewportH, setViewportH] = useState(0);
+  const viewportHRef = useRef(0);
   const maxOffset = Math.max(0, CANVAS_H - viewportH);
 
   const offsetRef = useRef(0);
@@ -185,19 +186,25 @@ export default function HomeScreen({ navigation }) {
       fetchProgress()
         .then(data => {
           setProgress(data);
-          const idx     = Math.max(0, Math.min(data.current_node, TOTAL_NODES - 1));
-          const nodeY   = NODE_DEFS[idx].cy;
-          const initial = Math.max(0, Math.min(nodeY - viewportH / 3, maxOffset));
+          const h      = viewportHRef.current;
+          const maxOff = Math.max(0, CANVAS_H - h);
+          const idx    = Math.max(0, Math.min(data.current_node, TOTAL_NODES - 1));
+          const nodeY  = NODE_DEFS[idx].cy;
+          const initial = Math.max(0, Math.min(nodeY - h / 3, maxOff));
           offsetRef.current = initial;
           animY.setValue(-initial);
           setCanScrollUp(initial > 0);
-          setCanScrollDown(initial < maxOffset);
+          setCanScrollDown(initial < maxOff);
         })
         .catch(() => setProgressError(true));
-    }, [viewportH, maxOffset])
+    }, []) // empty — fires once per focus; layout changes do not re-trigger
   );
 
-  const onViewportLayout = useCallback(e => setViewportH(e.nativeEvent.layout.height), []);
+  const onViewportLayout = useCallback(e => {
+    const h = e.nativeEvent.layout.height;
+    viewportHRef.current = h;
+    setViewportH(h);
+  }, []);
 
   // ── Level 1 label: always clear of node 0's active ring (R_ACTIVE) ─────────
   const lvl1LabelY = CANVAS_PAD_T - R_ACTIVE - 20;   // 130 - 54 - 20 = 56
@@ -207,12 +214,9 @@ export default function HomeScreen({ navigation }) {
     <View style={[styles.root, { paddingTop: safeTop }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* ── Greeting — warm, brief, appears only when no session done today ── */}
       {!checkinDue && (
         <Text style={styles.greeting}>
-          {isFirstSession
-            ? 'Welcome. Your voice journey starts here.'
-            : 'Good to see you. Your voice is ready when you are.'}
+          {isFirstSession ? 'Welcome. Start your voice journey.' : 'Good to see you.'}
         </Text>
       )}
 
@@ -512,15 +516,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorBannerText: {
-    color: '#FE9C2D',
-    fontSize: 13,
+    color: '#FFA940',
+    fontSize: 16,
     fontWeight: '600',
   },
 
   // ── Greeting ──────────────────────────────────────────────────────────────
   greeting: {
     color: 'rgba(195,222,206,0.75)',
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '500',
     letterSpacing: 0.2,
     paddingHorizontal: 20,
@@ -538,9 +542,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 18,
     backgroundColor: '#2D6974',
-    borderRadius: 22,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.22)',
+    borderColor: 'rgba(195,222,206,0.18)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
@@ -568,7 +572,7 @@ const styles = StyleSheet.create({
   },
   speechSub: {
     color: 'rgba(195,222,206,0.80)',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '400',
     letterSpacing: 0.2,
   },
@@ -609,7 +613,7 @@ const styles = StyleSheet.create({
   },
   streakLabel: {
     color: 'rgba(255,255,255,0.80)',
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '600',
   },
 

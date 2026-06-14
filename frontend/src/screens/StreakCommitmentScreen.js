@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;   // Figma frame scale
 
-const ORANGE = '#FE9C2D';
+const ORANGE = '#FFA940';
 const TEAL   = '#37767A';
 const DARK   = '#0A1618';
 const WHITE  = '#FFFFFF';
@@ -511,26 +511,26 @@ const styles = StyleSheet.create({
     gap: 12 * SC,
   },
   shareBtn: {
-    width: 58 * SC,
-    height: 58 * SC,
-    borderRadius: 16 * SC,
-    backgroundColor: 'rgba(55,118,122,0.45)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1.5,
-    borderColor: 'rgba(195,222,206,0.25)',
+    borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   commitBtn: {
     flex: 1,
-    height: 58 * SC,
-    borderRadius: 16 * SC,
+    paddingVertical: 20,
+    borderRadius: 28,
     backgroundColor: ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.40,
-    shadowRadius: 14,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
     elevation: 8,
   },
   commitBtnText: {

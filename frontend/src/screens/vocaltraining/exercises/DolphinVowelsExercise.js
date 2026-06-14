@@ -90,7 +90,7 @@ const DOLPHIN_OUTPUT_X    = [
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const DARK_TEAL      = '#1C4047';
-const INSTRUCTION_BG = '#2E4057';
+const INSTRUCTION_BG = '#1C3242';
 const ORANGE         = '#FFA940';
 const WHITE          = '#FFFFFF';
 
@@ -114,29 +114,29 @@ function FadeIn({ children, duration = 340 }) {
 }
 
 // Button size — identical across all exercise screens in the app
-const BTN = 52;
+const BTN = 56;
 
 const hb = StyleSheet.create({
   ghost: {
     width: BTN, height: BTN, borderRadius: BTN / 2,
-    backgroundColor: 'rgba(255,255,255,0.11)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
   ghostText: {
-    color: WHITE, fontSize: 19, fontWeight: '600',
-    includeFontPadding: false, textAlign: 'center', lineHeight: 19,
+    color: WHITE, fontSize: 20, fontWeight: '500',
+    includeFontPadding: false, textAlign: 'center', lineHeight: 20,
   },
   orange: {
     width: BTN, height: BTN, borderRadius: BTN / 2,
     backgroundColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
     shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   orangeText: {
-    color: WHITE, fontSize: 22, fontWeight: '900',
-    includeFontPadding: false, textAlign: 'center', lineHeight: 22,
+    color: WHITE, fontSize: 24, fontWeight: '900',
+    includeFontPadding: false, textAlign: 'center', lineHeight: 24,
   },
 });
 
@@ -151,12 +151,12 @@ function InstructionsBadge() {
 
 const badge = StyleSheet.create({
   pill: {
-    backgroundColor: ORANGE, borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 5,
+    backgroundColor: ORANGE, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 6,
     alignSelf: 'center', marginTop: 12,
   },
   text: {
-    color: WHITE, fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
+    color: WHITE, fontSize: 16, fontWeight: '800', letterSpacing: 0.8,
   },
 });
 
@@ -730,10 +730,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
         return (
           <Text key={`lbl-${i}`} pointerEvents="none" style={{
             position: 'absolute',
-            left:  cx - 10,
-            top:   cy - HOOP_RY - 26,
+            left:  cx - 11,
+            top:   cy - HOOP_RY - 28,
             color: done ? '#64C882' : 'rgba(255,255,255,0.55)',
-            fontSize: 14, fontWeight: '800',
+            fontSize: 16, fontWeight: '800',
           }}>
             {done ? '✓' : v}
           </Text>
@@ -834,7 +834,7 @@ const ex = StyleSheet.create({
     includeFontPadding: false,
   },
   subHint: {
-    color: 'rgba(255,255,255,0.40)', fontSize: 13, marginTop: 4,
+    color: 'rgba(255,255,255,0.38)', fontSize: 16, marginTop: 4,
     letterSpacing: 0.3, textAlign: 'center',
   },
   doneText: {

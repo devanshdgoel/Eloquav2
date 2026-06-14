@@ -96,7 +96,7 @@ function ScoreArc({ score, label, color = ORANGE }) {
 const arcS = StyleSheet.create({
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   num:    { fontSize: 20 * SC, fontWeight: '800' },
-  label:  { color: 'rgba(255,255,255,0.50)', fontSize: 10 * SC, fontWeight: '600', letterSpacing: 0.4, textAlign: 'center' },
+  label:  { color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '600', letterSpacing: 0.4, textAlign: 'center' },
 });
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -253,18 +253,27 @@ export default function CheckinScreen({ navigation }) {
         form.append('task_type', 'reading');
         form.append('audio_duration_s', String(durationS));
         const authHeaders = await getAuthHeaders();
-        const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: form,
-        });
-        if (res.ok) {
-          const d = await res.json();
-          scores = d.data?.scores ?? scores;
+        const controller  = new AbortController();
+        const timeoutId   = setTimeout(() => controller.abort(), 30000);
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+            method: 'POST',
+            headers: authHeaders,
+            body: form,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const d = await res.json();
+            scores = d.data?.scores ?? scores;
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          console.warn('[Checkin] analyze-voice failed/timed out:', fetchErr?.message);
         }
       }
     } catch (e) {
-      console.error('[Checkin] analyze error (non-fatal):', e?.message);
+      console.error('[Checkin] stopRecording error:', e?.message);
     }
 
     setRecPhase('ready');
@@ -344,6 +353,14 @@ export default function CheckinScreen({ navigation }) {
         <StatusBar barStyle="light-content" />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={s.backBtnText}>←</Text>
+            </TouchableOpacity>
             <Text style={s.eyebrow}>PROGRESS CHECK-IN</Text>
             <Text style={s.heroTitle}>Your personal{'\n'}sentence</Text>
             <Text style={s.body}>
@@ -419,6 +436,16 @@ export default function CheckinScreen({ navigation }) {
       >
         <StatusBar barStyle="light-content" />
         <View style={[s.page, { flex: 1, justifyContent: 'flex-start', paddingBottom: bottom + 24 }]}>
+          {recPhase !== 'recording' && (
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={s.backBtnText}>←</Text>
+            </TouchableOpacity>
+          )}
           <Text style={s.eyebrow}>{isPre ? 'PRE-CHECK' : 'POST-CHECK'}</Text>
           <Text style={s.heroTitle}>{isPre ? 'Before\nyour training' : 'After\nyour training'}</Text>
           <Text style={s.body}>Read this sentence aloud, just as you would in everyday conversation.</Text>
@@ -614,9 +641,26 @@ const s = StyleSheet.create({
   root: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   page: { paddingHorizontal: 28, paddingTop: 28, width: '100%' },
 
+  backBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  backBtnText: {
+    color: WHITE,
+    fontSize: 20,
+    fontWeight: '500',
+  },
+
   eyebrow: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 11 * SC,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
     marginBottom: 10,
@@ -650,7 +694,7 @@ const s = StyleSheet.create({
   },
   charCount: {
     color: 'rgba(255,255,255,0.28)',
-    fontSize: 12,
+    fontSize: 16,
     textAlign: 'right',
     marginBottom: 24,
   },
@@ -671,7 +715,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.13)',
+    borderColor: 'rgba(195,222,206,0.18)',
     padding: 20,
     marginBottom: 36,
   },
@@ -705,7 +749,7 @@ const s = StyleSheet.create({
   recordingArea: { alignItems: 'center', gap: 16, width: '100%' },
   barGraph: { flexDirection: 'row', alignItems: 'flex-end', height: 80, gap: 2 },
   bar:      { borderRadius: 2 },
-  timerText: { color: 'rgba(255,255,255,0.45)', fontSize: 14, letterSpacing: 0.5 },
+  timerText: { color: 'rgba(255,255,255,0.60)', fontSize: 17, letterSpacing: 0.5 },
 
   centeredStatus: { alignItems: 'center', gap: 16, marginTop: 32 },
 
@@ -718,8 +762,8 @@ const s = StyleSheet.create({
   arcSection: { flexDirection: 'row', marginBottom: 32, alignItems: 'flex-start' },
   arcCol:     { flex: 1, alignItems: 'center', gap: 12 },
   arcColLabel: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 11 * SC,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
@@ -731,7 +775,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.10)',
     marginHorizontal: 8,
   },
-  delta: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  delta: { fontSize: 16, fontWeight: '700', marginTop: 2 },
   tierBadge: {
     backgroundColor: 'rgba(104,216,140,0.15)',
     borderRadius: 12,
@@ -748,7 +792,7 @@ const s = StyleSheet.create({
   },
   tierBadgeText: {
     color: WHITE,
-    fontSize: 13,
+    fontSize: 17,
     fontWeight: '600',
     textAlign: 'center',
     letterSpacing: 0.2,
@@ -760,8 +804,8 @@ const s = StyleSheet.create({
     gap: 8,
   },
   tierChangesLabel: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 12 * SC,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -787,7 +831,7 @@ const s = StyleSheet.create({
   },
   tierPillText: {
     color: WHITE,
-    fontSize: 13,
+    fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.2,
   },

@@ -28,11 +28,11 @@ import { getAuthHeaders } from '../utils/authHeaders';
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
 
-const ORANGE = '#FE9C2D';
+const ORANGE = '#FFA940';
 const TEAL   = '#2D6974';
 const MINT   = '#C3DECE';
 const WHITE  = '#FFFFFF';
-const DIM    = 'rgba(255,255,255,0.40)';
+const DIM    = 'rgba(255,255,255,0.38)';
 
 // ── Milestone definitions ─────────────────────────────────────────────────────
 const MILESTONES = [
@@ -225,19 +225,19 @@ const sc = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: 'rgba(45,105,116,0.38)',
-    borderRadius: 18 * SC,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.14)',
+    borderColor: 'rgba(195,222,206,0.18)',
     padding: 16 * SC,
     gap: 8 * SC,
   },
   top:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  label:   { color: DIM, fontSize: 11 * SC, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
+  label:   { color: DIM, fontSize: 16, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   score:   { fontSize: 34 * SC, fontWeight: '800', lineHeight: 38 * SC },
   noData:  { fontSize: 32 * SC, fontWeight: '300', color: 'rgba(255,255,255,0.25)' },
   deltaRow:{ flexDirection: 'row', alignItems: 'baseline' },
-  delta:   { fontSize: 13 * SC, fontWeight: '700' },
-  deltaLabel: { fontSize: 11 * SC, color: DIM, fontWeight: '500' },
+  delta:   { fontSize: 16, fontWeight: '700' },
+  deltaLabel: { fontSize: 16, color: DIM, fontWeight: '500' },
 });
 
 // ── Milestone badge ───────────────────────────────────────────────────────────
@@ -259,9 +259,9 @@ const mb = StyleSheet.create({
     paddingVertical: 18 * SC,
     paddingHorizontal: 12 * SC,
     backgroundColor: 'rgba(45,105,116,0.38)',
-    borderRadius: 18 * SC,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.16)',
+    borderColor: 'rgba(195,222,206,0.18)',
     gap: 6,
   },
   locked: {
@@ -275,9 +275,9 @@ const mb = StyleSheet.create({
     marginBottom: 2,
   },
   iconWrapUnlocked: { backgroundColor: 'rgba(254,156,45,0.15)' },
-  title:   { color: WHITE, fontSize: 13 * SC, fontWeight: '700', textAlign: 'center' },
+  title:   { color: WHITE, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   dim:     { color: 'rgba(255,255,255,0.32)' },
-  desc:    { color: 'rgba(255,255,255,0.42)', fontSize: 11 * SC, textAlign: 'center', lineHeight: 15 * SC },
+  desc:    { color: 'rgba(255,255,255,0.42)', fontSize: 16, textAlign: 'center', lineHeight: 22 },
 });
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -293,11 +293,11 @@ const stat = StyleSheet.create({
   card: {
     flex: 1, alignItems: 'center', paddingVertical: 18 * SC,
     backgroundColor: 'rgba(45,105,116,0.38)',
-    borderRadius: 18 * SC, borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.14)', gap: 4,
+    borderRadius: 16, borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.18)', gap: 4,
   },
   value: { fontSize: 30 * SC, fontWeight: '800', letterSpacing: 0.5 },
-  label: { color: DIM, fontSize: 11 * SC, fontWeight: '500', textAlign: 'center' },
+  label: { color: DIM, fontSize: 16, fontWeight: '500', textAlign: 'center' },
 });
 
 // ── Main screen ───────────────────────────────────────────────────────────────
@@ -395,11 +395,11 @@ export default function ProgressScreen({ navigation }) {
         </View>
       ) : error ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 }}>
-          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+          <Text style={{ color: 'rgba(255,255,255,0.60)', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
             Could not load your progress.{'\n'}Check your connection and try again.
           </Text>
           <TouchableOpacity
-            style={{ backgroundColor: ORANGE, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 22 }}
+            style={{ backgroundColor: ORANGE, paddingHorizontal: 28, paddingVertical: 20, borderRadius: 28, shadowColor: ORANGE, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8 }}
             onPress={loadData}
             activeOpacity={0.85}
           >
@@ -519,8 +519,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   backBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center', justifyContent: 'center',
   },
   backText:    { color: WHITE, fontSize: 22, fontWeight: '300' },
@@ -539,40 +540,40 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   ringNum:   { color: WHITE, fontSize: 40 * SC, fontWeight: '800', lineHeight: 44 * SC },
-  ringOf:    { color: DIM, fontSize: 13 * SC, fontWeight: '500' },
-  ringLabel: { color: DIM, fontSize: 13 * SC },
+  ringOf:    { color: DIM, fontSize: 16, fontWeight: '500' },
+  ringLabel: { color: DIM, fontSize: 16 },
   levelTag:  {
     paddingHorizontal: 16 * SC, paddingVertical: 5,
     backgroundColor: `${ORANGE}22`,
     borderRadius: 20, borderWidth: 1, borderColor: `${ORANGE}55`,
   },
-  levelTagText: { color: ORANGE, fontSize: 13 * SC, fontWeight: '700', letterSpacing: 0.5 },
+  levelTagText: { color: ORANGE, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
 
   checkinHint: {
-    color: DIM, fontSize: 12 * SC, textAlign: 'center', marginTop: 4,
+    color: DIM, fontSize: 16, textAlign: 'center', marginTop: 4,
   },
   checkinDuePill: {
     backgroundColor: `${ORANGE}22`,
     borderRadius: 16, borderWidth: 1, borderColor: `${ORANGE}66`,
     paddingHorizontal: 16, paddingVertical: 6, marginTop: 4,
   },
-  checkinDueText: { color: ORANGE, fontSize: 13 * SC, fontWeight: '700' },
+  checkinDueText: { color: ORANGE, fontSize: 16, fontWeight: '700' },
 
   row: { flexDirection: 'row', gap: 12 * SC },
 
   sectionTitle: { color: WHITE, fontSize: 18 * SC, fontWeight: '700', letterSpacing: 0.3 },
-  sectionSub:   { color: DIM, fontSize: 12 * SC, marginTop: -10 * SC },
+  sectionSub:   { color: DIM, fontSize: 16, marginTop: -10 * SC },
 
   // No baseline
   noBaselineCard: {
     backgroundColor: 'rgba(45,105,116,0.30)',
-    borderRadius: 20, borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.12)',
+    borderRadius: 16, borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.18)',
     padding: 28 * SC, alignItems: 'center', gap: 10,
   },
   noBaselineIcon:  { fontSize: 36 },
   noBaselineTitle: { color: WHITE, fontSize: 18 * SC, fontWeight: '700' },
-  noBaselineBody:  { color: DIM, fontSize: 14 * SC, textAlign: 'center', lineHeight: 21 * SC },
+  noBaselineBody:  { color: DIM, fontSize: 16, textAlign: 'center', lineHeight: 24 },
 
   milestoneGrid: {
     flexDirection: 'row',

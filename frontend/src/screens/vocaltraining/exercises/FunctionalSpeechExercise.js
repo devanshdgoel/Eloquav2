@@ -37,7 +37,7 @@ const C = {
   tealMid:  '#3D7B85',
   tealBlob: '#264E56',     // dark blob blobs
   blobMid:  '#2A5C65',
-  orange:   '#FE9C2D',
+  orange:   '#FFA940',
   white:    '#FFFFFF',
   textDim:  'rgba(255,255,255,0.6)',
 };
@@ -802,7 +802,7 @@ const styles = StyleSheet.create({
   wordTextSm:  { fontSize: 24 * SC, lineHeight: 34 * SC },
 
   phaseHint: {
-    color: C.textDim, fontSize: 16 * SC, textAlign: 'center',
+    color: C.textDim, fontSize: 16, textAlign: 'center',
     marginTop: 10 * SC, letterSpacing: 0.4,
   },
 
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.teal, borderRadius: 20 * SC,
     paddingVertical: 12 * SC, paddingHorizontal: 28 * SC,
   },
-  readyBtnText: { color: C.white, fontSize: 15 * SC, fontWeight: '700' },
+  readyBtnText: { color: C.white, fontSize: 17, fontWeight: '700' },
 
   // Bottom bar
   barTrack: {

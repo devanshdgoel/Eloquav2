@@ -65,7 +65,7 @@ const PITCH_TIERS = [
 // ── Colours ───────────────────────────────────────────────────────────────────
 const TEAL_DARK  = '#1C4047';
 const TEAL_MID   = '#2D6974';
-const ORANGE     = '#FE9C2D';
+const ORANGE     = '#FFA940';
 const WHITE      = '#FFFFFF';
 const GREEN_HOOP = '#45B013';
 
@@ -117,6 +117,7 @@ const PITCH_HTML = `<!DOCTYPE html>
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       video: false
     });
+    window._stream = stream;
     var ctx    = new (window.AudioContext || window.webkitAudioContext)();
     var src    = ctx.createMediaStreamSource(stream);
     var an     = ctx.createAnalyser();
@@ -241,14 +242,14 @@ function HoopEllipse({ state }) {
 }
 
 // ── Button styles ─────────────────────────────────────────────────────────────
-const BTN_SZ = Math.round(fs(53));
+const BTN_SZ = 56;
 const bs = StyleSheet.create({
-  close:        { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.26)', justifyContent: 'center', alignItems: 'center' },
-  closeText:    { color: WHITE, fontSize: 20, fontWeight: '700', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
+  close:        { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2, backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)', justifyContent: 'center', alignItems: 'center' },
+  closeText:    { color: WHITE, fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
   back:         { width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14, backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center' },
   backText:     { color: WHITE, fontSize: 24, fontWeight: '700', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
   question:     { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2, backgroundColor: ORANGE, justifyContent: 'center', alignItems: 'center', shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 8 },
-  questionText: { color: WHITE, fontSize: 22, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  questionText: { color: WHITE, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -369,6 +370,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [micError,  setMicError]  = useState(false);
 
   const hoopsDoneRef  = useRef(0);
+  const webViewRef    = useRef(null);
   const phaseRef      = useRef('calibrating');
   const basePitchRef  = useRef(null);
   const calibSampRef  = useRef([]);
@@ -418,7 +420,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (next >= TOTAL_HOOPS) {
       phaseRef.current = 'done';
       setPhase('done');
-      // V2: score is always 100 — exercise only completes when all hoops cleared
+      // Stop the getUserMedia stream so the next exercise can claim the mic
+      webViewRef.current?.injectJavaScript(`
+        try { if (window._stream) { window._stream.getTracks().forEach(function(t){t.stop();}); } } catch(e){}
+        true;
+      `);
       setTimeout(() => onComplete(100), 1400);
     }
   }
@@ -487,6 +493,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       {/* Hidden WebView — handles mic + pitch detection */}
       <View style={xs.webviewWrap} pointerEvents="none">
         <WebView
+          ref={webViewRef}
           source={{ html: PITCH_HTML, baseUrl: 'https://eloqua-backend.onrender.com' }}
           originWhitelist={['*']}
           javaScriptEnabled={true}
@@ -589,9 +596,9 @@ const xs = StyleSheet.create({
   },
   micErrorBody: {
     color: 'rgba(255,255,255,0.60)',
-    fontSize: fs(15),
+    fontSize: 17,
     textAlign: 'center',
-    lineHeight: fv(22),
+    lineHeight: 24,
     marginBottom: fv(32),
   },
   micErrorBtn: {
@@ -602,7 +609,7 @@ const xs = StyleSheet.create({
   },
   micErrorBtnText: {
     color: '#1A1A1A',
-    fontSize: fs(15),
+    fontSize: 17,
     fontWeight: '700',
   },
 });

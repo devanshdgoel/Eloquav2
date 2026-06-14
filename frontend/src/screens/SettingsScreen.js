@@ -39,10 +39,10 @@ const BG_BOT    = '#0A1618';
 const CARD      = 'rgba(45,105,116,0.45)';
 const CARD_BORD = 'rgba(195,222,206,0.15)';
 const TEAL      = '#2D6974';
-const ORANGE    = '#FE9C2D';
+const ORANGE    = '#FFA940';
 const MINT      = '#C3DECE';
 const WHITE     = '#FFFFFF';
-const DIM       = 'rgba(255,255,255,0.45)';
+const DIM       = 'rgba(255,255,255,0.60)';
 const DIVIDER   = 'rgba(195,222,206,0.10)';
 const RED       = '#E05252';
 
@@ -143,7 +143,7 @@ const sec = StyleSheet.create({
   wrap:  { gap: 8 * SC },
   label: {
     color: MINT,
-    fontSize: 11 * SC,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
     paddingHorizontal: 4 * SC,
@@ -151,7 +151,7 @@ const sec = StyleSheet.create({
   },
   card: {
     backgroundColor: CARD,
-    borderRadius: 18 * SC,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: CARD_BORD,
     overflow: 'hidden',
@@ -198,8 +198,8 @@ const row = StyleSheet.create({
     borderBottomColor: DIVIDER,
   },
   left:  { flex: 1, gap: 2 },
-  label: { color: WHITE, fontSize: 15 * SC, fontWeight: '500', letterSpacing: 0.1 },
-  sublabel: { color: DIM, fontSize: 12 * SC, letterSpacing: 0.1 },
+  label: { color: WHITE, fontSize: 16, fontWeight: '500', letterSpacing: 0.1 },
+  sublabel: { color: DIM, fontSize: 16, letterSpacing: 0.1 },
 });
 
 // ── Value badge ───────────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ const vt = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: 'rgba(0,0,0,0.18)',
   },
-  text: { fontSize: 12 * SC, fontWeight: '700', letterSpacing: 0.4 },
+  text: { fontSize: 16, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ── Time picker modal ─────────────────────────────────────────────────────────
@@ -338,9 +338,14 @@ const tp = StyleSheet.create({
     marginHorizontal: 20 * SC,
     marginTop: 8,
     backgroundColor: ORANGE,
-    borderRadius: 14 * SC,
-    paddingVertical: 14,
+    borderRadius: 28,
+    paddingVertical: 20,
     alignItems: 'center',
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
   closeBtnText: {
     color: '#1A1A1A',
@@ -408,7 +413,7 @@ const mp = StyleSheet.create({
   optionRight: {},
   label: {
     color: DIM,
-    fontSize: 13 * SC,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.3,
     includeFontPadding: false,
@@ -416,7 +421,7 @@ const mp = StyleSheet.create({
   labelActive: { color: ORANGE },
   sub: {
     color: 'rgba(255,255,255,0.28)',
-    fontSize: 10 * SC,
+    fontSize: 16,
     letterSpacing: 0.2,
   },
   subActive: { color: 'rgba(254,156,45,0.70)' },
@@ -953,10 +958,12 @@ const s = StyleSheet.create({
     paddingBottom: 12 * SC,
   },
   backBtn: {
-    width: 44 * SC,
-    height: 44 * SC,
-    borderRadius: 22 * SC,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -996,7 +1003,7 @@ const s = StyleSheet.create({
   },
   profileEmail: {
     color: DIM,
-    fontSize: 13 * SC,
+    fontSize: 16,
     letterSpacing: 0.1,
   },
   createAccountBtn: {
@@ -1011,7 +1018,7 @@ const s = StyleSheet.create({
   },
   createAccountText: {
     color: ORANGE,
-    fontSize: 12 * SC,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
@@ -1045,7 +1052,7 @@ const s = StyleSheet.create({
   },
   deleteText: {
     color: RED,
-    fontSize: 15 * SC,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
   },

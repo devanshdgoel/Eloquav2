@@ -136,7 +136,7 @@ export default function SignInScreen({ navigation }) {
           >
             {loading
               ? <ActivityIndicator color="#1C4047" size="small" />
-              : <Text style={styles.arrowText}>→</Text>
+              : <Text style={styles.arrowText}>Sign In  →</Text>
             }
           </TouchableOpacity>
 
@@ -188,13 +188,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 52,
     left: 20,
-    backgroundColor: '#E0ECDE',
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.20)',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 10,
   },
-  backArrow: { color: '#1C4047', fontSize: 18, fontWeight: '600' },
+  backArrow: { color: '#FFFFFF', fontSize: 20, fontWeight: '500' },
 
   bubble: {
     position: 'absolute',
@@ -230,7 +234,9 @@ const styles = StyleSheet.create({
 
   inputCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(28,64,71,0.10)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -247,22 +253,22 @@ const styles = StyleSheet.create({
   },
 
   arrowBtn: {
-    backgroundColor: '#68B39F',
-    width: 80,
-    height: 80,
-    borderRadius: 16,
+    backgroundColor: '#FFA940',
+    borderRadius: 28,
+    paddingVertical: 20,
+    alignSelf: 'stretch',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
+    shadowColor: '#FFA940',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
     marginTop: 8,
     marginBottom: 28,
   },
   arrowBtnDisabled: { opacity: 0.6 },
-  arrowText: { color: '#FFFFFF', fontSize: 32, fontWeight: '700' },
+  arrowText: { color: '#1A1A1A', fontSize: 18, fontWeight: '800' },
 
   orText: {
     color: '#FFFFFF',
@@ -273,7 +279,9 @@ const styles = StyleSheet.create({
 
   socialCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(28,64,71,0.10)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -292,8 +300,8 @@ const styles = StyleSheet.create({
   socialText: { fontSize: 18, color: '#1C4047', letterSpacing: 0.3 },
 
   createLink: { marginTop: 24, paddingVertical: 8 },
-  createText: { color: 'rgba(255,255,255,0.7)', fontSize: 15 },
+  createText: { color: 'rgba(255,255,255,0.60)', fontSize: 17 },
 
   forgotLink: { alignSelf: 'flex-end', paddingVertical: 4, marginTop: -6 },
-  forgotText: { color: 'rgba(255,255,255,0.55)', fontSize: 14 },
+  forgotText: { color: 'rgba(255,255,255,0.70)', fontSize: 16 },
 });

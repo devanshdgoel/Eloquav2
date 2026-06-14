@@ -2,7 +2,7 @@
 
 *Target users: stroke and Parkinson's disease patients who may experience fatigue, reduced motor precision, slower processing speed, aphasia, and emotional vulnerability around their voice.*
 
-*Last updated: 2026-05-25*
+*Last updated: 2026-06-05*
 
 ---
 
@@ -24,14 +24,34 @@ Every screen was built with these constraints in mind:
 
 ### Font Sizes
 
-| Context | Size | Where applied |
-|---------|------|---------------|
-| Body / instruction text | **18px (fixed)** | CheckinScreen body, AssessmentScreen bodyText |
-| Instruction text | **22px+** | HeroTitle (33–40px), exercise headings |
-| Score arc labels | 10–13 * SC | Small circular labels — acceptable given visual context |
-| Button labels | **18px (fixed)** | All primary buttons |
+All text in the app is **≥ 16px** — the WCAG 2.1 minimum for body text. This was enforced globally in Session 6 with a full audit of all exercise and component screens. The SC scale factor (screen width / 402) is now only used for spacing, icon sizes, and decorative measurements — **never for text**.
 
-The SC (scale factor = screen width / 402) is retained for purely decorative measurements (spacing, icon sizes) but **not** for body text or button labels. This prevents text from dropping below readable thresholds on smaller devices.
+| Context | Minimum size | Token |
+|---------|-------------|-------|
+| Hero numbers (score/countdown) | 128px | `type.score` |
+| Screen titles | 38px | `type.h1` |
+| Section headings | 24–32px | `type.h2`, `type.h3` |
+| Sub-headings | 20px | `type.h4` |
+| Body / instruction text | 17–18px | `type.body`, `type.bodyLg` |
+| Secondary body / captions | **16px minimum** | `type.bodySm`, `type.caption` |
+| Button labels (primary) | 18–20px | `type.button`, `type.buttonLg` |
+| Icon button glyphs | 20–24px | `type.icon`, `type.iconLg` |
+| Pill / badge labels | 16px | `type.pill` |
+
+All sizes are defined in `frontend/src/theme/index.js` (`type` export) and must be referenced from there — never hardcoded in individual screens.
+
+### Prior text fixes (Session 6 audit)
+
+Previously these were below 16px and have been corrected:
+
+| File | Properties fixed |
+|---|---|
+| `BreathingExercise.js` | pillText, stepNum, instrText (all were 11–15px) |
+| `SustainedPhonationExercise.js` | tag, stepNum, scoreTagText, pillText, tapHint, goalHint, goalReached (11–15px) |
+| `DolphinVowelsExercise.js` | badge.text, vowel label, subHint (12–14px) |
+| `CantDoNow.js` | triggerText, body, skipSub, stayText (13–15px) |
+| `PitchGlidesExercise.js` | micErrorBody, micErrorBtnText (15px) |
+| `FunctionalSpeechExercise.js` | readyBtnText, phaseHint (SC-scaled, could drop below 16px) |
 
 ### Jargon Removal
 
@@ -52,18 +72,33 @@ All clinical terminology replaced with plain language throughout the app:
 
 ## Touch Targets & Motor Precision
 
-### Button Heights
+### Design System Standards (Session 6)
 
-All primary action buttons use fixed `paddingVertical: 20` which, combined with an 18px font and line height, produces button heights of **≥ 58px** — above the 56px minimum for users with reduced motor control.
+All icon/close/back buttons are now standardized to the `ui.ghostBtn` pattern from `theme/index.js`:
+- **56×56px** fixed size (not SC-scaled)
+- **borderRadius: 28** (perfect circle)
+- `rgba(255,255,255,0.10)` background, `rgba(255,255,255,0.20)` border
+
+Orange help/info buttons use `ui.orangeBtn` (same 56×56/r28, #FFA940 background with shadow).
+
+Primary CTA buttons use `ui.primaryBtn`:
+- Full-width, `paddingVertical: 20`, `borderRadius: 28`, `#FFA940` with shadow
+- Resulting height: **~58px** — above the 56px minimum for motor accessibility
+
+### Button Heights
 
 | Screen | Button | Height |
 |--------|--------|--------|
+| All screens | Close / back icon buttons | **56px** (fixed, standardized) |
 | AssessmentScreen | Start My Journey / See My Progress | ~58px |
 | CheckinScreen | Save & Begin, Finish, Tap to Record | ~58px |
 | VocalTrainingSessionScreen | Back to Home (fallback) | ~58px |
-| MidpointScreen | Keep going | ~58px (paddingVertical: 18 + 18px font) |
-| StreakCelebrationScreen | See your progress | ~58px (paddingVertical: 18) |
-| SpeechEnhancementScreen | Play, Copy, New recording, Try Again | ≥ 52px (SC-scaled but large on any device) |
+| MidpointScreen | Keep going | ~58px |
+| StreakCelebrationScreen | See your progress | ~58px |
+| SignUpScreen | Create Account | ~58px |
+| SignInScreen | Sign In | ~58px |
+| SetupAboutYouScreen | Continue | ~58px |
+| SpeechEnhancementScreen | Play, Copy, New recording, Try Again | ≥ 52px |
 
 ### Skip Zone (Dev Tool)
 
@@ -279,12 +314,31 @@ Key components include `accessibilityRole` and `accessibilityLabel`:
 
 ---
 
+## Design Tokens (Single Source of Truth)
+
+All colours, spacing, radii, and typography now flow from `frontend/src/theme/index.js`. Key rules for new screens:
+
+| Rule | Value |
+|---|---|
+| Secondary text opacity | `rgba(255,255,255,0.60)` |
+| Faint/hint text opacity | `rgba(255,255,255,0.38)` |
+| Card border | `rgba(195,222,206,0.18)` — mint at 18% |
+| Card border radius | 16 |
+| CTA button radius | 28 |
+| Icon button size | 56×56, r28 |
+| Primary orange | `#FFA940` — the only orange in the app |
+| Error red | `#E05252` |
+| Success green | `#48D28C` |
+
+---
+
 ## What Is Not Yet Done
 
 | Gap | Notes |
 |-----|-------|
-| VoiceOver / TalkBack full audit | Screen reader behaviour not fully tested. Arc score labels (10px) would be inaudible without `accessibilityLabel`. |
-| Dynamic text scaling | The app uses fixed font sizes — good for minimum size but does not respond to OS "Larger Text" accessibility setting. |
-| High-contrast mode | No explicit dark-mode or high-contrast variant. The teal-on-dark theme has reasonable contrast but is untested with WCAG 2.1 contrast checker. |
-| Haptic feedback in exercises | StreakCelebration uses haptics; individual vocal exercises do not. Adding a subtle haptic on exercise completion would improve feedback for users with visual impairment. |
+| VoiceOver / TalkBack full audit | Screen reader behaviour not fully tested. Arc score labels in CheckinScreen would be inaudible without `accessibilityLabel`. |
+| Dynamic text scaling | The app uses fixed font sizes — good for minimum floor but does not respond to OS "Larger Text" accessibility setting. |
+| High-contrast mode | No explicit high-contrast variant. The teal-on-dark theme has reasonable contrast but is untested against WCAG 2.1 AA contrast ratios. |
+| Haptic feedback in exercises | StreakCelebration uses haptics; individual vocal exercises do not. A subtle haptic on exercise completion would improve feedback for users with visual impairment. |
 | Keyboard / switch access | No external keyboard or switch-control optimisation. Not critical for this user group but worth noting. |
+| `accessibilityLabel` coverage | Most interactive elements lack explicit labels. A full pass adding `accessibilityRole` + `accessibilityLabel` to all Touchables and animated elements is needed before any App Store submission. |
