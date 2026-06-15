@@ -117,7 +117,8 @@
       "Bash(dir \"C:/Users/devan/Desktop/Imperial/Eloqua/Eloquav2/Eloquav2/\" /b)",
       "Bash(xargs sed -i 's/#FE9C2D/#FFA940/g')",
       "Bash(xargs sed -i 's/color: '\\\\''rgba\\(255,255,255,0\\\\.55\\)'\\\\''/color: '\\\\''rgba\\(255,255,255,0.60\\)'\\\\''/g;    s/color: '\\\\''rgba\\(255,255,255,0\\\\.50\\)'\\\\''/color: '\\\\''rgba\\(255,255,255,0.60\\)'\\\\''/g;    s/color: '\\\\''rgba\\(255,255,255,0\\\\.45\\)'\\\\''/color: '\\\\''rgba\\(255,255,255,0.60\\)'\\\\''/g;    s/color: '\\\\''rgba\\(255,255,255,0\\\\.40\\)'\\\\''/color: '\\\\''rgba\\(255,255,255,0.38\\)'\\\\''/g;    s/color: '\\\\''rgba\\(255,255,255,0\\\\.35\\)'\\\\''/color: '\\\\''rgba\\(255,255,255,0.38\\)'\\\\''/g')",
-      "PowerShell(Get-Content *)"
+      "PowerShell(Get-Content *)",
+      "Bash(Get-Content *)"
     ]
   }
 }
