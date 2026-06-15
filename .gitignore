@@ -25,11 +25,17 @@ frontend/dist/
 # SONIVA model weights — too large for git (~1.5 GB uncompressed)
 backend/soniva_model/
 
-# Large media — use external hosting, not git
+# Large media and model files — use external hosting, not git
 *.mp4
 *.mov
 *.avi
 *.mkv
+*.tar.gz
+*.tar
+*.zip
+*.mp3
+*.wav
+*.m4a
 *.jks
 *.p8
 *.p12
