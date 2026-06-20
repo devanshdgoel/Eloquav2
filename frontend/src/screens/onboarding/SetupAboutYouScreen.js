@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../../config/firebase';
 import { saveUserProfileToFirestore } from '../../services/userService';
 import { saveUserProfile, setOnboardingComplete } from '../../utils/storage';
+import { logFunnelEvent } from '../../utils/analytics';
 
 const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
@@ -40,6 +41,7 @@ export default function SetupAboutYouScreen({ navigation }) {
     }
 
     await setOnboardingComplete();
+    logFunnelEvent('about_you_completed');
     navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
 

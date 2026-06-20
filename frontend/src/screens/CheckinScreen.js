@@ -315,6 +315,28 @@ export default function CheckinScreen({ navigation }) {
       if (preScores && postScores) {
         await adjustDifficultyAfterCheckin(preScores, postScores);
       }
+
+      // Save post-session scores as a check-in entry so ProgressScreen sparklines update.
+      // Non-fatal: a failed save does not block the user from completing the check-in.
+      if (postScores) {
+        try {
+          const ciForm = new FormData();
+          ciForm.append('assessment_type', 'checkin');
+          if (postScores.voice_power != null) ciForm.append('voice_power', String(Math.round(postScores.voice_power)));
+          if (postScores.expression  != null) ciForm.append('expression',  String(Math.round(postScores.expression)));
+          if (postScores.fluency     != null) ciForm.append('fluency',     String(Math.round(postScores.fluency)));
+          ciForm.append('task_results_json', '{}');
+          const ciHeaders = await getAuthHeaders();
+          await fetch(`${API_BASE_URL}/api/save-assessment`, {
+            method: 'POST',
+            headers: ciHeaders,
+            body: ciForm,
+          });
+        } catch (ciErr) {
+          console.warn('[Checkin] save-assessment non-fatal:', ciErr?.message);
+        }
+      }
+
       const result  = await completeSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();

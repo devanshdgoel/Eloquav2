@@ -19,6 +19,7 @@ import { SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/env';
 import { getAuthHeaders } from '../utils/authHeaders';
+import { logUsageEvent } from '../utils/analytics';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -454,6 +455,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
             ? "Couldn't connect right now. Check your connection and try again."
             : "Nothing heard — tap again when you're ready."
         );
+        logUsageEvent({
+          event:  'speech_enhance_failed',
+          reason: chunkErrorsRef.current > 0 ? 'network_error' : 'no_audio',
+        });
         setPhase(S.ERROR);
         return;
       }
@@ -462,6 +467,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
     } catch (e) {
       console.error('[Speech] stopRecording error:', e?.message);
       setErrorMsg('Recording failed. Please try again.');
+      logUsageEvent({ event: 'speech_enhance_failed', reason: 'recording_error' });
       setPhase(S.ERROR);
     }
   }
@@ -489,6 +495,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
       const data = await res.json();
       setResult({ ...data, raw_transcript: rawText });
       setPhase(S.RESULTS);
+      logUsageEvent({
+        event:       'speech_enhance_completed',
+        duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
+      });
 
       // Fire-and-forget: non-blocking voice analysis for progress tracking.
       // Does NOT affect the current session's results.
@@ -496,6 +506,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
     } catch (e) {
       console.error('[Speech] enhanceText error:', e?.message);
       setErrorMsg(e.message || 'Enhancement failed. Please try again.');
+      logUsageEvent({ event: 'speech_enhance_failed', reason: 'api_error' });
       setPhase(S.ERROR);
     }
   }

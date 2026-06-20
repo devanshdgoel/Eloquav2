@@ -23,6 +23,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchProgress, TOTAL_NODES } from '../services/progressService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logFunnelEvent } from '../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 
@@ -167,6 +169,16 @@ export default function HomeScreen({ navigation }) {
   const dolphinUri = useMemo(
     () => Image.resolveAssetSource(require('../../assets/images/Dolphin2.png')).uri, []
   );
+
+  // Log the very first Home visit once per account (gate via AsyncStorage).
+  useEffect(() => {
+    AsyncStorage.getItem('eloqua_home_first_visit').then(v => {
+      if (!v) {
+        logFunnelEvent('home_first_visit');
+        AsyncStorage.setItem('eloqua_home_first_visit', '1').catch(() => {});
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll ────────────────────────────────────────────────────────────────
   function applyOffset(next) {

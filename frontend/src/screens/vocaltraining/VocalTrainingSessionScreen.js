@@ -26,6 +26,7 @@ import LoudnessDrills     from './exercises/LoudnessDrillsExercise';
 import TailoredExercise   from './exercises/TailoredExercise';
 import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
+import { logSessionEvent }   from '../../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 
@@ -140,6 +141,10 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   // V2: collect per-exercise scores during the session for Firestore persistence.
   const exerciseScoresRef = useRef({});
 
+  const startedAtRef     = useRef(Date.now()); // ms when session mounted
+  const exerciseIndexRef = useRef(0);           // mirrors exerciseIndex for the beforeRemove listener
+  const tiersRef         = useRef(DEFAULT_TIERS); // mirrors tiers for the beforeRemove listener
+
   // Load tiers and apply between-session nudges based on recent performance.
   // Also returns baseline_focus_key for TailoredExercise tie-breaking.
   useEffect(() => {
@@ -152,6 +157,11 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       })
       .catch(() => {/* keep defaults */});
   }, []);
+
+  // Keep refs in sync with state so the beforeRemove listener always reads the
+  // latest values without needing to be re-registered on every state change.
+  useEffect(() => { exerciseIndexRef.current = exerciseIndex; }, [exerciseIndex]);
+  useEffect(() => { tiersRef.current = tiers; }, [tiers]);
 
   // Guard against accidental back navigation mid-session.
   // Only blocks user-initiated back (POP / GO_BACK actions).
@@ -171,7 +181,19 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
           {
             text: 'Leave',
             style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
+            onPress: () => {
+              logSessionEvent({
+                started_at:                  new Date(startedAtRef.current).toISOString(),
+                abandoned_at:                new Date().toISOString(),
+                duration_s:                  Math.round((Date.now() - startedAtRef.current) / 1000),
+                node_index:                  nodeIndex,
+                completed:                   false,
+                abandoned_at_exercise_index: exerciseIndexRef.current,
+                abandoned_at_exercise_type:  SESSION_EXERCISES[exerciseIndexRef.current]?.type ?? null,
+                exercise_scores_partial:     { ...exerciseScoresRef.current },
+              });
+              navigation.dispatch(e.data.action);
+            },
           },
         ],
       );
@@ -196,6 +218,15 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     if (Object.keys(exerciseScoresRef.current).length > 0) {
       saveSessionExerciseScores(exerciseScoresRef.current).catch(() => {});
     }
+    logSessionEvent({
+      started_at:      new Date(startedAtRef.current).toISOString(),
+      completed_at:    new Date().toISOString(),
+      duration_s:      Math.round((Date.now() - startedAtRef.current) / 1000),
+      node_index:      nodeIndex,
+      completed:       true,
+      exercise_scores: { ...exerciseScoresRef.current },
+      tiers_at_start:  { ...tiersRef.current },
+    });
     try {
       const result  = await completeSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
@@ -285,16 +316,14 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
                   : {}
               )}
             />
-            {/*
-              Dev skip — hold bottom-right corner 2 s to advance without scoring.
-              Rendered last so it sits on top of exercise content without zIndex hacks.
-            */}
-            <TouchableOpacity
-              style={styles.skipZone}
-              onLongPress={handleExerciseComplete}
-              delayLongPress={2000}
-              activeOpacity={1}
-            />
+            {__DEV__ && (
+              <TouchableOpacity
+                style={styles.skipZone}
+                onLongPress={handleExerciseComplete}
+                delayLongPress={2000}
+                activeOpacity={1}
+              />
+            )}
           </>
         )}
       </View>

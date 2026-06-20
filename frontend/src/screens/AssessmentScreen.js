@@ -29,6 +29,8 @@ import { API_BASE_URL } from '../config/env';
 import { setTiersFromAssessment } from '../services/difficultyService';
 import { getAuthHeaders } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
+import { logFunnelEvent } from '../utils/analytics';
+import { getVoiceStatus } from '../services/voiceService';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -340,13 +342,15 @@ export default function AssessmentScreen({ navigation, route }) {
 
   async function cloneVoiceFromAssessment(uris) {
     try {
+      const status = await getVoiceStatus();
+      if (status.has_cloned_voice) return;
+
       const form = new FormData();
       uris.forEach((uri, i) => {
         form.append('files', { uri, type: 'audio/m4a', name: `voice_sample_${i}.m4a` });
       });
       form.append('user_name', auth.currentUser?.displayName || 'User');
       const authHeaders = await getAuthHeaders();
-      // No Content-Type override — fetch sets multipart/form-data with boundary automatically
       await fetch(`${API_BASE_URL}/api/voice/clone`, {
         method: 'POST',
         headers: authHeaders,
@@ -432,6 +436,7 @@ export default function AssessmentScreen({ navigation, route }) {
         if (!sessionRes.ok) throw new Error(`complete-session: ${sessionRes.status}`);
         onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       }
+      if (isBaseline) logFunnelEvent('assessment_baseline_completed');
       navigation.replace('Home');
     } catch (e) {
       console.error('[Assessment] finish:', e?.message);
@@ -485,7 +490,7 @@ export default function AssessmentScreen({ navigation, route }) {
             ))}
           </View>
 
-          <TouchableOpacity style={s.primaryBtn} onPress={() => setPhase('active')} activeOpacity={0.85}>
+          <TouchableOpacity style={s.primaryBtn} onPress={() => { if (isBaseline) logFunnelEvent('assessment_baseline_started'); setPhase('active'); }} activeOpacity={0.85}>
             <Text style={s.primaryBtnText}>Begin</Text>
           </TouchableOpacity>
         </ScrollView>

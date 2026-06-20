@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerWithEmail } from '../../services/authService';
+import { logFunnelEvent } from '../../utils/analytics';
 
 export default function SignUpScreen({ navigation }) {
   const [name, setName] = useState('');
@@ -49,6 +50,7 @@ export default function SignUpScreen({ navigation }) {
     setLoading(true);
     try {
       await registerWithEmail(trimEmail, trimPassword, name.trim());
+      logFunnelEvent('signup_completed');
       navigation.replace('SetupPermissions');
     } catch (error) {
       Alert.alert('Registration failed', error.message);
