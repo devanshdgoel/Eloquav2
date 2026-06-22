@@ -201,7 +201,7 @@ function IntroScreen({ onStart, onExit, progress }) {
 
       {/* X exit */}
       <View style={styles.introTopRow}>
-        <TouchableOpacity style={styles.introXBtn} onPress={onExit}>
+        <TouchableOpacity style={styles.introXBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={styles.introXText}>✕</Text>
         </TouchableOpacity>
       </View>
@@ -222,7 +222,7 @@ function IntroScreen({ onStart, onExit, progress }) {
       </View>
 
       {/* Arrow button */}
-      <TouchableOpacity style={styles.introArrowBtn} onPress={onStart}>
+      <TouchableOpacity style={styles.introArrowBtn} onPress={onStart} accessibilityRole="button" accessibilityLabel="Begin exercise">
         <Text style={styles.introArrowText}>→</Text>
       </TouchableOpacity>
 
@@ -588,11 +588,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
       {/* ── Top row ── */}
       <View style={styles.exTopRow}>
-        <TouchableOpacity style={styles.exXBtn} onPress={onExit}>
+        <TouchableOpacity style={styles.exXBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={styles.exXText}>✕</Text>
         </TouchableOpacity>
         <Text style={styles.exRepeatLabel}>Repeat</Text>
-        <TouchableOpacity style={styles.exHelpBtn} onPress={onShowDemo}>
+        <TouchableOpacity style={styles.exHelpBtn} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={styles.exHelpText}>?</Text>
         </TouchableOpacity>
       </View>
@@ -604,6 +604,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           await setPlaybackMode();
           Speech.speak(item.text, { language: 'en-GB', rate: 0.80, pitch: 1.05, voice: 'com.apple.voice.enhanced.en-GB.Daniel' });
         }}
+        accessibilityRole="button"
         accessibilityLabel="Tap to hear the word"
       >
         <Text style={styles.speakerIcon}>🔊</Text>
@@ -642,7 +643,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
       {/* ── "Speak" tap shortcut during hear phase ── */}
       {phase === 'hear' && (
-        <TouchableOpacity style={styles.readyBtn} onPress={openMic}>
+        <TouchableOpacity style={styles.readyBtn} onPress={openMic} accessibilityRole="button" accessibilityLabel="I'm ready to speak">
           <Text style={styles.readyBtnText}>I'm ready →</Text>
         </TouchableOpacity>
       )}
@@ -661,7 +662,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           <Text style={styles.drawerText}>
             Doesn't sound correct.{'\n'}Give it another try!
           </Text>
-          <TouchableOpacity style={styles.drawerArrow} onPress={retryItem}>
+          <TouchableOpacity style={styles.drawerArrow} onPress={retryItem} accessibilityRole="button" accessibilityLabel="Try again">
             <Text style={styles.drawerArrowText}>→</Text>
           </TouchableOpacity>
         </Animated.View>

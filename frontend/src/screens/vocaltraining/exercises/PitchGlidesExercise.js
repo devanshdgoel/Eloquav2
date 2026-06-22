@@ -261,7 +261,7 @@ function TitleScreen({ onNext, onExit }) {
       <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
         <StatusBar barStyle="light-content" />
         <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 20 }}>
-          <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}>
+          <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Exit exercise">
             <Text style={bs.closeText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -279,7 +279,7 @@ function TitleScreen({ onNext, onExit }) {
             />
           </View>
         </View>
-        <TouchableOpacity style={tts.arrowBtn} onPress={onNext} activeOpacity={0.82}>
+        <TouchableOpacity style={tts.arrowBtn} onPress={onNext} activeOpacity={0.82} accessibilityRole="button" accessibilityLabel="Continue to tutorial">
           <Text style={tts.arrowText}>→</Text>
         </TouchableOpacity>
         <View style={{ position: 'absolute', bottom: fv(29), left: fs(47), width: fs(314), height: 12, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)' }}>
@@ -320,10 +320,10 @@ function TutorialScreen({ onFinish, onExit }) {
         <View style={StyleSheet.absoluteFill}><View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)' }} /></View>
 
         <View style={{ position: 'absolute', top: fv(25), left: fs(23), zIndex: 30 }}>
-          <TouchableOpacity style={bs.back} onPress={goBack} activeOpacity={0.8}><Text style={bs.backText}>←</Text></TouchableOpacity>
+          <TouchableOpacity style={bs.back} onPress={goBack} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Go back"><Text style={bs.backText}>←</Text></TouchableOpacity>
         </View>
         <View style={{ position: 'absolute', top: fv(30), right: fs(23), zIndex: 30 }}>
-          <TouchableOpacity style={bs.question} onPress={goNext} activeOpacity={0.85}><Text style={bs.questionText}>?</Text></TouchableOpacity>
+          <TouchableOpacity style={bs.question} onPress={goNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Next slide"><Text style={bs.questionText}>?</Text></TouchableOpacity>
         </View>
 
         <Text style={tus.ahhText}>{'"ahh"'}</Text>
@@ -342,7 +342,7 @@ function TutorialScreen({ onFinish, onExit }) {
 
         <Animated.Text style={[tus.instruction, { opacity: fadeAnim }]}>{sl.instruction}</Animated.Text>
 
-        <TouchableOpacity style={{ position: 'absolute', bottom: fv(40), right: fs(40), zIndex: 30, ...tus.nextBtn }} onPress={goNext} activeOpacity={0.8}>
+        <TouchableOpacity style={{ position: 'absolute', bottom: fv(40), right: fs(40), zIndex: 30, ...tus.nextBtn }} onPress={goNext} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={slideIdx < SLIDES.length - 1 ? 'Next slide' : 'Start exercise'}>
           <Text style={tus.nextText}>{slideIdx < SLIDES.length - 1 ? '→' : '✓'}</Text>
         </TouchableOpacity>
       </View>
@@ -514,7 +514,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           <Text style={xs.micErrorBody}>
             Allow microphone access in your device settings, then restart the exercise.
           </Text>
-          <TouchableOpacity style={xs.micErrorBtn} onPress={onSkip} activeOpacity={0.85}>
+          <TouchableOpacity style={xs.micErrorBtn} onPress={onSkip} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Skip this exercise">
             <Text style={xs.micErrorBtnText}>Skip this exercise</Text>
           </TouchableOpacity>
         </View>
@@ -522,10 +522,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
       {/* Header */}
       <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 30 }}>
-        <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8}><Text style={bs.closeText}>✕</Text></TouchableOpacity>
+        <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Exit exercise"><Text style={bs.closeText}>✕</Text></TouchableOpacity>
       </View>
       <View style={{ position: 'absolute', top: fv(20), right: fs(14), zIndex: 30 }}>
-        <TouchableOpacity style={bs.question} onPress={onShowDemo} activeOpacity={0.85}><Text style={bs.questionText}>?</Text></TouchableOpacity>
+        <TouchableOpacity style={bs.question} onPress={onShowDemo} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Show instructions"><Text style={bs.questionText}>?</Text></TouchableOpacity>
       </View>
 
       <Text style={[exs.prompt, promptBig && exs.promptBig]}>{promptText}</Text>

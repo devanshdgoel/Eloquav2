@@ -264,7 +264,7 @@ export default function StreakCommitmentScreen({ navigation, route }) {
 
       {/* Gradient background */}
       <LinearGradient
-        colors={['#37767A', '#0A1618']}
+        colors={['#37767A', '#1C4047', '#0A1618']}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   // ── Week label ──
   weekLabel: {
     color: MINT,
-    fontSize: 11 * SC,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 3,
     marginBottom: 14 * SC,
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
   },
   dayLabel: {
     color: 'rgba(195,222,206,0.5)',
-    fontSize: 11 * SC,
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
     marginBottom: 8 * SC,
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
   // ── Commitment quote ──
   commitmentQuote: {
     color: MINT,
-    fontSize: 14 * SC,
+    fontSize: 16,
     fontWeight: '400',
     letterSpacing: 0.4,
     textAlign: 'center',

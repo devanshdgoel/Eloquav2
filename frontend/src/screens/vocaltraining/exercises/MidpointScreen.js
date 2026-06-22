@@ -43,7 +43,7 @@ export default function MidpointScreen({ onComplete, onExit }) {
       <StatusBar barStyle="light-content" />
 
       {/* X button */}
-      <TouchableOpacity style={s.closeBtn} onPress={onExit} accessibilityLabel="Exit session">
+      <TouchableOpacity style={s.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit session">
         <Text style={s.closeText}>✕</Text>
       </TouchableOpacity>
 
@@ -63,7 +63,7 @@ export default function MidpointScreen({ onComplete, onExit }) {
           ))}
         </View>
 
-        <TouchableOpacity style={s.continueBtn} onPress={onComplete} activeOpacity={0.85}>
+        <TouchableOpacity style={s.continueBtn} onPress={onComplete} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Keep going">
           <Text style={s.continueTxt}>Keep going  →</Text>
         </TouchableOpacity>
       </Animated.View>

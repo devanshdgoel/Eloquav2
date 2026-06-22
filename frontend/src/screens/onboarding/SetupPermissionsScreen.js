@@ -94,7 +94,7 @@ export default function SetupPermissionsScreen({ navigation }) {
           <Text style={s.noteText}>Audio processed securely. Never shared.</Text>
         </View>
 
-        <TouchableOpacity style={s.btn} onPress={handleAllow} activeOpacity={0.85}>
+        <TouchableOpacity style={s.btn} onPress={handleAllow} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Allow microphone access">
           <Text style={s.btnText}>Allow microphone  →</Text>
         </TouchableOpacity>
 

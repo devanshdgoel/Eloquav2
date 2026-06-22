@@ -52,7 +52,7 @@ export default function SetupAboutYouScreen({ navigation }) {
       <StatusBar barStyle="dark-content" />
 
       {/* Back button — absolute so it stays visible above the scroll */}
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
         <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
 
@@ -134,7 +134,7 @@ export default function SetupAboutYouScreen({ navigation }) {
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity style={styles.modalCancel} onPress={() => setAgeModalVisible(false)}>
+            <TouchableOpacity style={styles.modalCancel} onPress={() => setAgeModalVisible(false)} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </SafeAreaView>

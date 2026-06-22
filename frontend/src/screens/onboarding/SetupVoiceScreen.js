@@ -119,7 +119,7 @@ export default function SetupVoiceScreen({ navigation }) {
   // Show a full-screen loading state while the voice clone is being created.
   if (isCloningVoice) {
     return (
-      <LinearGradient colors={['#9FCFBD', '#2D6974']} style={styles.loadingContainer}>
+      <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" />
         <ActivityIndicator size="large" color="#FFFFFF" />
         <Text style={styles.loadingTitle}>Creating your voice profile</Text>
@@ -134,7 +134,7 @@ export default function SetupVoiceScreen({ navigation }) {
 
       {/* Top half — light mint background with sentence card */}
       <LinearGradient colors={['#E0ECDE', '#C5E0D4']} style={styles.topHalf}>
-        <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Skip voice setup">
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
 
@@ -147,7 +147,7 @@ export default function SetupVoiceScreen({ navigation }) {
       </LinearGradient>
 
       {/* Bottom half — teal background with mic button and progress dots */}
-      <LinearGradient colors={['#9FCFBD', '#2D6974']} style={styles.bottomHalf}>
+      <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={styles.bottomHalf}>
         <TouchableOpacity
           style={[styles.micBtn, isRecording && styles.micBtnRecording]}
           onPress={handleMicPress}
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   loadingSubtitle: {
-    fontSize: 15,
+    fontSize: 16,
     color: 'rgba(255,255,255,0.8)',
     textAlign: 'center',
     letterSpacing: 0.3,

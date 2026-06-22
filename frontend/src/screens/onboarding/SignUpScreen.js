@@ -64,7 +64,7 @@ export default function SignUpScreen({ navigation }) {
       <StatusBar barStyle="light-content" />
 
       {/* Back button */}
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
         <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
 
@@ -157,6 +157,8 @@ export default function SignUpScreen({ navigation }) {
               style={styles.tcsRow}
               onPress={() => setAgreed(!agreed)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Agree to terms and conditions"
             >
               <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
                 {agreed && <Text style={styles.checkmark}>✓</Text>}
@@ -176,6 +178,8 @@ export default function SignUpScreen({ navigation }) {
             onPress={handleRegister}
             disabled={loading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Create account"
           >
             {loading
               ? <ActivityIndicator color="#1C4047" size="small" />
@@ -187,6 +191,8 @@ export default function SignUpScreen({ navigation }) {
           <TouchableOpacity
             style={styles.signInLink}
             onPress={() => navigation.navigate('SignIn')}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in to existing account"
           >
             <Text style={styles.signInText}>Already have an account? Sign In</Text>
           </TouchableOpacity>

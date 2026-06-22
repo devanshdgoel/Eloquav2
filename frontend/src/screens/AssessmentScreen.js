@@ -490,7 +490,7 @@ export default function AssessmentScreen({ navigation, route }) {
             ))}
           </View>
 
-          <TouchableOpacity style={s.primaryBtn} onPress={() => { if (isBaseline) logFunnelEvent('assessment_baseline_started'); setPhase('active'); }} activeOpacity={0.85}>
+          <TouchableOpacity style={s.primaryBtn} onPress={() => { if (isBaseline) logFunnelEvent('assessment_baseline_started'); setPhase('active'); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin assessment">
             <Text style={s.primaryBtnText}>Begin</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -589,6 +589,8 @@ export default function AssessmentScreen({ navigation, route }) {
               onPress={stopRecording}
               disabled={!canStop}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Done recording"
             >
               <Text style={[s.primaryBtnText, !canStop && s.primaryBtnTextDim]}>
                 {canStop
@@ -636,7 +638,7 @@ export default function AssessmentScreen({ navigation, route }) {
             </Text>
           )}
 
-          <TouchableOpacity style={s.primaryBtn} onPress={finishAssessment} activeOpacity={0.85}>
+          <TouchableOpacity style={s.primaryBtn} onPress={finishAssessment} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue">
             <Text style={s.primaryBtnText}>
               {isBaseline ? 'Start My Journey  →' : 'See My Progress  →'}
             </Text>
@@ -728,7 +730,7 @@ const s = StyleSheet.create({
     backgroundColor: ORANGE,
     paddingHorizontal: 44 * SC,
     paddingVertical: 20,    // fixed: ensures button ≥ 56px tall for motor precision
-    borderRadius: 30,
+    borderRadius: 28,
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.38,

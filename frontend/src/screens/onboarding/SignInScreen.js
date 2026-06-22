@@ -77,7 +77,7 @@ export default function SignInScreen({ navigation }) {
     <LinearGradient colors={['#326F77', '#1C4047']} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
         <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
 
@@ -133,6 +133,8 @@ export default function SignInScreen({ navigation }) {
             onPress={handleLogin}
             disabled={loading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in"
           >
             {loading
               ? <ActivityIndicator color="#1C4047" size="small" />
@@ -140,7 +142,7 @@ export default function SignInScreen({ navigation }) {
             }
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.forgotLink} onPress={handleForgotPassword}>
+          <TouchableOpacity style={styles.forgotLink} onPress={handleForgotPassword} accessibilityRole="button" accessibilityLabel="Forgot password">
             <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
@@ -171,6 +173,8 @@ export default function SignInScreen({ navigation }) {
           <TouchableOpacity
             style={styles.createLink}
             onPress={() => navigation.navigate('SignUp')}
+            accessibilityRole="button"
+            accessibilityLabel="Create a new account"
           >
             <Text style={styles.createText}>Don't have an account? Create one</Text>
           </TouchableOpacity>

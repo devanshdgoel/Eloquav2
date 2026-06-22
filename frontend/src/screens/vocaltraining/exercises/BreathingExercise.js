@@ -124,7 +124,7 @@ function TitleScreen({ onNext, onExit }) {
         <StatusBar barStyle="light-content" />
 
         <View style={ts.header}>
-          <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityLabel="Exit exercise">
+          <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
             <Text style={hb.closeText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -143,7 +143,7 @@ function TitleScreen({ onNext, onExit }) {
         </View>
 
         {/* Arrow button — must sit above the progress bar (bottom: 28 + 12h + 16 gap = 56) */}
-        <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8}>
+        <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Continue">
           <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
 
@@ -197,7 +197,7 @@ function VideoScreen({ onNext, onExit }) {
       <StatusBar barStyle="light-content" />
 
       <View style={vs.header}>
-        <TouchableOpacity style={vs.iconBtn} onPress={onExit} activeOpacity={0.8}>
+        <TouchableOpacity style={vs.iconBtn} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={vs.iconBtnText}>←</Text>
         </TouchableOpacity>
         <View style={vs.pill}>
@@ -219,7 +219,7 @@ function VideoScreen({ onNext, onExit }) {
         ))}
       </View>
 
-      <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85}>
+      <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
         <Text style={vs.startText}>Begin Exercise  →</Text>
       </TouchableOpacity>
     </FadeIn>
@@ -358,11 +358,11 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip }) {
 
       {/* Header: close (X) and help (?) */}
       <View style={ds.header}>
-        <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityLabel="Exit exercise">
+        <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={hb.closeText}>✕</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        <TouchableOpacity style={hb.helpBtn} onPress={onShowVideo} accessibilityLabel="Show instructions">
+        <TouchableOpacity style={hb.helpBtn} onPress={onShowVideo} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={hb.helpText}>?</Text>
         </TouchableOpacity>
       </View>

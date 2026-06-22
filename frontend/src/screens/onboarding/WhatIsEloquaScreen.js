@@ -51,6 +51,8 @@ export default function WhatIsEloquaScreen({ navigation }) {
           style={s.btn}
           onPress={() => navigation.navigate('HowItWorks')}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="How it works"
         >
           <Text style={s.btnText}>How it works  →</Text>
         </TouchableOpacity>
@@ -58,6 +60,8 @@ export default function WhatIsEloquaScreen({ navigation }) {
         <TouchableOpacity
           style={s.skipLink}
           onPress={() => navigation.navigate('VoiceCloningExplainer')}
+          accessibilityRole="button"
+          accessibilityLabel="Skip intro"
         >
           <Text style={s.skipText}>Skip intro</Text>
         </TouchableOpacity>
@@ -92,7 +96,7 @@ const s = StyleSheet.create({
 
   eyebrow: {
     color: ORANGE,
-    fontSize: 11 * SC,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 2.5,
   },
@@ -132,5 +136,5 @@ const s = StyleSheet.create({
   },
 
   skipLink: { paddingVertical: 8 },
-  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 14 * SC },
+  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 16 },
 });

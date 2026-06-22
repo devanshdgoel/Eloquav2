@@ -121,7 +121,8 @@
       "Bash(Get-Content *)",
       "Bash(awk '/^blob/ {print $3, $4}')",
       "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter \"git rm --cached --ignore-unmatch 'whisper-medium-finetuned.tar.gz' 'backend/test2.mp3' 'backend/temp.wav'\" --prune-empty origin/main..HEAD)",
-      "Bash(xargs -r git update-ref -d)"
+      "Bash(xargs -r git update-ref -d)",
+      "mcp__figma__get_variable_defs"
     ]
   }
 }

@@ -171,7 +171,7 @@ function TitleScreen({ onNext, onExit }) {
 
         {/* Header */}
         <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
-          <TouchableOpacity style={hb.ghost} onPress={onExit} accessibilityLabel="Exit exercise">
+          <TouchableOpacity style={hb.ghost} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
             <Text style={hb.ghostText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -207,7 +207,7 @@ function TitleScreen({ onNext, onExit }) {
 
         {/* Continue button */}
         <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8}
-          accessibilityLabel="Continue to instructions">
+          accessibilityRole="button" accessibilityLabel="Continue to instructions">
           <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
 
@@ -277,7 +277,7 @@ function DemoScreen({ onFinish, onExit }) {
 
         {/* Header */}
         <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
-          <TouchableOpacity style={hb.ghost} onPress={back} accessibilityLabel="Go back">
+          <TouchableOpacity style={hb.ghost} onPress={back} accessibilityRole="button" accessibilityLabel="Go back">
             <Text style={hb.ghostText}>←</Text>
           </TouchableOpacity>
         </View>
@@ -306,7 +306,7 @@ function DemoScreen({ onFinish, onExit }) {
             ))}
           </View>
           <TouchableOpacity style={dm.nextBtn} onPress={next} activeOpacity={0.8}
-            accessibilityLabel={slide < SLIDES.length - 1 ? 'Next slide' : 'Start exercise'}>
+            accessibilityRole="button" accessibilityLabel={slide < SLIDES.length - 1 ? 'Next slide' : 'Start exercise'}>
             <Text style={dm.nextText}>{slide < SLIDES.length - 1 ? '→' : '✓'}</Text>
           </TouchableOpacity>
         </View>
@@ -625,12 +625,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
 
       {/* ── Header buttons ─────────────────────────────────────────────────── */}
       <View style={{ position: 'absolute', top: 52, left: 20, zIndex: 20 }}>
-        <TouchableOpacity style={hb.ghost} onPress={onExit} accessibilityLabel="Exit exercise">
+        <TouchableOpacity style={hb.ghost} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={hb.ghostText}>✕</Text>
         </TouchableOpacity>
       </View>
       <View style={{ position: 'absolute', top: 52, right: 20, zIndex: 20 }}>
-        <TouchableOpacity style={hb.orange} onPress={onShowDemo} accessibilityLabel="Show instructions">
+        <TouchableOpacity style={hb.orange} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={hb.orangeText}>?</Text>
         </TouchableOpacity>
       </View>

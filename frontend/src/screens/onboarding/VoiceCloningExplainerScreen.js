@@ -73,6 +73,8 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
         <TouchableOpacity
           style={s.privacyLink}
           onPress={() => Linking.openURL('https://eloqua.app/privacy')}
+          accessibilityRole="link"
+          accessibilityLabel="Read our full Privacy Policy"
         >
           <Text style={s.privacyText}>Read our full Privacy Policy →</Text>
         </TouchableOpacity>
@@ -81,6 +83,8 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
           style={s.btn}
           onPress={() => navigation.navigate('SetupPermissions')}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="I understand, let's begin"
         >
           <Text style={s.btnText}>I understand, let's begin</Text>
         </TouchableOpacity>
@@ -102,7 +106,7 @@ const s = StyleSheet.create({
   header: { gap: 10 * SC },
   eyebrow: {
     color: ORANGE,
-    fontSize: 11 * SC,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 2.5,
   },
@@ -115,8 +119,8 @@ const s = StyleSheet.create({
   },
   subtitle: {
     color: DIM,
-    fontSize: 15 * SC,
-    lineHeight: 22 * SC,
+    fontSize: 16,
+    lineHeight: 24,
   },
 
   points: { gap: 12 * SC },
@@ -132,11 +136,11 @@ const s = StyleSheet.create({
   },
   cardIcon: { fontSize: 24 * SC, width: 30 * SC, textAlign: 'center', flexShrink: 0 },
   cardText: { flex: 1, gap: 5 * SC },
-  cardTitle: { color: WHITE, fontSize: 14 * SC, fontWeight: '700' },
-  cardBody:  { color: DIM,   fontSize: 13 * SC, lineHeight: 19 * SC },
+  cardTitle: { color: WHITE, fontSize: 16, fontWeight: '700' },
+  cardBody:  { color: DIM,   fontSize: 16, lineHeight: 24 },
 
   privacyLink: { alignSelf: 'flex-start', paddingVertical: 2 },
-  privacyText: { color: MINT, fontSize: 13 * SC, fontWeight: '600' },
+  privacyText: { color: MINT, fontSize: 16, fontWeight: '600' },
 
   btn: {
     backgroundColor: ORANGE,

@@ -83,6 +83,8 @@ function SessionComplete({ navigation }) {
           style={completeStyles.homeBtn}
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Home' }] })}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Back to Home"
         >
           <Text style={completeStyles.homeBtnText}>Back to Home</Text>
         </TouchableOpacity>

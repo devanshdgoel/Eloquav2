@@ -383,7 +383,7 @@ function DemoScreen({ onFinish, onExit }) {
         <StatusBar barStyle="light-content" />
 
         <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
-          <TouchableOpacity style={ds.backBtn} onPress={back}>
+          <TouchableOpacity style={ds.backBtn} onPress={back} accessibilityRole="button" accessibilityLabel="Exit exercise">
             <Text style={ds.arrowText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -408,7 +408,7 @@ function DemoScreen({ onFinish, onExit }) {
         </View>
 
         {/* Arrow → to advance to instructions */}
-        <TouchableOpacity style={ds.forwardBtn} onPress={next} activeOpacity={0.82}>
+        <TouchableOpacity style={ds.forwardBtn} onPress={next} activeOpacity={0.82} accessibilityRole="button" accessibilityLabel="Continue">
           <Text style={ds.arrowText}>→</Text>
         </TouchableOpacity>
 
@@ -472,7 +472,7 @@ function DemoScreen({ onFinish, onExit }) {
 
       {/* Nav row */}
       <View style={ds.navRow}>
-        <TouchableOpacity style={ds.navBtn} onPress={back}>
+        <TouchableOpacity style={ds.navBtn} onPress={back} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={ds.arrowText}>←</Text>
         </TouchableOpacity>
         <View style={ds.dots}>
@@ -480,7 +480,7 @@ function DemoScreen({ onFinish, onExit }) {
             <View key={i} style={[ds.dot, (slide - 1) === i && ds.dotActive]} />
           ))}
         </View>
-        <TouchableOpacity style={[ds.navBtn, ds.navNext]} onPress={next}>
+        <TouchableOpacity style={[ds.navBtn, ds.navNext]} onPress={next} accessibilityRole="button" accessibilityLabel={slide === DEMO_SLIDES.length - 1 ? 'Begin exercise' : 'Next slide'}>
           <Text style={ds.arrowText}>{slide === DEMO_SLIDES.length - 1 ? 'Go!' : '→'}</Text>
         </TouchableOpacity>
       </View>
@@ -827,11 +827,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
       {/* ── Header row: X | counter | ? ── */}
       <View style={ex.headerRow}>
-        <TouchableOpacity style={ex.xBtn} onPress={onExit} accessibilityLabel="Exit exercise">
+        <TouchableOpacity style={ex.xBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={ex.xText}>✕</Text>
         </TouchableOpacity>
         <Text style={ex.counter}>{doneCount + 1}/{TOTAL_ROUNDS}</Text>
-        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo} accessibilityLabel="Show instructions">
+        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={ex.helpText}>?</Text>
         </TouchableOpacity>
       </View>

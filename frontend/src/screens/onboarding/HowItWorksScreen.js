@@ -75,6 +75,8 @@ export default function HowItWorksScreen({ navigation }) {
           style={s.btn}
           onPress={() => navigation.navigate('VoiceCloningExplainer')}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="One more thing"
         >
           <Text style={s.btnText}>One more thing  →</Text>
         </TouchableOpacity>
@@ -82,6 +84,8 @@ export default function HowItWorksScreen({ navigation }) {
         <TouchableOpacity
           style={s.skipLink}
           onPress={() => navigation.navigate('VoiceCloningExplainer')}
+          accessibilityRole="button"
+          accessibilityLabel="Skip intro"
         >
           <Text style={s.skipText}>Skip intro</Text>
         </TouchableOpacity>
@@ -102,7 +106,7 @@ const s = StyleSheet.create({
   header: { gap: 10 * SC },
   eyebrow: {
     color: ORANGE,
-    fontSize: 11 * SC,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 2.5,
   },
@@ -137,7 +141,7 @@ const s = StyleSheet.create({
   badgeNum: { fontSize: 18 * SC, fontWeight: '800' },
   cardText: { flex: 1, gap: 5 * SC },
   cardTitle: { color: WHITE, fontSize: 16 * SC, fontWeight: '700' },
-  cardBody:  { color: DIM,   fontSize: 14 * SC, lineHeight: 21 * SC },
+  cardBody:  { color: DIM,   fontSize: 16, lineHeight: 24 },
 
   btn: {
     backgroundColor: ORANGE,
@@ -158,5 +162,5 @@ const s = StyleSheet.create({
   },
 
   skipLink: { alignSelf: 'center', paddingVertical: 4 },
-  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 14 * SC },
+  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 16 },
 });

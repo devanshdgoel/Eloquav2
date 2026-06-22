@@ -272,7 +272,7 @@ export default function StreakCelebrationScreen({ navigation, route }) {
       {/* Teal gradient fades in */}
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: bgOpacity }]}>
         <LinearGradient
-          colors={['#1C4047', '#0D2226']}
+          colors={['#243E44', '#0D1E21']}
           start={{ x: 0.3, y: 0 }}
           end={{ x: 0.7, y: 1 }}
           style={StyleSheet.absoluteFillObject}

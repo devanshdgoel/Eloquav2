@@ -264,6 +264,8 @@ export default function HomeScreen({ navigation }) {
               .catch(() => setProgressError(true));
           }}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
         >
           <Text style={styles.errorBannerText}>Could not load progress — tap to retry</Text>
         </TouchableOpacity>

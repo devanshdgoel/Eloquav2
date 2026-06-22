@@ -108,6 +108,8 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
         onPress={onPress}
         activeOpacity={0.88}
         style={{ width: circleSize, height: circleSize, alignItems: 'center', justifyContent: 'center' }}
+        accessibilityRole="button"
+        accessibilityLabel="Start recording"
       >
         <View style={{
           width: circleSize, height: circleSize,
@@ -122,7 +124,7 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
   }
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{ width: gW, height: gH }}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{ width: gW, height: gH }} accessibilityRole="button" accessibilityLabel="Done recording">
       <Animated.View style={{
         position: 'absolute', left: 0, top: 0, width: gW, height: gH,
         justifyContent: 'center', alignItems: 'center',
@@ -608,7 +610,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       <StatusBar barStyle="dark-content" />
 
       {phase !== S.RECORDING && phase !== S.ENHANCING && (
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
       )}
@@ -685,7 +687,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
         <View style={styles.centeredArea}>
           <Text style={styles.errorTitle}>Something went wrong</Text>
           <Text style={styles.errorSub}>{errorMsg}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={reset}>
+          <TouchableOpacity style={styles.retryBtn} onPress={reset} accessibilityRole="button" accessibilityLabel="Try again">
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -707,6 +709,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
             onPress={isPlaying ? stopPlayback : playEnhanced}
             activeOpacity={result.audio_url ? 0.85 : 1}
             disabled={!result.audio_url && !isPlaying}
+            accessibilityRole="button"
+            accessibilityLabel="Play audio"
           >
             <Text style={styles.actionLabel}>{isPlaying ? 'Stop' : 'Play'}</Text>
             <Text style={styles.actionIcon}>🔊</Text>
@@ -715,12 +719,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Copy transcript">
             <Text style={styles.actionLabel}>Copy text</Text>
             <Text style={styles.actionIcon}>📋</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.newRecordBtn} onPress={reset} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.newRecordBtn} onPress={reset} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Start new recording">
             <Text style={styles.actionLabel}>New recording</Text>
             <Text style={styles.actionIcon}>🎙️</Text>
           </TouchableOpacity>
@@ -755,8 +759,8 @@ const styles = StyleSheet.create({
   backBtn: {
     position: 'absolute', top: 52, left: 20, zIndex: 10,
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-    borderWidth: 1.5, borderColor: 'rgba(28,64,71,0.18)',
+    backgroundColor: 'rgba(28,64,71,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(28,64,71,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
   backArrow: { color: TEAL, fontSize: 24, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
@@ -946,11 +950,11 @@ const styles = StyleSheet.create({
   },
 
   newRecordBtn: {
-    backgroundColor: '#3A8C4A',
+    backgroundColor: '#48D28C',
     borderRadius: Math.round(20 * SC),
     height: Math.round(52 * SC),
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
-    shadowColor: '#3A8C4A',
+    shadowColor: '#48D28C',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
   },

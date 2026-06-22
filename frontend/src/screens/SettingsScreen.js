@@ -166,6 +166,8 @@ function Row({ label, sublabel, right, onPress, isLast = false, tintLabel }) {
       onPress={onPress}
       activeOpacity={0.7}
       style={[row.wrap, !isLast && row.divider]}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? label : undefined}
     >
       <View style={row.left}>
         <Text style={[row.label, tintLabel && { color: tintLabel }]}>{label}</Text>
@@ -694,6 +696,8 @@ export default function SettingsScreen({ navigation }) {
                 onPress={() => navigation.navigate('SignUp')}
                 style={s.createAccountBtn}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Create account to save progress"
               >
                 <Text style={s.createAccountText}>Create account to save progress →</Text>
               </TouchableOpacity>
@@ -916,6 +920,8 @@ export default function SettingsScreen({ navigation }) {
             style={s.signOutBtn}
             onPress={handleSignOut}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={isGuest ? 'Exit guest session' : 'Sign out'}
           >
             <Text style={s.signOutText}>
               {isGuest ? 'Exit guest session' : 'Sign out'}
@@ -927,6 +933,8 @@ export default function SettingsScreen({ navigation }) {
               style={s.deleteBtn}
               onPress={handleDeleteAccount}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
             >
               <Text style={s.deleteText}>Delete account</Text>
             </TouchableOpacity>

@@ -402,6 +402,8 @@ export default function ProgressScreen({ navigation }) {
             style={{ backgroundColor: ORANGE, paddingHorizontal: 28, paddingVertical: 20, borderRadius: 28, shadowColor: ORANGE, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8 }}
             onPress={loadData}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
           >
             <Text style={{ color: '#1A1A1A', fontSize: 15, fontWeight: '700' }}>Retry</Text>
           </TouchableOpacity>

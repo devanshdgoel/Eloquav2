@@ -405,6 +405,8 @@ export default function CheckinScreen({ navigation }) {
               onPress={handleSaveSentence}
               disabled={!sentenceInput.trim()}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Save"
             >
               <Text style={s.primaryBtnText}>Save & Begin</Text>
             </TouchableOpacity>
@@ -453,7 +455,7 @@ export default function CheckinScreen({ navigation }) {
     const isPre = phase === 'pre';
     return (
       <LinearGradient
-        colors={isPre ? ['#243E44', '#0D1E21'] : ['#1A3D35', '#0D2018']}
+        colors={isPre ? ['#243E44', '#0D1E21'] : ['#1E3828', '#0D1E21']}
         style={[s.root, { paddingTop: top }]}
       >
         <StatusBar barStyle="light-content" />
@@ -481,6 +483,8 @@ export default function CheckinScreen({ navigation }) {
               style={s.recordBtn}
               onPress={() => startRecording(phase)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Start recording"
             >
               <View style={s.recordDot} />
               <Text style={s.recordBtnText}>Tap to Record</Text>
@@ -512,6 +516,8 @@ export default function CheckinScreen({ navigation }) {
                 }}
                 disabled={!canStop}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Done recording"
               >
                 <Text style={s.primaryBtnText}>Done</Text>
               </TouchableOpacity>
@@ -563,7 +569,7 @@ export default function CheckinScreen({ navigation }) {
     const anyDown = Object.values(predictedTierChanges).some(d => d === 'down');
 
     return (
-      <LinearGradient colors={['#1A3D35', '#0D2018']} style={[s.root, { paddingTop: top }]}>
+      <LinearGradient colors={['#1E3828', '#0D1E21']} style={[s.root, { paddingTop: top }]}>
         <StatusBar barStyle="light-content" />
         <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
           <Text style={s.eyebrow}>YOUR PROGRESS</Text>
@@ -645,6 +651,8 @@ export default function CheckinScreen({ navigation }) {
             onPress={handleFinish}
             disabled={finishing}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Finish"
           >
             {finishing
               ? <ActivityIndicator color={WHITE} size="small" />
@@ -724,7 +732,7 @@ const s = StyleSheet.create({
   // Button
   primaryBtn: {
     backgroundColor: ORANGE,
-    borderRadius: 16,
+    borderRadius: 28,
     paddingVertical: 20,    // fixed: ensures button ≥ 56px tall
     alignItems: 'center',
     marginTop: 8,

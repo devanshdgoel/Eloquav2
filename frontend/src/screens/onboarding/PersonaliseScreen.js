@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 export default function PersonaliseScreen({ navigation }) {
   return (
-    <LinearGradient colors={['#68B39F', '#2D6974']} style={styles.container}>
+    <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
       {/* Decorative bubbles top-right */}
@@ -19,6 +19,8 @@ export default function PersonaliseScreen({ navigation }) {
           style={styles.startBtn}
           onPress={() => navigation.navigate('SetupPermissions')}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Start personalisation"
         >
           <Text style={styles.startText}>Start</Text>
         </TouchableOpacity>
