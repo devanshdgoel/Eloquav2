@@ -18,8 +18,9 @@ import { Audio } from 'expo-av';
 import { SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/env';
-import { getAuthHeaders } from '../utils/authHeaders';
-import { logUsageEvent } from '../utils/analytics';
+import { fetchWithAuth } from '../utils/authHeaders';
+import { logUsageEvent, logScreenView } from '../utils/analytics';
+import { useLargeText } from '../context/PrefsContext';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -174,6 +175,9 @@ function PendingDots() {
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function SpeechEnhancementScreen({ navigation }) {
+  const largeText = useLargeText();
+  const fs = (base) => largeText ? Math.round(base * 1.25) : base;
+
   const [phase,          setPhase]          = useState(S.IDLE);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [pendingCount,   setPendingCount]   = useState(0);
@@ -183,6 +187,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
   // First-play motivational message — shown the very first time enhanced audio plays.
   const [firstPlayMsg,   setFirstPlayMsg]   = useState(null);
   const FIRST_PLAY_KEY = 'eloqua_speech_first_play';
+
+  // Screen-time tracking.
+  useEffect(() => {
+    const logExit = logScreenView('SpeechEnhancement');
+    return logExit;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Transcription model preference loaded from Settings ("whisper" | "soniva")
   const transcriptionModelRef = useRef('whisper');
@@ -198,6 +208,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
   // Chunk bookkeeping — plain refs to avoid re-render storms
   const recordingRef      = useRef(null);
   const soundRef          = useRef(null);
+  const playbackLockRef   = useRef(false); // prevents concurrent sound creation from rapid taps
   const chunkTimerRef     = useRef(null);
   const chunkIndexRef     = useRef(0);
   // Each entry: { raw: string, enhanced: string }
@@ -287,12 +298,13 @@ export default function SpeechEnhancementScreen({ navigation }) {
       if (previousRawText)      form.append('previous_text',          previousRawText);
       if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch(`${API_BASE_URL}/api/transcribe-chunk`, {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 15000);
+      const res  = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
         method: 'POST',
-        headers: authHeaders,
         body: form,
-      });
+        signal: ctrl.signal,
+      }).finally(() => clearTimeout(tid));
 
       if (!res.ok) {
         if (attempt === 0) {
@@ -482,12 +494,13 @@ export default function SpeechEnhancementScreen({ navigation }) {
       form.append('raw_transcript', rawText);
       if (enhancedText) form.append('enhanced_transcript', enhancedText);
 
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch(`${API_BASE_URL}/api/enhance-text`, {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 20000);
+      const res  = await fetchWithAuth(`${API_BASE_URL}/api/enhance-text`, {
         method: 'POST',
-        headers: authHeaders,
         body: form,
-      });
+        signal: ctrl.signal,
+      }).finally(() => clearTimeout(tid));
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -529,10 +542,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
       form.append('transcript', transcript);
       form.append('audio_duration_s', String(Math.round(durationS)));
 
-      const authHeaders = await getAuthHeaders();
-      await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/analyze-voice`, {
         method: 'POST',
-        headers: authHeaders,
         body: form,
       });
     } catch (e) {
@@ -543,9 +554,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
   // ── Playback ─────────────────────────────────────────────────────────────────
 
   async function playEnhanced() {
-    if (!result?.audio_url) return;
+    if (!result?.audio_url || playbackLockRef.current) return;
+    playbackLockRef.current = true;
     try {
-      if (soundRef.current) { await soundRef.current.unloadAsync(); soundRef.current = null; }
+      if (soundRef.current) { await soundRef.current.stopAsync().catch(() => {}); await soundRef.current.unloadAsync(); soundRef.current = null; }
       const { sound } = await Audio.Sound.createAsync(
         { uri: `${API_BASE_URL}${result.audio_url}` },
         { shouldPlay: true, rate: 0.85, shouldCorrectPitch: true }
@@ -569,6 +581,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
       }
     } catch {
       Alert.alert('Playback Error', 'Could not play the enhanced audio.');
+    } finally {
+      playbackLockRef.current = false;
     }
   }
 
@@ -609,11 +623,17 @@ export default function SpeechEnhancementScreen({ navigation }) {
     >
       <StatusBar barStyle="dark-content" />
 
-      {phase !== S.RECORDING && phase !== S.ENHANCING && (
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={styles.backBtn}
+        onPress={() => {
+          if (phase === S.RECORDING) stoppingRef.current = true;
+          navigation.goBack();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={phase === S.RECORDING ? 'Cancel recording' : 'Go back'}
+      >
+        <Text style={styles.backArrow}>{phase === S.RECORDING ? '✕' : '←'}</Text>
+      </TouchableOpacity>
 
       <Text style={styles.title}>Speech{'\n'}Enhancement</Text>
 
@@ -621,7 +641,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {phase === S.IDLE && (
         <View style={styles.idleArea}>
           <MicGroup onPress={handleMicPress} isRecording={false} />
-          <Text style={styles.hintText}>Tap the mic to begin</Text>
+          <Text style={[styles.hintText, { fontSize: fs(20) }]}>Tap the mic to begin</Text>
         </View>
       )}
 
@@ -633,7 +653,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
             <MicGroup onPress={handleMicPress} scale={0.78} isRecording />
           </View>
 
-          <Text style={styles.hintText}>Tap mic to finish</Text>
+          <Text style={[styles.hintText, { fontSize: fs(20) }]}>Tap mic to finish</Text>
 
           {/* Live transcript card — appears as soon as the first chunk lands */}
           <View style={styles.liveCard}>
@@ -642,12 +662,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
               showsVerticalScrollIndicator={false}
             >
               {liveTranscript ? (
-                <Text style={styles.liveText}>
+                <Text style={[styles.liveText, { fontSize: fs(17), lineHeight: fs(17) * 1.53 }]}>
                   {liveTranscript}
                   {showPending && <PendingDots />}
                 </Text>
               ) : (
-                <Text style={styles.liveTextPlaceholder}>
+                <Text style={[styles.liveTextPlaceholder, { fontSize: fs(16) }]}>
                   {showPending ? 'Transcribing…' : 'Listening…'}
                 </Text>
               )}
@@ -666,7 +686,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {phase === S.ENHANCING && (
         <View style={styles.enhancingArea}>
           <ActivityIndicator size="large" color="#1C4047" />
-          <Text style={styles.enhancingText}>Polishing your words…</Text>
+          <Text style={[styles.enhancingText, { fontSize: fs(20) }]}>Polishing your words…</Text>
 
           {/* Keep the raw transcript visible while the AI works */}
           {liveTranscript ? (
@@ -675,7 +695,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
                 contentContainerStyle={styles.liveCardPad}
                 showsVerticalScrollIndicator={false}
               >
-                <Text style={styles.liveTextDim}>{liveTranscript}</Text>
+                <Text style={[styles.liveTextDim, { fontSize: fs(16) }]}>{liveTranscript}</Text>
               </ScrollView>
             </View>
           ) : null}
@@ -698,25 +718,22 @@ export default function SpeechEnhancementScreen({ navigation }) {
         <View style={styles.resultsArea}>
           <View style={styles.transcriptCard}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.transcriptPad}>
-              <Text style={styles.transcriptText}>
+              <Text style={[styles.transcriptText, { fontSize: fs(18), lineHeight: fs(18) * 1.56 }]}>
                 {result.cleaned_transcript || result.raw_transcript}
               </Text>
             </ScrollView>
           </View>
 
           <TouchableOpacity
-            style={[styles.actionBtn, !result.audio_url && styles.actionBtnDisabled]}
+            style={[styles.actionBtn, styles.actionBtnPlay, !result.audio_url && styles.actionBtnDisabled]}
             onPress={isPlaying ? stopPlayback : playEnhanced}
             activeOpacity={result.audio_url ? 0.85 : 1}
-            disabled={!result.audio_url && !isPlaying}
+            disabled={!result.audio_url}
             accessibilityRole="button"
-            accessibilityLabel="Play audio"
+            accessibilityLabel={isPlaying ? 'Stop audio' : 'Play enhanced audio'}
           >
-            <Text style={styles.actionLabel}>{isPlaying ? 'Stop' : 'Play'}</Text>
+            <Text style={[styles.actionLabel, { color: result.audio_url ? '#1A1A1A' : 'rgba(255,255,255,0.50)' }]}>{isPlaying ? 'Stop' : 'Play'}</Text>
             <Text style={styles.actionIcon}>🔊</Text>
-            {!result.audio_url && (
-              <Text style={styles.actionUnavailable}>unavailable</Text>
-            )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Copy transcript">
@@ -766,13 +783,13 @@ const styles = StyleSheet.create({
   backArrow: { color: TEAL, fontSize: 24, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 
   title: {
-    marginTop: Math.round(56 * SC),
-    fontSize: Math.round(45 * SC),
+    marginTop: 116,  // clears the absolute-positioned back button (top:52, height:56, gap:8)
+    fontSize: Math.round(42 * SC),
     fontWeight: '800',
     color: TEAL,
     textAlign: 'center',
     letterSpacing: 2.25,
-    lineHeight: Math.round(70 * SC),
+    lineHeight: Math.round(56 * SC),
   },
 
   // ── IDLE ──
@@ -793,7 +810,7 @@ const styles = StyleSheet.create({
   },
 
   hintText: {
-    fontSize: Math.round(20 * SC),
+    fontSize: 20,
     color: TEAL,
     letterSpacing: 2,
     textAlign: 'center',
@@ -821,25 +838,25 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   liveText: {
-    fontSize: Math.round(16 * SC),
+    fontSize: 17,
     color: '#111',
-    lineHeight: 26 * SC,
+    lineHeight: 26,
     letterSpacing: 0.3,
   },
   liveTextDim: {
-    fontSize: Math.round(15 * SC),
+    fontSize: 16,
     color: '#444',
-    lineHeight: 24 * SC,
+    lineHeight: 24,
     letterSpacing: 0.3,
   },
   liveTextPlaceholder: {
-    fontSize: Math.round(15 * SC),
+    fontSize: 16,
     color: 'rgba(28,64,71,0.40)',
     fontStyle: 'italic',
     letterSpacing: 0.5,
   },
   pendingDots: {
-    fontSize: Math.round(16 * SC),
+    fontSize: 17,
     color: ORANGE,
     fontWeight: '700',
   },
@@ -872,7 +889,7 @@ const styles = StyleSheet.create({
     gap: 14 * SC,
   },
   enhancingText: {
-    fontSize: Math.round(20 * SC),
+    fontSize: 20,
     color: TEAL,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -884,9 +901,7 @@ const styles = StyleSheet.create({
     gap: 16, paddingBottom: 60,
   },
   errorTitle: { fontSize: 22, fontWeight: '700', color: TEAL, textAlign: 'center' },
-  errorSub:   { fontSize: 15, color: 'rgba(28,64,71,0.6)', textAlign: 'center', lineHeight: 22, paddingHorizontal: 32 },
-  retryBtn:   { marginTop: 8, backgroundColor: TEAL, borderRadius: 14, paddingHorizontal: 32, paddingVertical: 14 },
-  retryText:  { color: WHITE, fontSize: 16, fontWeight: '600' },
+  retryText:  { color: WHITE, fontSize: 18, fontWeight: '600' },
 
   // ── RESULTS ──
   resultsArea: {
@@ -914,10 +929,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   transcriptText: {
-    fontSize: Math.round(16 * SC),
+    fontSize: 18,
     color: '#000',
     letterSpacing: 1.2,
-    lineHeight: 26 * SC,
+    lineHeight: 28,
   },
   rawDivider: {
     height: 1,
@@ -925,34 +940,41 @@ const styles = StyleSheet.create({
     marginVertical: 14 * SC,
   },
   rawText: {
-    fontSize: Math.round(13 * SC),
+    fontSize: 16,
     color: 'rgba(0,0,0,0.40)',
     letterSpacing: 0.5,
-    lineHeight: 20 * SC,
+    lineHeight: 24,
   },
 
   actionBtn: {
-    backgroundColor: '#000',
-    borderRadius: Math.round(20 * SC),
-    height: Math.round(52 * SC),
+    backgroundColor: 'rgba(28,64,71,0.85)',
+    borderRadius: 28,
+    height: 56,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
   },
-  actionBtnDisabled: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
+  actionBtnPlay: {
+    backgroundColor: ORANGE,
+    shadowColor: ORANGE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
   },
-  actionLabel: { color: WHITE, fontSize: Math.round(20 * SC), fontWeight: '700', letterSpacing: 1.8 },
-  actionIcon:  { fontSize: Math.round(20 * SC) },
+  actionBtnDisabled: {
+    backgroundColor: 'rgba(28,64,71,0.30)',
+    shadowOpacity: 0, elevation: 0,
+  },
+  actionLabel: { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 1.8 },
+  actionIcon:  { fontSize: 20 },
   actionUnavailable: {
     color: 'rgba(255,255,255,0.60)',
-    fontSize: Math.round(11 * SC),
+    fontSize: 14,
     letterSpacing: 0.5,
     marginLeft: -6,
   },
 
   newRecordBtn: {
     backgroundColor: '#48D28C',
-    borderRadius: Math.round(20 * SC),
-    height: Math.round(52 * SC),
+    borderRadius: 28,
+    height: 56,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
     shadowColor: '#48D28C',
     shadowOffset: { width: 0, height: 3 },
@@ -986,7 +1008,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Error text size fixes for accessibility
   errorSub: {
     fontSize: 18,
     color: 'rgba(28,64,71,0.7)',
@@ -999,7 +1020,6 @@ const styles = StyleSheet.create({
     backgroundColor: TEAL,
     borderRadius: 14,
     paddingHorizontal: 32,
-    paddingVertical: 18,  // ≥ 56px tall
+    paddingVertical: 18,
   },
-  retryText: { color: WHITE, fontSize: 18, fontWeight: '600' },
 });

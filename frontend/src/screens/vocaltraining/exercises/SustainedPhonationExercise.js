@@ -49,21 +49,21 @@ const REST_MS         = 6500;
 // targetSeconds: visual goal shown to the user during scoring
 // minVolume: minimum adaptive threshold floor (0–1 normalised dB scale)
 const PHONATION_TIERS = [
-  { targetSeconds: 4,  minVolume: 0.40 },  // Tier 1
-  { targetSeconds: 5,  minVolume: 0.45 },  // Tier 2
-  { targetSeconds: 7,  minVolume: 0.50 },  // Tier 3
-  { targetSeconds: 9,  minVolume: 0.55 },  // Tier 4
-  { targetSeconds: 12, minVolume: 0.60 },  // Tier 5
+  { targetSeconds: 4,  minVolume: 0.22 },  // Tier 1 — low floor so quieter voices still register
+  { targetSeconds: 5,  minVolume: 0.27 },  // Tier 2
+  { targetSeconds: 7,  minVolume: 0.32 },  // Tier 3
+  { targetSeconds: 9,  minVolume: 0.37 },  // Tier 4
+  { targetSeconds: 12, minVolume: 0.42 },  // Tier 5
 ];
 
 // ── Adaptive threshold bounds ──────────────────────────────────────────────────
-const MIN_THRESHOLD = 0.30;
-const MAX_THRESHOLD = 0.70;
+const MIN_THRESHOLD = 0.18;
+const MAX_THRESHOLD = 0.60;
 
 // ── Layout ─────────────────────────────────────────────────────────────────────
-const SPLIT_RATIO = 0.54;
+const SPLIT_RATIO = 0.46;
 const TOP_H  = H * SPLIT_RATIO;
-const BAR_W  = Math.max(3, Math.floor((W - 48) / BARS_COUNT) - 2);
+const BAR_W  = Math.max(3, Math.floor((W - 40) / BARS_COUNT) - 2);
 
 // ── Colors ─────────────────────────────────────────────────────────────────────
 const DARK_TEAL  = '#1C4047';
@@ -107,7 +107,7 @@ const hb = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   orangeText: {
-    color: WHITE, fontSize: 24, fontWeight: '900',
+    color: '#1A1A1A', fontSize: 24, fontWeight: '900',
     includeFontPadding: false, textAlign: 'center', lineHeight: 24,
   },
 });
@@ -152,7 +152,7 @@ const sb = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 // SP1 — Title screen
 // ══════════════════════════════════════════════════════════════════════════════
-function TitleScreen({ onNext, onExit, onSkip }) {
+function TitleScreen({ onNext, onExit, onSkip, sessionFill = 0.14 }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: DARK_TEAL }}>
@@ -180,7 +180,7 @@ function TitleScreen({ onNext, onExit, onSkip }) {
 
         <CantDoNow onSkip={onSkip} onEnd={onExit} style={ts.cantDo} />
 
-        <SessionBar fill={0.28} />
+        <SessionBar fill={sessionFill} />
       </View>
     </FadeIn>
   );
@@ -399,7 +399,7 @@ const dm = StyleSheet.create({
     flex: 1, backgroundColor: ORANGE, borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
   },
-  pillText: { color: WHITE, fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
+  pillText: { color: '#1A1A1A', fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
   stepWrap: {
     width: 52, alignItems: 'center',
   },
@@ -554,6 +554,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const maxTimerRef       = useRef(null);
   const calibrateTimerRef = useRef(null);
   const idleTimerRef      = useRef(null);
+  const restTimerRef      = useRef(null);   // tracks the inter-round REST_MS timeout
+  const breathe1Ref       = useRef(null);   // "breathe in" message timer
+  const breathe2Ref       = useRef(null);   // "breathe out" message timer
+  const micSessionGenRef  = useRef(0);      // generation counter — prevents stale onMeter callbacks
+  const calibratedRef     = useRef(false);  // true after round 1 calibration completes; rounds 2+ skip re-calibration
 
   // Animated
   const restOverlayAnim = useRef(new Animated.Value(0)).current;
@@ -618,28 +623,49 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   }, [score]);
 
   async function startMicSession() {
+    const gen = ++micSessionGenRef.current;
     ambientSamplesRef.current = [];
+    // Calibration only runs on the first round.
+    // Rounds 2+ re-use round 1's threshold — re-calibrating during the breathing rest
+    // picks up the user's exhale as "ambient noise", raising the bar far above what a
+    // Parkinson's patient can sustain, making round 2 impossible to trigger.
+    const doCalibrate = !calibratedRef.current;
+    if (doCalibrate) adaptiveThreshRef.current = MIN_THRESHOLD;
     try {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true },
-        onMeter,
+        (status) => {
+          if (micSessionGenRef.current !== gen) return; // stale callback from a previous round
+          onMeter(status);
+        },
         BAR_INTERVAL_MS,
       );
+      if (micSessionGenRef.current !== gen) {
+        recording.stopAndUnloadAsync().catch(() => {});
+        return;
+      }
       recordingRef.current = recording;
       barTimerRef.current = setInterval(() => {
         const v = volumeRef.current;
         setBars(prev => [...prev.slice(1), Math.max(0.015, v + Math.random() * 0.018)]);
       }, BAR_INTERVAL_MS);
-      calibrateTimerRef.current = setTimeout(finishCalibration, CALIBRATION_MS);
+      if (doCalibrate) {
+        calibrateTimerRef.current = setTimeout(finishCalibration, CALIBRATION_MS);
+      } else {
+        // Skip calibration: jump straight to listening with round 1's established threshold
+        phaseRef.current = 'listening';
+        setPhase('listening');
+      }
     } catch (_) {
-      adaptiveThreshRef.current = tierConfig.minVolume;
+      if (micSessionGenRef.current !== gen) return;
       phaseRef.current = 'listening';
       setPhase('listening');
     }
   }
 
   function finishCalibration() {
+    calibratedRef.current = true; // rounds 2+ will skip recalibration
     calibrateTimerRef.current = null;
     const samples = ambientSamplesRef.current;
     if (samples.length > 0) {
@@ -713,20 +739,23 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     const msgs = REST_SETS[(roundRef.current - 1) % REST_SETS.length];
     const nextRound = roundRef.current + 1;
 
+    if (breathe1Ref.current) { clearTimeout(breathe1Ref.current); breathe1Ref.current = null; }
+    if (breathe2Ref.current) { clearTimeout(breathe2Ref.current); breathe2Ref.current = null; }
     showMsg(msgs.praise);
-    const t1 = setTimeout(() => showMsg(msgs.breatheIn),   2200);
-    const t2 = setTimeout(() => showMsg(msgs.breatheOut),  4400);
+    breathe1Ref.current = setTimeout(() => { breathe1Ref.current = null; showMsg(msgs.breatheIn); }, 2200);
+    breathe2Ref.current = setTimeout(() => { breathe2Ref.current = null; showMsg(msgs.breatheOut); }, 4400);
+
+    if (restTimerRef.current) { clearTimeout(restTimerRef.current); restTimerRef.current = null; }
 
     if (nextRound > TOTAL_ROUNDS) {
-      setTimeout(() => {
+      restTimerRef.current = setTimeout(() => {
+        restTimerRef.current = null;
         showMsg(msgs.rest);
         setTimeout(() => {
           Animated.timing(restOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
           phaseRef.current = 'done';
           setPhase('done');
-          // V2: pass exercise score — best hold time vs tier target (0–100)
           setTimeout(async () => {
-            // Release mic before onComplete so the next exercise (PitchGlides WebView) can claim it
             if (barTimerRef.current) { clearInterval(barTimerRef.current); barTimerRef.current = null; }
             try {
               if (recordingRef.current) {
@@ -743,7 +772,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       return;
     }
 
-    setTimeout(async () => {
+    restTimerRef.current = setTimeout(async () => {
+      restTimerRef.current = null;
       Animated.timing(restOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
       setCurrentMsg('');
       roundRef.current = nextRound;
@@ -755,7 +785,14 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       if (barTimerRef.current)       { clearInterval(barTimerRef.current);  barTimerRef.current = null; }
       if (calibrateTimerRef.current) { clearTimeout(calibrateTimerRef.current); calibrateTimerRef.current = null; }
       try {
-        if (recordingRef.current) { await recordingRef.current.stopAndUnloadAsync(); recordingRef.current = null; }
+        if (recordingRef.current) {
+          await recordingRef.current.stopAndUnloadAsync();
+          recordingRef.current = null;
+        }
+        // Explicitly release the iOS audio session before re-acquiring for the next round.
+        // Without this, createAsync can silently succeed but emit zero metering data.
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+        await new Promise(r => setTimeout(r, 350));
       } catch (_) {}
 
       phaseRef.current = 'calibrating';
@@ -765,7 +802,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   }
 
   async function cleanupAll() {
-    [barTimerRef, scoreTimerRef, maxTimerRef, silenceTimerRef, calibrateTimerRef, idleTimerRef]
+    micSessionGenRef.current += 1; // invalidate any in-flight mic session callback
+    [barTimerRef, scoreTimerRef, maxTimerRef, silenceTimerRef, calibrateTimerRef, idleTimerRef, restTimerRef, breathe1Ref, breathe2Ref]
       .forEach(r => {
         if (r.current) {
           if (r === barTimerRef || r === scoreTimerRef) clearInterval(r.current);
@@ -783,7 +821,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   }
 
   function barColor(v, idx) {
-    if (phase === 'scoring' && v >= adaptiveThreshRef.current) {
+    if ((phase === 'scoring' || phase === 'listening') && v >= adaptiveThreshRef.current) {
       return (BARS_COUNT - 1 - idx) < 4 ? WHITE_BAR : GREEN_BAR;
     }
     if (v < 0.05) return DIM_BAR;
@@ -865,13 +903,13 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         )}
       </View>
 
-      {/* Waveform — straddles the split line */}
+      {/* Waveform — straddles the split line, fills most of the lower screen */}
       <View style={exc.waveWrap}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
           {bars.map((v, i) => (
             <View key={i} style={{
               width: BAR_W,
-              height: Math.max(4, v * 120),
+              height: Math.max(4, v * (H * 0.40)),
               borderRadius: 3,
               backgroundColor: barColor(v, i),
             }} />
@@ -885,15 +923,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         )}
       </View>
 
-      {/* Bottom zone — tap hint + cant do */}
+      {/* Bottom zone — cant do only; bars fill most of this area visually */}
       <View style={exc.bottomZone}>
-        {phase === 'listening' && (
-          <Text style={exc.tapHint}>Your mic is listening — speak clearly.</Text>
-        )}
-        {phase === 'calibrating' && (
-          <Text style={exc.tapHint}>Calibrating to your environment...</Text>
-        )}
-
         <CantDoNow
           onSkip={onSkip}
           onEnd={onExit}
@@ -957,37 +988,31 @@ const exc = StyleSheet.create({
   },
   bestRow: { marginTop: 4 },
   bestLabel: {
-    color: 'rgba(255,255,255,0.38)', fontSize: 16, letterSpacing: 0.8,
+    color: 'rgba(255,255,255,0.65)', fontSize: 16, fontWeight: '600', letterSpacing: 0.8,
     includeFontPadding: false,
   },
 
-  // Waveform
+  // Waveform — tall, fills most of the lower half of the screen
   waveWrap: {
     position: 'absolute',
-    top: TOP_H - 124,
-    height: 124,
-    left: 20, right: 20,
+    top: TOP_H - 90,
+    height: H * 0.42,
+    left: 16, right: 16,
     justifyContent: 'flex-end',
   },
   starWrap: { position: 'absolute', right: 0, bottom: 0, alignItems: 'center' },
   star:     { color: '#FFD700', fontSize: 20, includeFontPadding: false },
   starLine: { width: 1.5, height: 50, backgroundColor: '#FFD700', opacity: 0.45 },
 
-  // Bottom zone
+  // Bottom zone — CantDoNow anchored to the very bottom; bars overlay this zone visually
   bottomZone: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 36,
-    gap: 16,
-  },
-  tapHint: {
-    color: 'rgba(255,255,255,0.38)', fontSize: 16, fontWeight: '400',
-    letterSpacing: 0.3, textAlign: 'center',
-    paddingHorizontal: 32,
+    paddingBottom: 40,
   },
   goalHint: {
-    color: 'rgba(255,255,255,0.38)', fontSize: 16, fontWeight: '400',
+    color: 'rgba(255,255,255,0.72)', fontSize: 16, fontWeight: '600',
     letterSpacing: 0.3, textAlign: 'center',
   },
   goalReached: {
@@ -1038,13 +1063,14 @@ const exc = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 // Root
 // ══════════════════════════════════════════════════════════════════════════════
-export default function SustainedPhonationExercise({ onComplete, onExit, tier = 1 }) {
+export default function SustainedPhonationExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
   const [step, setStep] = useState(STEP_TITLE);
 
   const handleSkip = onComplete; // skip this exercise = advance to next
+  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   if (step === STEP_TITLE) {
-    return <TitleScreen onNext={() => setStep(STEP_DEMO)} onExit={onExit} onSkip={handleSkip} />;
+    return <TitleScreen onNext={() => setStep(STEP_DEMO)} onExit={onExit} onSkip={handleSkip} sessionFill={sessionFill} />;
   }
   if (step === STEP_DEMO) {
     return <DemoScreen onFinish={() => setStep(STEP_READY)} onExit={() => setStep(STEP_TITLE)} onSkip={handleSkip} />;

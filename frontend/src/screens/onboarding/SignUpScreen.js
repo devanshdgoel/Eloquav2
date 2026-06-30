@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,9 +14,14 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerWithEmail } from '../../services/authService';
-import { logFunnelEvent } from '../../utils/analytics';
+import { logFunnelEvent, logScreenView } from '../../utils/analytics';
 
 export default function SignUpScreen({ navigation }) {
+  useEffect(() => {
+    const logExit = logScreenView('SignUp');
+    return logExit;
+  }, []);
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +38,10 @@ export default function SignUpScreen({ navigation }) {
     const trimPassword = password.trim();
     if (!name.trim() || !trimEmail || !trimPassword || !confirm.trim()) {
       Alert.alert('Missing fields', 'Please fill in all fields.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimEmail)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
     }
     if (trimPassword !== confirm.trim()) {
@@ -157,8 +166,9 @@ export default function SignUpScreen({ navigation }) {
               style={styles.tcsRow}
               onPress={() => setAgreed(!agreed)}
               activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Agree to terms and conditions"
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: agreed }}
+              accessibilityLabel="Agree to Terms of Service and Privacy Policy"
             >
               <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
                 {agreed && <Text style={styles.checkmark}>✓</Text>}
@@ -314,7 +324,7 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
   },
   tcsText: {

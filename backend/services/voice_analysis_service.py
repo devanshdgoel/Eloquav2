@@ -374,6 +374,11 @@ def extract_features(
 
     # ── Scores ────────────────────────────────────────────────────────────────
     intensity_for_power = result["features"].get("intensity_mean_db")
+    # RMS fallback when parselmouth is unavailable (maps librosa dBFS → Praat-equivalent dB range)
+    if intensity_for_power is None:
+        rms = result["features"].get("rms_db")
+        if rms is not None:
+            intensity_for_power = max(45.0, min(75.0, 45.0 + (rms + 60.0) * 0.60))
     f0_sd_for_expr      = result["features"].get("f0_sd_hz")
     wpm_for_fluency     = result["features"].get("speech_rate_wpm")
 

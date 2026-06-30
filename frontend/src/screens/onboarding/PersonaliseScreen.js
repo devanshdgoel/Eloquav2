@@ -1,8 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { logScreenView } from '../../utils/analytics';
 
 export default function PersonaliseScreen({ navigation }) {
+  useEffect(() => {
+    const logExit = logScreenView('Personalise');
+    return logExit;
+  }, []);
   return (
     <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={styles.container}>
       <StatusBar barStyle="light-content" />

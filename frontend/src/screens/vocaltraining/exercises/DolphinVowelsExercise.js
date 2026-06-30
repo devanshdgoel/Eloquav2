@@ -135,7 +135,7 @@ const hb = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   orangeText: {
-    color: WHITE, fontSize: 24, fontWeight: '900',
+    color: '#1A1A1A', fontSize: 24, fontWeight: '900',
     includeFontPadding: false, textAlign: 'center', lineHeight: 24,
   },
 });
@@ -156,7 +156,7 @@ const badge = StyleSheet.create({
     alignSelf: 'center', marginTop: 12,
   },
   text: {
-    color: WHITE, fontSize: 16, fontWeight: '800', letterSpacing: 0.8,
+    color: '#1A1A1A', fontSize: 16, fontWeight: '800', letterSpacing: 0.8,
   },
 });
 
@@ -834,7 +834,7 @@ const ex = StyleSheet.create({
     includeFontPadding: false,
   },
   subHint: {
-    color: 'rgba(255,255,255,0.38)', fontSize: 16, marginTop: 4,
+    color: 'rgba(255,255,255,0.55)', fontSize: 16, marginTop: 4,
     letterSpacing: 0.3, textAlign: 'center',
   },
   doneText: {

@@ -11,8 +11,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { auth } from '../../config/firebase';
-import { cloneVoice } from '../../services/voiceService';
+import { cloneVoice, getVoiceStatus } from '../../services/voiceService';
 import { setOnboardingComplete } from '../../utils/storage';
+import { logScreenView, logFunnelEvent } from '../../utils/analytics';
 
 // The three reference sentences used to capture a baseline voice profile.
 const SENTENCES = [
@@ -28,10 +29,10 @@ export default function SetupVoiceScreen({ navigation }) {
   const [isCloningVoice, setIsCloningVoice] = useState(false);
   const recordingRef = useRef(null);
 
-  // Stop and discard any active recording if the user navigates away
-  // before completing voice setup (e.g. Android back gesture).
   useEffect(() => {
+    const logExit = logScreenView('SetupVoice');
     return () => {
+      logExit();
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(() => {});
         recordingRef.current = null;
@@ -65,6 +66,7 @@ export default function SetupVoiceScreen({ navigation }) {
     setIsRecording(false);
 
     await recordingRef.current.stopAndUnloadAsync();
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
     const uri = recordingRef.current.getURI();
     recordingRef.current = null;
 
@@ -96,8 +98,11 @@ export default function SetupVoiceScreen({ navigation }) {
       // processed by ElevenLabs. This typically takes 10-30 seconds.
       setIsCloningVoice(true);
       try {
-        const validUris = recordedUris.filter(Boolean);
-        await cloneVoice(validUris, user.uid, user.displayName || 'User');
+        const status = await getVoiceStatus().catch(() => ({ has_cloned_voice: false }));
+        if (!status.has_cloned_voice) {
+          const validUris = recordedUris.filter(Boolean);
+          await cloneVoice(validUris, user.displayName || 'User');
+        }
       } catch (err) {
         // Voice cloning failure is non-fatal — the app falls back to the
         // default voice. Log the error but do not block the user.
@@ -107,11 +112,13 @@ export default function SetupVoiceScreen({ navigation }) {
       }
     }
 
+    logFunnelEvent('voice_setup_completed');
     await setOnboardingComplete();
     navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
 
   async function handleSkip() {
+    logFunnelEvent('voice_setup_skipped');
     await setOnboardingComplete();
     navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
   }
@@ -158,6 +165,10 @@ export default function SetupVoiceScreen({ navigation }) {
           <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
         </TouchableOpacity>
 
+        <Text style={styles.recordingStatus} accessibilityLiveRegion="polite">
+          {isRecording ? 'Recording…  tap to stop' : `Sentence ${currentIndex + 1} of ${SENTENCES.length}`}
+        </Text>
+
         {/* One dot per sentence; the current sentence is highlighted white. */}
         <View style={styles.dotsRow}>
           {SENTENCES.map((_, i) => (
@@ -191,8 +202,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   skipText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+    color: '#1A1A1A',
+    fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
@@ -280,7 +291,15 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   dotOther: {
-    backgroundColor: '#1C4047',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+
+  recordingStatus: {
+    color: 'rgba(255,255,255,0.80)',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
 
   // Voice cloning loading screen

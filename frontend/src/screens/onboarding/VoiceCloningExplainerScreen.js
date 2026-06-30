@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { logScreenView } from '../../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -43,6 +44,11 @@ const POINTS = [
 
 export default function VoiceCloningExplainerScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+
+  useEffect(() => {
+    const logExit = logScreenView('VoiceCloningExplainer');
+    return logExit;
+  }, []);
 
   return (
     <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
@@ -106,7 +112,7 @@ const s = StyleSheet.create({
   header: { gap: 10 * SC },
   eyebrow: {
     color: ORANGE,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2.5,
   },
@@ -144,7 +150,7 @@ const s = StyleSheet.create({
 
   btn: {
     backgroundColor: ORANGE,
-    paddingVertical: 18,
+    paddingVertical: 20,
     borderRadius: 28,
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },
@@ -155,7 +161,7 @@ const s = StyleSheet.create({
   },
   btnText: {
     color: '#1A1A1A',
-    fontSize: 17 * SC,
+    fontSize: 17,
     fontWeight: '800',
     letterSpacing: 0.3,
   },

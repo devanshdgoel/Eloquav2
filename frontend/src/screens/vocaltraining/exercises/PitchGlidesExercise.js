@@ -249,13 +249,13 @@ const bs = StyleSheet.create({
   back:         { width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14, backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center' },
   backText:     { color: WHITE, fontSize: 24, fontWeight: '700', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
   question:     { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2, backgroundColor: ORANGE, justifyContent: 'center', alignItems: 'center', shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 10, elevation: 8 },
-  questionText: { color: WHITE, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
+  questionText: { color: '#1A1A1A', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Title screen
 // ══════════════════════════════════════════════════════════════════════════════
-function TitleScreen({ onNext, onExit }) {
+function TitleScreen({ onNext, onExit, sessionFill = 0.25 }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
@@ -283,7 +283,7 @@ function TitleScreen({ onNext, onExit }) {
           <Text style={tts.arrowText}>→</Text>
         </TouchableOpacity>
         <View style={{ position: 'absolute', bottom: fv(29), left: fs(47), width: fs(314), height: 12, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)' }}>
-          <View style={{ width: fs(128), height: '100%', borderRadius: 13, backgroundColor: ORANGE }} />
+          <View style={{ width: `${sessionFill * 100}%`, height: '100%', borderRadius: 13, backgroundColor: ORANGE }} />
         </View>
       </View>
     </FadeIn>
@@ -626,9 +626,10 @@ const STEP_TITLE    = 0;
 const STEP_TUTORIAL = 1;
 const STEP_EXERCISE = 2;
 
-export default function PitchGlidesExercise({ onComplete, onExit, tier = 1 }) {
+export default function PitchGlidesExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
   const [step, setStep] = useState(STEP_TITLE);
-  if (step === STEP_TITLE)    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} />;
+  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
+  if (step === STEP_TITLE)    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} sessionFill={sessionFill} />;
   if (step === STEP_TUTORIAL) return <TutorialScreen onFinish={() => setStep(STEP_EXERCISE)} onExit={() => setStep(STEP_TITLE)} />;
   return (
     <ExerciseScreen

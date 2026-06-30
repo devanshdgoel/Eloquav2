@@ -350,7 +350,7 @@ const DEMO_SLIDES = [
   { type: 'instr', num: '3', text: 'Jellyfish rises', wordActive: true, showJelly: true },
 ];
 
-function DemoScreen({ onFinish, onExit }) {
+function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
   const [slide, setSlide] = useState(0);
   const demoRiseAnim = useRef(new Animated.Value(0)).current;
   const demoOpac     = useRef(new Animated.Value(1)).current;
@@ -414,7 +414,7 @@ function DemoScreen({ onFinish, onExit }) {
 
         {/* Session progress bar — matches LD1 bottom bar */}
         <View style={ds.sessionBar}>
-          <View style={ds.sessionBarFill} />
+          <View style={[ds.sessionBarFill, { width: `${sessionFill * 100}%` }]} />
         </View>
       </View>
     );
@@ -514,7 +514,7 @@ const ds = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
   sessionBarFill: {
-    width: '42%', height: '100%', borderRadius: 13,
+    height: '100%', borderRadius: 13,
     backgroundColor: ORANGE,
   },
   instrNum: {
@@ -895,7 +895,7 @@ const ex = StyleSheet.create({
     shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-  helpText: { color: WHITE, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
+  helpText: { color: '#1A1A1A', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
   cardWrap: {
     position: 'absolute', top: 116, left: 0, right: 0, zIndex: 20,
     alignItems: 'center',
@@ -941,12 +941,13 @@ const ex = StyleSheet.create({
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────────
 
-export default function LoudnessDrillsExercise({ onComplete, onExit, tier = 1 }) {
+export default function LoudnessDrillsExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
   const [showDemo, setShowDemo] = useState(false);
+  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   function finishDemo() { setShowDemo(false); }
 
-  if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} />;
+  if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} sessionFill={sessionFill} />;
   return (
     <ExerciseScreen
       onComplete={onComplete}

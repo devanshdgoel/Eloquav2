@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
+import { logScreenView } from '../../utils/analytics';
 
 const TEAL_DARK = '#1C4047';
 const TEAL_MID  = '#2D6974';
@@ -35,6 +36,11 @@ const WHY_POINTS = [
 
 export default function SetupPermissionsScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+
+  useEffect(() => {
+    const logExit = logScreenView('SetupPermissions');
+    return logExit;
+  }, []);
 
   function handleBack() {
     if (navigation.canGoBack()) {

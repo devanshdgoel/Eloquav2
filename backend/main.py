@@ -42,6 +42,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/")
+def root():
+    return {"status": "ok", "message": "Eloqua backend running"}
+
+
+@app.get("/api/health")
 def health_check():
     return {"status": "ok", "message": "Eloqua backend running"}
 

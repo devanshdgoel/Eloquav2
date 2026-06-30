@@ -39,8 +39,8 @@ function getTheme() {
     greeting:  isMorning ? 'Morning,' : 'Evening',
     greetingSuffix: isMorning ? '' : '',   // comma is inline with name for morning
     gradientColors: isMorning
-      ? ['#37767A', '#1C4047', '#0A1618']  // darkApp gradient
-      : ['#37767A', '#1C4047', '#0A1618'], // darkApp gradient
+      ? ['#68B39F', '#2D6974', '#1C4047']  // lighter teal — morning warmth
+      : ['#37767A', '#1C4047', '#0A1618'], // darkApp gradient — evening depth
     gradientAngle: 139,                    // ~139° from Figma
   };
 }

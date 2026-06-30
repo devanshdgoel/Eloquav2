@@ -57,3 +57,35 @@ export function logUsageEvent(data) {
     ts: serverTimestamp(),
   }).catch(() => {});
 }
+
+// Log a screen view with entry/exit timestamps for drop-off and time-on-screen analysis.
+// Call logScreenView(screenName) on mount and store the returned `logExit` function,
+// then call logExit() in the useEffect cleanup or on manual navigation.
+//
+// Writes to users/{uid}/screen_events:
+//   { screen, entered_at (serverTimestamp), exited_at, duration_s, hour_of_day }
+//
+// hour_of_day enables "time of day" usage analysis without storing precise timestamps.
+export function logScreenView(screen) {
+  const u = uid();
+  const enteredMs = Date.now();
+  const enteredHour = new Date().getHours();
+
+  let docRef = null;
+  if (u) {
+    addDoc(collection(db, 'users', u, 'screen_events'), {
+      screen,
+      entered_at: serverTimestamp(),
+      exited_at: null,
+      duration_s: null,
+      hour_of_day: enteredHour,
+    }).then(ref => { docRef = ref; }).catch(() => {});
+  }
+
+  // Return a cleanup function the caller should invoke on unmount / navigation exit.
+  return function logExit() {
+    if (!docRef) return;
+    const durationS = Math.round((Date.now() - enteredMs) / 1000);
+    docRef.update({ exited_at: serverTimestamp(), duration_s: durationS }).catch(() => {});
+  };
+}

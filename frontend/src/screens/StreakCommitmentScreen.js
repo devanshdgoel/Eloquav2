@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   // ── Week label ──
   weekLabel: {
     color: MINT,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 3,
     marginBottom: 14 * SC,
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
   },
   dayLabel: {
     color: 'rgba(195,222,206,0.5)',
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
     marginBottom: 8 * SC,
@@ -535,7 +535,7 @@ const styles = StyleSheet.create({
   },
   commitBtnText: {
     color: '#0D1C1E',
-    fontSize: 18 * SC,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.8,
   },

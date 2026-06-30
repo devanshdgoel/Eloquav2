@@ -97,6 +97,19 @@ export const colors = {
     ready:        ['#1E3A4A', '#0D2530'],
   },
 
+  // ── Splash screen palette — used by SplashScreen.js ─────────────────────────
+  splash: {
+    gradientStart: _p.teal500,   // '#37767A'
+    gradientEnd:   _p.teal950,   // '#0A1618'
+    revealLight:   _p.teal100,   // '#E0ECDE'
+    revealMid:     _p.teal400,   // '#68B39F'
+    revealDark:    '#418182',
+    // BrandReveal + SplashButtons text / button tokens (light reveal phase)
+    text:         _p.teal900,                  // '#1C4047' — dark teal on mint bg
+    buttonBg:     _p.white,                    // '#FFFFFF' — solid login button
+    buttonBorder: 'rgba(28,64,71,0.30)',       // subtle teal outline
+  },
+
   // ── Legacy keys — keep AppNavigator + AuthContext happy ─────────────────────
   primary:    _p.orange,
   background: _p.teal900,

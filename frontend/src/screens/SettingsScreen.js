@@ -18,9 +18,10 @@ import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
+import { usePrefsRefresh } from '../context/PrefsContext';
 import { getUserProfile } from '../utils/storage';
 import { getVoiceStatus, deleteClonedVoice } from '../services/voiceService';
-import { getAuthHeaders } from '../utils/authHeaders';
+import { fetchWithAuth } from '../utils/authHeaders';
 import { API_BASE_URL } from '../config/env';
 import {
   requestPermission,
@@ -28,6 +29,7 @@ import {
   formatTime,
   applyNotificationPrefs,
 } from '../services/notificationService';
+import { logScreenView } from '../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -77,7 +79,7 @@ async function savePrefs(prefs) {
 }
 
 // ── Custom toggle ─────────────────────────────────────────────────────────────
-function Toggle({ value, onValueChange, disabled = false }) {
+function Toggle({ value, onValueChange, disabled = false, accessibilityLabel }) {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   useEffect(() => {
@@ -98,7 +100,8 @@ function Toggle({ value, onValueChange, disabled = false }) {
       onPress={() => !disabled && onValueChange(!value)}
       activeOpacity={0.85}
       accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
+      accessibilityState={{ checked: value, disabled }}
+      accessibilityLabel={accessibilityLabel}
     >
       <Animated.View style={[tog.track, { backgroundColor: trackBg, opacity: thumbOpacity }]}>
         <Animated.View style={[tog.thumb, { transform: [{ translateX: thumbX }] }]} />
@@ -305,7 +308,7 @@ const tp = StyleSheet.create({
   },
   heading: {
     color: WHITE,
-    fontSize: 17 * SC,
+    fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
     paddingVertical: 14,
@@ -324,7 +327,7 @@ const tp = StyleSheet.create({
   },
   timeText: {
     color: 'rgba(255,255,255,0.70)',
-    fontSize: 16 * SC,
+    fontSize: 16,
     fontWeight: '500',
   },
   timeTextActive: {
@@ -333,7 +336,7 @@ const tp = StyleSheet.create({
   },
   checkmark: {
     color: ORANGE,
-    fontSize: 16 * SC,
+    fontSize: 16,
     fontWeight: '700',
   },
   closeBtn: {
@@ -351,7 +354,7 @@ const tp = StyleSheet.create({
   },
   closeBtnText: {
     color: '#1A1A1A',
-    fontSize: 16 * SC,
+    fontSize: 17,
     fontWeight: '700',
   },
 });
@@ -422,7 +425,7 @@ const mp = StyleSheet.create({
   },
   labelActive: { color: ORANGE },
   sub: {
-    color: 'rgba(255,255,255,0.28)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 16,
     letterSpacing: 0.2,
   },
@@ -501,6 +504,7 @@ function ShieldIcon({ size = 18 }) {
 export default function SettingsScreen({ navigation }) {
   const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
   const { signOut, isGuest, user } = useAuth();
+  const refreshPrefs = usePrefsRefresh();
 
   const [profile,         setProfile]         = useState(null);
   const [voiceStatus,     setVoiceStatus]     = useState(null);
@@ -509,6 +513,11 @@ export default function SettingsScreen({ navigation }) {
   const [prefs,           setPrefs]           = useState(DEFAULT_PREFS);
   const [notifPermission, setNotifPermission] = useState(false);
   const [timePickerOpen,  setTimePickerOpen]  = useState(false);
+
+  useEffect(() => {
+    const logExit = logScreenView('Settings');
+    return logExit;
+  }, []);
 
   useEffect(() => {
     getUserProfile().then(p => setProfile(p));
@@ -528,10 +537,10 @@ export default function SettingsScreen({ navigation }) {
   const updatePref = useCallback(async (key, value) => {
     setPrefs(prev => {
       const next = { ...prev, [key]: value };
-      savePrefs(next);
+      savePrefs(next).then(() => refreshPrefs()).catch(() => {});
       return next;
     });
-  }, []);
+  }, [refreshPrefs]);
 
   const updateNotifPref = useCallback(async (key, value) => {
     let granted = notifPermission;
@@ -630,10 +639,8 @@ export default function SettingsScreen({ navigation }) {
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      const headers = await getAuthHeaders();
-                      await fetch(`${API_BASE_URL}/api/account`, {
+                      await fetchWithAuth(`${API_BASE_URL}/api/account`, {
                         method: 'DELETE',
-                        headers,
                       });
                     } catch {
                       // Proceed with local sign-out even if backend call fails.
@@ -715,6 +722,7 @@ export default function SettingsScreen({ navigation }) {
                 value={prefs.enhancedVoice}
                 onValueChange={v => updatePref('enhancedVoice', v)}
                 disabled={isGuest || !hasClone}
+                accessibilityLabel="Enhanced voice"
               />
             }
           />
@@ -786,6 +794,7 @@ export default function SettingsScreen({ navigation }) {
               <Toggle
                 value={prefs.dailyReminder}
                 onValueChange={v => updateNotifPref('dailyReminder', v)}
+                accessibilityLabel="Daily reminder"
               />
             }
           />
@@ -804,6 +813,7 @@ export default function SettingsScreen({ navigation }) {
               <Toggle
                 value={prefs.reengagementEnabled}
                 onValueChange={v => updateNotifPref('reengagementEnabled', v)}
+                accessibilityLabel="Re-engagement nudge"
               />
             }
           />
@@ -815,6 +825,7 @@ export default function SettingsScreen({ navigation }) {
               <Toggle
                 value={prefs.weeklySummaryEnabled}
                 onValueChange={v => updateNotifPref('weeklySummaryEnabled', v)}
+                accessibilityLabel="Weekly summary"
               />
             }
           />
@@ -829,6 +840,7 @@ export default function SettingsScreen({ navigation }) {
               <Toggle
                 value={prefs.hapticFeedback}
                 onValueChange={v => updatePref('hapticFeedback', v)}
+                accessibilityLabel="Haptic feedback"
               />
             }
           />
@@ -850,6 +862,7 @@ export default function SettingsScreen({ navigation }) {
               <Toggle
                 value={prefs.largeText}
                 onValueChange={v => updatePref('largeText', v)}
+                accessibilityLabel="Large text"
               />
             }
           />
@@ -861,6 +874,7 @@ export default function SettingsScreen({ navigation }) {
               <Toggle
                 value={prefs.audioCues}
                 onValueChange={v => updatePref('audioCues', v)}
+                accessibilityLabel="Audio cues"
               />
             }
           />
@@ -1046,7 +1060,7 @@ const s = StyleSheet.create({
   },
   signOutText: {
     color: WHITE,
-    fontSize: 16 * SC,
+    fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.4,
   },

@@ -25,7 +25,7 @@ import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
 import { API_BASE_URL } from '../../../config/env';
-import { getAuthHeaders } from '../../../utils/authHeaders';
+import { fetchWithAuth } from '../../../utils/authHeaders';
 
 const { width: W, height: H } = Dimensions.get('window');
 const SC = W / 402;
@@ -429,10 +429,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     try {
       const form = new FormData();
       form.append('file', { uri, type: 'audio/m4a', name: 'speech.m4a' });
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch(`${API_BASE_URL}/api/process-audio`, {
+      const res = await fetchWithAuth(`${API_BASE_URL}/api/process-audio`, {
         method: 'POST',
-        headers: authHeaders,
         body: form,
       });
 
@@ -685,13 +683,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function FunctionalSpeechExercise({ onComplete, onExit, tier = 1 }) {
-  // TODO (production): read INTRO_KEY from AsyncStorage to show only once.
-  // For testing, always show the intro first.
+export default function FunctionalSpeechExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
   const [showIntro, setShowIntro] = useState(true);
+  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   return showIntro
-    ? <IntroScreen onStart={() => setShowIntro(false)} onExit={onExit} progress={0} />
+    ? <IntroScreen onStart={() => setShowIntro(false)} onExit={onExit} progress={sessionFill} />
     : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onComplete} tier={tier} />;
 }
 
@@ -740,7 +737,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2, shadowRadius: 6, elevation: 4,
   },
-  bubbleDots: { color: C.white, fontSize: 18 * SC, letterSpacing: 3, fontWeight: '700' },
+  bubbleDots: { color: C.white, fontSize: 18, letterSpacing: 3, fontWeight: '700' },
 
   introArrowBtn: {
     alignSelf: 'center',
@@ -787,7 +784,7 @@ const styles = StyleSheet.create({
     shadowColor: C.orange, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.50, shadowRadius: 10, elevation: 8,
   },
-  exHelpText: { color: C.white, fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
+  exHelpText: { color: '#1A1A1A', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 
   speakerBtn: {
     alignSelf: 'center', marginTop: 14 * SC, marginBottom: 8 * SC,

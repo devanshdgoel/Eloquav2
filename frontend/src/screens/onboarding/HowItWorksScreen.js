@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { logScreenView } from '../../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -45,6 +46,11 @@ const STEPS = [
 
 export default function HowItWorksScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+
+  useEffect(() => {
+    const logExit = logScreenView('HowItWorks');
+    return logExit;
+  }, []);
 
   return (
     <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
@@ -106,7 +112,7 @@ const s = StyleSheet.create({
   header: { gap: 10 * SC },
   eyebrow: {
     color: ORANGE,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2.5,
   },
@@ -138,14 +144,14 @@ const s = StyleSheet.create({
     borderWidth: 1.5,
     flexShrink: 0,
   },
-  badgeNum: { fontSize: 18 * SC, fontWeight: '800' },
+  badgeNum: { fontSize: 18, fontWeight: '800' },
   cardText: { flex: 1, gap: 5 * SC },
-  cardTitle: { color: WHITE, fontSize: 16 * SC, fontWeight: '700' },
+  cardTitle: { color: WHITE, fontSize: 17, fontWeight: '700' },
   cardBody:  { color: DIM,   fontSize: 16, lineHeight: 24 },
 
   btn: {
     backgroundColor: ORANGE,
-    paddingVertical: 18,
+    paddingVertical: 20,
     borderRadius: 28,
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },
@@ -156,11 +162,11 @@ const s = StyleSheet.create({
   },
   btnText: {
     color: '#1A1A1A',
-    fontSize: 17 * SC,
+    fontSize: 17,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
 
   skipLink: { alignSelf: 'center', paddingVertical: 4 },
-  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 16 },
+  skipText: { color: 'rgba(255,255,255,0.60)', fontSize: 16 },
 });

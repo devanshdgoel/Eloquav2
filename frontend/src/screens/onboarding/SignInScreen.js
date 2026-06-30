@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { loginWithEmail, resetPassword } from '../../services/authService';
 import { isOnboardingComplete } from '../../utils/storage';
+import { logScreenView } from '../../utils/analytics';
 
 export default function SignInScreen({ navigation }) {
+  useEffect(() => {
+    const logExit = logScreenView('SignIn');
+    return logExit;
+  }, []);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

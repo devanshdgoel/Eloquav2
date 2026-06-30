@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
 import { useAuth } from '../context/AuthContext';
+import { PrefsProvider } from '../context/PrefsContext';
 import { colors } from '../theme';
 import ErrorBoundary from '../components/ErrorBoundary';
 
@@ -49,6 +50,7 @@ export default function AppNavigator() {
   }
 
   return (
+    <PrefsProvider>
     <ErrorBoundary>
     <NavigationContainer>
       {/*
@@ -104,6 +106,7 @@ export default function AppNavigator() {
       </Stack.Navigator>
     </NavigationContainer>
     </ErrorBoundary>
+    </PrefsProvider>
   );
 }
 

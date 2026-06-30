@@ -26,7 +26,7 @@ import LoudnessDrills     from './exercises/LoudnessDrillsExercise';
 import TailoredExercise   from './exercises/TailoredExercise';
 import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
-import { logSessionEvent }   from '../../utils/analytics';
+import { logSessionEvent, logScreenView } from '../../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 
@@ -146,6 +146,12 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   const startedAtRef     = useRef(Date.now()); // ms when session mounted
   const exerciseIndexRef = useRef(0);           // mirrors exerciseIndex for the beforeRemove listener
   const tiersRef         = useRef(DEFAULT_TIERS); // mirrors tiers for the beforeRemove listener
+
+  // Screen-time tracking.
+  useEffect(() => {
+    const logExit = logScreenView('VocalTrainingSession');
+    return logExit;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load tiers and apply between-session nudges based on recent performance.
   // Also returns baseline_focus_key for TailoredExercise tie-breaking.

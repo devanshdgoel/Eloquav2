@@ -20,11 +20,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
 import { API_BASE_URL } from '../config/env';
-import { getAuthHeaders } from '../utils/authHeaders';
+import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../utils/storage';
 import { completeSession } from '../services/progressService';
 import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, DEFAULT_TIERS } from '../services/difficultyService';
+import { useLargeText } from '../context/PrefsContext';
+import { logFunnelEvent, logScreenView } from '../utils/analytics';
 
 import BreathingExercise  from './vocaltraining/exercises/BreathingExercise';
 import SustainedPhonation from './vocaltraining/exercises/SustainedPhonationExercise';
@@ -102,6 +104,8 @@ const arcS = StyleSheet.create({
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function CheckinScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (base) => largeText ? Math.round(base * 1.25) : base;
 
   // phase: 'loading' | 'setup' | 'pre' | 'mini' | 'post' | 'comparison'
   const [phase,    setPhase]    = useState('loading');
@@ -129,9 +133,11 @@ export default function CheckinScreen({ navigation }) {
   const whichCheckRef  = useRef('pre');
 
   useEffect(() => {
+    const logExit = logScreenView('Checkin');
     loadSentence();
     fetchDifficultyTiers().then(setTiers).catch(() => {/* keep defaults */});
     return () => {
+      logExit();
       clearInterval(timerRef.current);
       clearInterval(barTimerRef.current);
       recordingRef.current?.stopAndUnloadAsync().catch(() => {});
@@ -252,13 +258,11 @@ export default function CheckinScreen({ navigation }) {
         form.append('file', { uri, type: 'audio/m4a', name: 'checkin.m4a' });
         form.append('task_type', 'reading');
         form.append('audio_duration_s', String(durationS));
-        const authHeaders = await getAuthHeaders();
-        const controller  = new AbortController();
-        const timeoutId   = setTimeout(() => controller.abort(), 30000);
+        const controller = new AbortController();
+        const timeoutId  = setTimeout(() => controller.abort(), 30000);
         try {
-          const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
+          const res = await fetchWithAuth(`${API_BASE_URL}/api/analyze-voice`, {
             method: 'POST',
-            headers: authHeaders,
             body: form,
             signal: controller.signal,
           });
@@ -326,10 +330,8 @@ export default function CheckinScreen({ navigation }) {
           if (postScores.expression  != null) ciForm.append('expression',  String(Math.round(postScores.expression)));
           if (postScores.fluency     != null) ciForm.append('fluency',     String(Math.round(postScores.fluency)));
           ciForm.append('task_results_json', '{}');
-          const ciHeaders = await getAuthHeaders();
-          await fetch(`${API_BASE_URL}/api/save-assessment`, {
+          await fetchWithAuth(`${API_BASE_URL}/api/save-assessment`, {
             method: 'POST',
-            headers: ciHeaders,
             body: ciForm,
           });
         } catch (ciErr) {
@@ -337,6 +339,7 @@ export default function CheckinScreen({ navigation }) {
         }
       }
 
+      logFunnelEvent('checkin_completed');
       const result  = await completeSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
@@ -361,7 +364,7 @@ export default function CheckinScreen({ navigation }) {
 
   if (phase === 'loading') {
     return (
-      <LinearGradient colors={['#243E44', '#0D1E21']} style={s.root}>
+      <LinearGradient colors={['#243E44', '#0D1E21']} style={s.rootCentered}>
         <ActivityIndicator color={ORANGE} size="large" />
       </LinearGradient>
     );
@@ -392,7 +395,8 @@ export default function CheckinScreen({ navigation }) {
             <TextInput
               style={s.input}
               placeholder={'e.g. I\'d like a cup of tea please.'}
-              placeholderTextColor="rgba(255,255,255,0.28)"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              accessibilityLabel="Enter your personal sentence"
               value={sentenceInput}
               onChangeText={setSentenceInput}
               multiline
@@ -431,12 +435,14 @@ export default function CheckinScreen({ navigation }) {
             totalExercises={MINI_EXERCISES.length}
             tier={tiers[MINI_EXERCISES[miniExIndex].type] ?? 1}
           />
-          <TouchableOpacity
-            style={s.skipZone}
-            onLongPress={handleMiniComplete}
-            delayLongPress={2000}
-            activeOpacity={1}
-          />
+          {__DEV__ && (
+            <TouchableOpacity
+              style={s.skipZone}
+              onLongPress={handleMiniComplete}
+              delayLongPress={2000}
+              activeOpacity={1}
+            />
+          )}
         </View>
         <View style={s.progressTrack}>
           <Animated.View
@@ -472,10 +478,10 @@ export default function CheckinScreen({ navigation }) {
           )}
           <Text style={s.eyebrow}>{isPre ? 'PRE-CHECK' : 'POST-CHECK'}</Text>
           <Text style={s.heroTitle}>{isPre ? 'Before\nyour training' : 'After\nyour training'}</Text>
-          <Text style={s.body}>Read this sentence aloud, just as you would in everyday conversation.</Text>
+          <Text style={[s.body, { fontSize: fs(18) }]}>Read this sentence aloud, just as you would in everyday conversation.</Text>
 
           <View style={s.sentenceCard}>
-            <Text style={s.sentenceText}>"{personalSentence}"</Text>
+            <Text style={[s.sentenceText, { fontSize: fs(18), lineHeight: fs(18) * 1.56 }]}>"{personalSentence}"</Text>
           </View>
 
           {recPhase === 'ready' && (
@@ -668,7 +674,8 @@ export default function CheckinScreen({ navigation }) {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  root: { flex: 1 },
+  rootCentered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   page: { paddingHorizontal: 28, paddingTop: 28, width: '100%' },
 
   backBtn: {
@@ -716,14 +723,14 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
     color: WHITE,
-    fontSize: 16 * SC,
+    fontSize: 17,
     padding: 16,
     minHeight: 80,
     textAlignVertical: 'top',
     marginBottom: 8,
   },
   charCount: {
-    color: 'rgba(255,255,255,0.28)',
+    color: 'rgba(255,255,255,0.50)',
     fontSize: 16,
     textAlign: 'right',
     marginBottom: 24,
@@ -751,9 +758,9 @@ const s = StyleSheet.create({
   },
   sentenceText: {
     color: WHITE,
-    fontSize: 18 * SC,
+    fontSize: 18,
     fontWeight: '500',
-    lineHeight: 26 * SC,
+    lineHeight: 28,
     textAlign: 'center',
     fontStyle: 'italic',
   },

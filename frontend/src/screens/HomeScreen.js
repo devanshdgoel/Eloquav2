@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchProgress, TOTAL_NODES } from '../services/progressService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { logFunnelEvent } from '../utils/analytics';
+import { logFunnelEvent, logScreenView } from '../utils/analytics';
+import { useLargeText } from '../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 
@@ -124,6 +125,8 @@ function Chevron({ direction }) {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function HomeScreen({ navigation }) {
   const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (base) => largeText ? Math.round(base * 1.25) : base;
   const tabBarH = 72 + safeBottom;
 
   const [viewportH, setViewportH] = useState(0);
@@ -180,6 +183,12 @@ export default function HomeScreen({ navigation }) {
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Screen-time tracking for drop-off analytics.
+  useEffect(() => {
+    const logExit = logScreenView('Home');
+    return logExit;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Scroll ────────────────────────────────────────────────────────────────
   function applyOffset(next) {
     const clamped = Math.max(0, Math.min(next, maxOffset));
@@ -227,9 +236,27 @@ export default function HomeScreen({ navigation }) {
       <StatusBar barStyle="light-content" />
 
       {!checkinDue && (
-        <Text style={styles.greeting}>
+        <Text style={[styles.greeting, { fontSize: fs(17) }]}>
           {isFirstSession ? 'Welcome. Start your voice journey.' : 'Good to see you.'}
         </Text>
+      )}
+
+      {/* ── Check-in due banner — shown instead of greeting ─────────────── */}
+      {checkinDue && (
+        <TouchableOpacity
+          style={styles.checkinBanner}
+          onPress={() => navigation.navigate('Checkin', { nodeIndex: activeNode })}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Progress check-in is due — tap to begin"
+        >
+          <View style={styles.checkinBannerLeft}>
+            <Text style={[styles.checkinBannerEyebrow, { fontSize: fs(16) }]}>TIME TO CHECK IN</Text>
+            <Text style={[styles.checkinBannerTitle, { fontSize: fs(20) }]}>Progress Check-in</Text>
+            <Text style={[styles.checkinBannerSub, { fontSize: fs(16) }]}>See how far your voice has come</Text>
+          </View>
+          <Text style={styles.checkinBannerArrow}>›</Text>
+        </TouchableOpacity>
       )}
 
       {/* ── Smart Speech card — floating feature card, not a map heading ──── */}
@@ -244,8 +271,8 @@ export default function HomeScreen({ navigation }) {
           <MicAIIcon size={50} />
         </View>
         <View style={styles.speechTextWrap}>
-          <Text style={styles.speechTitle}>Smart Speech</Text>
-          <Text style={styles.speechSub}>Real-time AI voice enhancement</Text>
+          <Text style={[styles.speechTitle, { fontSize: fs(20) }]}>Smart Speech</Text>
+          <Text style={[styles.speechSub, { fontSize: fs(16) }]}>Real-time AI voice enhancement</Text>
         </View>
         <Text style={styles.speechArrow}>›</Text>
       </TouchableOpacity>
@@ -431,8 +458,8 @@ export default function HomeScreen({ navigation }) {
         {/* ── Streak pill — floats above the top gradient fade ─────────── */}
         <View style={styles.streakPill} pointerEvents="none">
           <FlameIcon size={26} />
-          <Text style={styles.streakNum}>{progress.streak_days}</Text>
-          <Text style={styles.streakLabel}>
+          <Text style={[styles.streakNum, { fontSize: fs(24) }]}>{progress.streak_days}</Text>
+          <Text style={[styles.streakLabel, { fontSize: fs(17) }]}>
             {progress.streak_days === 1 ? 'day' : 'days'}
           </Text>
         </View>
@@ -533,6 +560,48 @@ const styles = StyleSheet.create({
     color: '#FFA940',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  // ── Check-in due banner ───────────────────────────────────────────────────
+  checkinBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(255,169,64,0.15)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,169,64,0.50)',
+  },
+  checkinBannerLeft: { flex: 1 },
+  checkinBannerEyebrow: {
+    color: COLORS.orange,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  checkinBannerTitle: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginBottom: 3,
+  },
+  checkinBannerSub: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 22,
+  },
+  checkinBannerArrow: {
+    color: COLORS.orange,
+    fontSize: 30,
+    fontWeight: '300',
+    paddingLeft: 12,
   },
 
   // ── Greeting ──────────────────────────────────────────────────────────────

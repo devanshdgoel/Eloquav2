@@ -14,7 +14,7 @@ async function warmUpBackend() {
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 10_000);
-    await fetch(`${API_BASE_URL}/`, { signal: controller.signal });
+    await fetch(`${API_BASE_URL}/api/health`, { signal: controller.signal });
   } catch {
     // Cold start or network error — backend will still serve when the user
     // makes their first real request; this just reduces perceived latency.

@@ -117,7 +117,7 @@ const hb = StyleSheet.create({
 });
 
 // ── Screen 0: Title ───────────────────────────────────────────────────────────
-function TitleScreen({ onNext, onExit }) {
+function TitleScreen({ onNext, onExit, sessionFill = 0.14 }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: '#1C4047' }}>
@@ -147,7 +147,7 @@ function TitleScreen({ onNext, onExit }) {
           <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
 
-        <SessionBar fill={0.14} />
+        <SessionBar fill={sessionFill} />
       </View>
     </FadeIn>
   );
@@ -427,14 +427,16 @@ const ds = StyleSheet.create({
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function BreathingExercise({ onComplete, onExit }) {
+export default function BreathingExercise({ onComplete, onExit, exerciseIndex = 0, totalExercises = 8 }) {
   const [step, setStep] = useState(STEP_TITLE);
+  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   if (step === STEP_TITLE) {
     return (
       <TitleScreen
         onNext={() => setStep(STEP_VIDEO)}
         onExit={onExit}
+        sessionFill={sessionFill}
       />
     );
   }

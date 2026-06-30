@@ -23,7 +23,8 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { API_BASE_URL } from '../config/env';
 import { fetchProgress, TOTAL_NODES } from '../services/progressService';
-import { getAuthHeaders } from '../utils/authHeaders';
+import { fetchWithAuth } from '../utils/authHeaders';
+import { logScreenView } from '../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -32,7 +33,7 @@ const ORANGE = '#FFA940';
 const TEAL   = '#2D6974';
 const MINT   = '#C3DECE';
 const WHITE  = '#FFFFFF';
-const DIM    = 'rgba(255,255,255,0.38)';
+const DIM    = 'rgba(255,255,255,0.60)';
 
 // ── Milestone definitions ─────────────────────────────────────────────────────
 const MILESTONES = [
@@ -243,7 +244,12 @@ const sc = StyleSheet.create({
 // ── Milestone badge ───────────────────────────────────────────────────────────
 function MilestoneBadge({ label, desc, icon, unlocked }) {
   return (
-    <View style={[mb.card, !unlocked && mb.locked]}>
+    <View
+      style={[mb.card, !unlocked && mb.locked]}
+      accessible={true}
+      accessibilityRole="image"
+      accessibilityLabel={`${label}: ${desc}. ${unlocked ? 'Unlocked' : 'Locked'}`}
+    >
       <View style={[mb.iconWrap, unlocked && mb.iconWrapUnlocked]}>
         <Text style={{ fontSize: unlocked ? 26 : 22, opacity: unlocked ? 1 : 0.35 }}>{icon}</Text>
       </View>
@@ -276,8 +282,8 @@ const mb = StyleSheet.create({
   },
   iconWrapUnlocked: { backgroundColor: 'rgba(254,156,45,0.15)' },
   title:   { color: WHITE, fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  dim:     { color: 'rgba(255,255,255,0.32)' },
-  desc:    { color: 'rgba(255,255,255,0.42)', fontSize: 16, textAlign: 'center', lineHeight: 22 },
+  dim:     { color: 'rgba(255,255,255,0.50)' },
+  desc:    { color: 'rgba(255,255,255,0.60)', fontSize: 16, textAlign: 'center', lineHeight: 22 },
 });
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -313,10 +319,9 @@ export default function ProgressScreen({ navigation }) {
     setLoading(true);
     setError(false);
     try {
-      const headers = await getAuthHeaders();
       const [p, pd] = await Promise.all([
         fetchProgress(),
-        fetch(`${API_BASE_URL}/api/progress-data`, { headers })
+        fetchWithAuth(`${API_BASE_URL}/api/progress-data`)
           .then(r => r.ok ? r.json() : null)
           .catch(() => null),
       ]);
@@ -330,6 +335,11 @@ export default function ProgressScreen({ navigation }) {
   }, []);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  useEffect(() => {
+    const logExit = logScreenView('Progress');
+    return logExit;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sessions      = prog.sessions_completed ?? 0;
   const streak        = prog.streak_days        ?? 0;
@@ -395,7 +405,7 @@ export default function ProgressScreen({ navigation }) {
         </View>
       ) : error ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 }}>
-          <Text style={{ color: 'rgba(255,255,255,0.60)', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+          <Text style={{ color: 'rgba(255,255,255,0.60)', fontSize: 17, textAlign: 'center', lineHeight: 24 }}>
             Could not load your progress.{'\n'}Check your connection and try again.
           </Text>
           <TouchableOpacity
@@ -405,7 +415,7 @@ export default function ProgressScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Try again"
           >
-            <Text style={{ color: '#1A1A1A', fontSize: 15, fontWeight: '700' }}>Retry</Text>
+            <Text style={{ color: '#1A1A1A', fontSize: 17, fontWeight: '700' }}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -527,7 +537,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   backText:    { color: WHITE, fontSize: 22, fontWeight: '300' },
-  headerTitle: { color: WHITE, fontSize: 20 * SC, fontWeight: '700', letterSpacing: 0.5 },
+  headerTitle: { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 0.5 },
 
   content: {
     paddingHorizontal: 20 * SC,
@@ -563,7 +573,7 @@ const styles = StyleSheet.create({
 
   row: { flexDirection: 'row', gap: 12 * SC },
 
-  sectionTitle: { color: WHITE, fontSize: 18 * SC, fontWeight: '700', letterSpacing: 0.3 },
+  sectionTitle: { color: WHITE, fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
   sectionSub:   { color: DIM, fontSize: 16, marginTop: -10 * SC },
 
   // No baseline
@@ -574,7 +584,7 @@ const styles = StyleSheet.create({
     padding: 28 * SC, alignItems: 'center', gap: 10,
   },
   noBaselineIcon:  { fontSize: 36 },
-  noBaselineTitle: { color: WHITE, fontSize: 18 * SC, fontWeight: '700' },
+  noBaselineTitle: { color: WHITE, fontSize: 18, fontWeight: '700' },
   noBaselineBody:  { color: DIM, fontSize: 16, textAlign: 'center', lineHeight: 24 },
 
   milestoneGrid: {

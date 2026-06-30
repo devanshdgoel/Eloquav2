@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,13 +17,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../../config/firebase';
 import { saveUserProfileToFirestore } from '../../services/userService';
 import { saveUserProfile, setOnboardingComplete } from '../../utils/storage';
-import { logFunnelEvent } from '../../utils/analytics';
+import { logFunnelEvent, logScreenView } from '../../utils/analytics';
 
 const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
 ];
 
 export default function SetupAboutYouScreen({ navigation }) {
+  useEffect(() => {
+    const logExit = logScreenView('SetupAboutYou');
+    return logExit;
+  }, []);
+
   // Pre-fill name from Firebase auth so the user doesn't have to type it again.
   const [name, setName]                 = useState(auth.currentUser?.displayName ?? '');
   const [age, setAge]                   = useState('');

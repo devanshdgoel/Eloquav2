@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   stayText: {
-    color: 'rgba(255,255,255,0.38)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 16,
     fontWeight: '500',
     letterSpacing: 0.3,

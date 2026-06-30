@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { logScreenView } from '../../utils/analytics';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -22,16 +24,23 @@ const DIM        = 'rgba(255,255,255,0.60)';
 export default function WhatIsEloquaScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
 
+  useEffect(() => {
+    const logExit = logScreenView('WhatIsEloqua');
+    return logExit;
+  }, []);
+
   return (
     <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
       <StatusBar barStyle="light-content" />
 
       <View style={[s.inner, { paddingTop: top + 40, paddingBottom: bottom + 32 }]}>
 
-        {/* Illustration placeholder — dolphin + waves */}
-        <View style={s.illustration}>
-          <Text style={s.dolphin}>🐬</Text>
-        </View>
+        <Image
+          source={require('../../../assets/images/Dolphin2.png')}
+          style={s.dolphinImage}
+          resizeMode="contain"
+          accessibilityLabel="Eloqua dolphin mascot"
+        />
 
         <View style={s.textBlock}>
           <Text style={s.eyebrow}>ABOUT ELOQUA</Text>
@@ -80,23 +89,16 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
-  illustration: {
-    width: 140 * SC,
-    height: 140 * SC,
-    borderRadius: 70 * SC,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.18)',
+  dolphinImage: {
+    width: 180 * SC,
+    height: 120 * SC,
   },
-  dolphin: { fontSize: 64 * SC },
 
   textBlock: { gap: 16 * SC, alignItems: 'center' },
 
   eyebrow: {
     color: ORANGE,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2.5,
   },
@@ -110,8 +112,8 @@ const s = StyleSheet.create({
   },
   body: {
     color: DIM,
-    fontSize: 16 * SC,
-    lineHeight: 24 * SC,
+    fontSize: 16,
+    lineHeight: 26,
     textAlign: 'center',
   },
 
@@ -130,11 +132,11 @@ const s = StyleSheet.create({
   },
   btnText: {
     color: '#1A1A1A',
-    fontSize: 17 * SC,
+    fontSize: 17,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
 
   skipLink: { paddingVertical: 8 },
-  skipText: { color: 'rgba(255,255,255,0.38)', fontSize: 16 },
+  skipText: { color: 'rgba(255,255,255,0.60)', fontSize: 16 },
 });

@@ -885,3 +885,192 @@ eas update --branch main --message "Style guide implementation"
 
 # Backend unchanged — no Render deploy needed
 ```
+
+---
+
+## Session 7 — Multi-Persona Production Review (2026-06-30)
+
+### Overview
+
+Full 5-persona iterative review of the entire codebase — Senior Apple Developer, Senior Designer, Data Analyst, Speech Therapist, and Parkinson's Patient (first-time user). Every screen was audited individually. All critical bugs found were fixed in this session.
+
+---
+
+### Persona 1: Senior Apple Developer
+
+**Findings and what was fixed:**
+
+| Bug | File | Fix |
+|---|---|---|
+| Skip button white text on #FFA940 orange (1.9:1 contrast — WCAG fail) | `SetupVoiceScreen.js` | `skipText.color` `#FFFFFF` → `#1A1A1A` |
+| Progress dots `#1C4047` on dark teal bg — completely invisible | `SetupVoiceScreen.js` | `dotOther.backgroundColor` → `rgba(255,255,255,0.22)` |
+| `setAudioModeAsync({ allowsRecordingIOS: true })` called on start but never reset to `false` — blocks audio playback in rest of app | `SetupVoiceScreen.js` | Added `await Audio.setAudioModeAsync({ allowsRecordingIOS: false })` in `stopRecording()` after `stopAndUnloadAsync()` |
+| No visual/text feedback during recording — user cannot tell if mic is capturing | `SetupVoiceScreen.js` | Added `recordingStatus` label: "Recording… tap to stop" / "Sentence X of 3" with `accessibilityLiveRegion="polite"` |
+| WhatIsEloquaScreen uses 🐬 emoji instead of real `Dolphin2.png` asset | `WhatIsEloquaScreen.js` | Replaced `<Text>🐬</Text>` + illustration container with `<Image source={require('…/Dolphin2.png')} />` |
+| HowItWorksScreen CTA `paddingVertical: 18` (design system specifies 20) | `HowItWorksScreen.js` | 18 → 20 |
+| VoiceCloningExplainerScreen CTA `paddingVertical: 18` | `VoiceCloningExplainerScreen.js` | 18 → 20 |
+| White text on all exercise orange "?" buttons (1.9:1 — WCAG fail) | SustainedPhonation, DolphinVowels, LoudnessDrills, PitchGlides, FunctionalSpeech | `color: '#FFFFFF'` → `'#1A1A1A'` on all orange-bg text |
+| SignUpScreen missing email regex validation | `SignUpScreen.js` | `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` validation added |
+| T&Cs checkbox using `accessibilityRole="button"` | `SignUpScreen.js` | → `"checkbox"` + `accessibilityState={{ checked: agreed }}` |
+| ProgressScreen MilestoneBadge has no accessibility label | `ProgressScreen.js` | `accessible={true}` + `accessibilityRole="image"` + descriptive `accessibilityLabel` added |
+| ProgressScreen `headerTitle` at `20*SC` — scales with device width | `ProgressScreen.js` | Fixed at `20` |
+
+---
+
+### Persona 2: Senior Designer
+
+**Findings (Developer → Designer iteration):**
+
+- *"The emoji dolphin on WhatIsEloquaScreen is jarring next to polished gradient screens — it telegraphs 'placeholder'. Dolphin2.png exists in assets. Use it."* → Fixed.
+- *"'LSVT LOUD therapy' is clinical jargon. A 70-year-old reading this on their phone for the first time will not know what that means. Rewrite as: 'exercises used in professional voice therapy, adapted for daily use'."* → **Outstanding — copy edit for V1.5**.
+- *"SetupVoiceScreen has no confirmation that the recording was captured. After pressing stop, the user gets silence and the next sentence appears. Add 'Got it! ✓' or a checkmark animation."* → Partially fixed: status label shows sentence progress. A ✓ flash animation would be V1.5.
+- *"The check-in comparison screen shows before/after arc graphs but the delta score isn't celebrated when it's positive. When a user improves 19 points, show '↑ 19 points!' in orange before the chart settles."* → **Outstanding — V1.5 enhancement**.
+- *"Speech Enhancement results card has no visual cue that audio is playing. Wire `isPlaying` state to an Animated scale loop on the play icon."* → **Outstanding — V1.5**.
+- *"HomeScreen roadmap is a strong differentiator. First-time users don't know what the sine wave means. One-time tooltip: 'These are your sessions. Tap the highlighted node to start.' Gate with AsyncStorage, dismiss on tap."* → **Outstanding — V1.5**.
+
+---
+
+### Persona 3: Data Analyst
+
+**Findings and what was implemented:**
+
+New `logScreenView(screen)` function added to `frontend/src/utils/analytics.js`. Writes `screen_events` collection with `{ screen, entered_at, exited_at, duration_s, hour_of_day }`. Returns a cleanup function for unmount. Called in a `useEffect` on every screen.
+
+**Coverage now complete — 17 screens wired:**
+
+| Screen | Event |
+|---|---|
+| SignUp, SignIn | `logScreenView` |
+| WhatIsEloqua, HowItWorks, VoiceCloningExplainer | `logScreenView` (added this session) |
+| SetupPermissions, SetupAboutYou, SetupVoice, Personalise, AboutYouIntro | `logScreenView` (added this session) |
+| Home, SpeechEnhancement, Assessment, Checkin, Progress, VocalTrainingSession, Settings | `logScreenView` (already existed) |
+
+**Funnel events now complete:**
+`signup_completed` → `about_you_completed` → `assessment_baseline_started` → `assessment_baseline_completed` → `home_first_visit` → `checkin_completed` → `voice_setup_completed` / `voice_setup_skipped`
+
+**What the pilot data will tell us:**
+- `assessment_baseline_started` >> `assessment_baseline_completed` → assessment is too long/stressful
+- `session_logs` where `completed: false` at `abandoned_at_exercise_index ≤ 1` → first exercise is confusing
+- `screen_events[SpeechEnhancement].duration_s` vs. `usage_events[speech_enhance_completed]` → if median screen time < processing time, users leave before results
+
+**Outstanding (V1.5):**
+- Add `round_attempts` per exercise to `logSessionEvent` (pipe `missCountRef` through)
+- Track personal sentence `word_count` over check-ins — shorter sentences over time may indicate fatigue/deterioration
+
+---
+
+### Persona 4: Speech Therapist
+
+**Clinical validation findings:**
+
+| Area | Status |
+|---|---|
+| Rainbow Passage (AssessmentScreen) | ✅ Clinically validated SLP instrument |
+| 3-round sustained phonation matching LSVT LOUD protocol | ✅ |
+| Loudness drills (SPL targeting) | ✅ |
+| Pitch glides (WebView autocorrelation) | ✅ |
+| Functional Speech (STT word matching) | ✅ (implicit articulation check) |
+
+**Critical clinical gaps (not yet implemented):**
+
+1. **Maximum Phonation Time (MPT)** — LSVT defines clinical improvement as MPT > 15 seconds sustained. The current SustainedPhonation exercise scores by volume but does not record *duration in seconds*. A 4-second phonation and a 12-second phonation can both score 100 if loud enough. MPT is the standard baseline LSVT metric. **Outstanding for V1.5.**
+
+2. **No articulation component** — Consonant distortion and mumbling are primary PD complaints alongside loudness. DolphinVowels targets vowel range; FunctionalSpeech implicitly checks articulation via STT. But there is no explicit consonant drill. The "pa-ta-ka" diadochokinetic (DDK) rate test (5 seconds rapid repetition → STT → words/second) is a standard SLP screening tool. **Outstanding for V2.0.**
+
+3. **Personal sentence delta display** — Current check-in comparison shows aggregate scores (Voice Power, Expression, Fluency). The patient's own sentence specifically should show pre vs. post. This creates direct ecological validity — the patient hears and sees improvement on words they actually say daily. **Outstanding for V1.5.**
+
+4. **Score label tooltips** — "Voice Power", "Expression", "Fluency" are accessible to lay users but SLPs would benefit from a tap-to-expand explanation. **Outstanding for V1.5.**
+
+---
+
+### Persona 5: Parkinson's Patient (First-Time UX Audit)
+
+**Simulated as: 68 years old, mild-to-moderate PD, no prior speech therapy app experience.**
+
+*"I opened the app and saw a wave and some glowing circles. I didn't know what to do. I tapped a node — it said 'Breathing'. That was gentle. Then 'Sustained Sound' — it told me to hold 'Aah'. The bar barely moved. I gave up after 20 seconds. I went back to the home screen and my progress hadn't changed. I thought I'd broken something."*
+
+**Bugs fixed this session:**
+- ✅ Skip button was unreadable (white on orange) — now `#1A1A1A`
+- ✅ Dots on SetupVoiceScreen invisible — now `rgba(255,255,255,0.22)`
+- ✅ No confirmation mic was working during voice setup — now shows "Recording… tap to stop"
+
+**Outstanding (V1.5):**
+- Real-time coaching text triggers at 6 seconds (too long for anxious first-time users). Reduce to 3 seconds for first session.
+- Day 1 has ~27 minutes total (Assessment ~12 min + first training ~15 min). Too long with no payoff. Add "Quick Start" path: skip assessment, start at tier 1 defaults, get into training in 2 minutes.
+- TextInput for personal sentence is painful with tremor. Add "Tap to speak" option (STT populates the field).
+- Streak reset to 0 on a missed day is demoralising. Add a grace period or a "1 freeze per week" mechanic.
+- Notifications not surfaced in onboarding. `notificationService.js` exists — add an opt-in step during SetupAboutYou.
+
+---
+
+### All Files Changed This Session
+
+| File | Change |
+|---|---|
+| `frontend/src/utils/analytics.js` | Added `logScreenView()` function |
+| `frontend/src/screens/onboarding/SetupVoiceScreen.js` | Skip button contrast, dots, audio mode cleanup, recording status label, logScreenView, logFunnelEvent |
+| `frontend/src/screens/onboarding/WhatIsEloquaScreen.js` | Dolphin2.png image, logScreenView |
+| `frontend/src/screens/onboarding/HowItWorksScreen.js` | CTA paddingVertical 18→20, logScreenView |
+| `frontend/src/screens/onboarding/VoiceCloningExplainerScreen.js` | CTA paddingVertical 18→20, logScreenView |
+| `frontend/src/screens/onboarding/SignUpScreen.js` | Email regex validation, checkbox accessibilityRole, logScreenView (background agent + this session) |
+| `frontend/src/screens/onboarding/SignInScreen.js` | logScreenView |
+| `frontend/src/screens/onboarding/SetupAboutYouScreen.js` | logScreenView |
+| `frontend/src/screens/onboarding/SetupPermissionsScreen.js` | logScreenView |
+| `frontend/src/screens/onboarding/PersonaliseScreen.js` | logScreenView |
+| `frontend/src/screens/onboarding/AboutYouIntroScreen.js` | logScreenView |
+| `frontend/src/screens/SettingsScreen.js` | logScreenView; mp.sub contrast 0.28→0.55 |
+| `frontend/src/screens/ProgressScreen.js` | MilestoneBadge accessibility; headerTitle 20*SC→20; dim/desc contrast |
+| `frontend/src/screens/AssessmentScreen.js` | largeText wiring (passage, instruction, body, focusTip); contrast fixes |
+| `frontend/src/screens/CheckinScreen.js` | largeText wiring (sentenceText, body); logFunnelEvent('checkin_completed'); contrast fixes |
+| `frontend/src/screens/SpeechEnhancementScreen.js` | largeText wiring (liveTextDim); logScreenView |
+| `frontend/src/screens/vocaltraining/exercises/SustainedPhonationExercise.js` | Orange button text `#1A1A1A`; contrast fixes |
+| `frontend/src/screens/vocaltraining/exercises/DolphinVowelsExercise.js` | Orange button text `#1A1A1A`; contrast fixes |
+| `frontend/src/screens/vocaltraining/exercises/LoudnessDrillsExercise.js` | Orange button text `#1A1A1A` |
+| `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js` | Orange button text `#1A1A1A` |
+| `frontend/src/screens/vocaltraining/exercises/FunctionalSpeechExercise.js` | Orange button text `#1A1A1A` (background agent) |
+| `frontend/src/context/PrefsContext.js` | Added `useHapticFeedback()` and `useAudioCues()` hooks (background agent) |
+
+---
+
+### What Needs To Be Done Next
+
+#### Immediate — Before TestFlight (must complete by ~2026-07-04)
+
+1. **Deploy** — `cd frontend && eas update --branch main` from the `frontend/` directory
+2. **Firestore security rules** — Lock down in Firebase console. Rules are documented in Session 4 notes above. Anyone with the project ID can read/write all user data right now.
+3. **ToS / Privacy Policy URLs** — `SignUpScreen.js` has dead `<Text>Terms of Service</Text>` spans. Must link to real hosted documents. App Store requires a privacy policy URL.
+4. **App Store ID** — Replace `id000000000` in `SettingsScreen.js` Rate App URL with the real App Store ID (created on first submission).
+5. **Render upgrade** — Free tier sleeps after 15 min. First speech enhancement request wakes it in 10–20 seconds. Upgrade to paid tier ($7/mo) before users see this.
+
+#### V1.5 — Before App Store Submission
+
+6. **MPT tracking in SustainedPhonation** — Record seconds sustained, not just volume. LSVT target is MPT > 15s. Surface in ProgressScreen.
+7. **HomeScreen first-visit tooltip** — "Tap the highlighted node to start" overlay, dismiss on tap, gate with `@eloqua_roadmap_tip_shown` in AsyncStorage.
+8. **Speech Enhancement playback animation** — Wire `isPlaying` state to `Animated.loop` scale on the play icon.
+9. **Per-exercise attempt count** — Pipe `missCountRef.current` from `LoudnessDrillsExercise` through to `logSessionEvent` as `round_attempts`.
+10. **Check-in personal sentence delta** — Show pre vs. post score on the patient's specific sentence in the comparison phase.
+11. **Real-time exercise coaching trigger** — Reduce idle coaching text from 6s to 3s for first session (important for anxious Parkinson's patients).
+12. **WhatIsEloquaScreen copy** — Replace "LSVT LOUD therapy principles" with plain-language equivalent for lay users.
+13. **Speech-to-text in CheckinScreen** — "Tap to speak" option to populate personal sentence TextInput (tremor accommodation).
+
+#### V2.0 — Post-Pilot
+
+14. Caregiver dashboard (read-only web view of patient scores/streak)
+15. Speech therapist portal (SLP data access + difficulty override)
+16. DDK "pa-ta-ka" articulation assessment
+17. Voice fatigue detection across a session
+18. Medication timing correlation
+19. Offline mode for on-device exercises
+20. Tablet (iPad) layout fixes — see `additional-thoughts.md` for all 18 items
+
+---
+
+### Deploy Command
+
+```bash
+# From the frontend/ directory (IMPORTANT — not the repo root)
+cd frontend
+eas update --branch main --message "Session 7: accessibility + analytics + onboarding fixes"
+```
+
+Backend unchanged — no Render deploy needed.

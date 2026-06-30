@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../config/env';
-import { getAuthHeaders } from '../utils/authHeaders';
+import { fetchWithAuth } from '../utils/authHeaders';
 
 /**
  * Upload voice samples and create a cloned voice via ElevenLabs.
@@ -21,12 +21,8 @@ export async function cloneVoice(audioUris, userName = 'User') {
 
   formData.append('user_name', userName);
 
-  const authHeaders = await getAuthHeaders();
-  // Do NOT set Content-Type manually — fetch auto-sets multipart/form-data
-  // with the correct boundary when the body is FormData.
-  const response = await fetch(`${API_BASE_URL}/api/voice/clone`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/voice/clone`, {
     method: 'POST',
-    headers: authHeaders,
     body: formData,
   });
 
@@ -44,10 +40,7 @@ export async function cloneVoice(audioUris, userName = 'User') {
  * @returns {Promise<{ has_cloned_voice: boolean, voice_id: string, is_default: boolean }>}
  */
 export async function getVoiceStatus() {
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/voice/status`, {
-    headers: authHeaders,
-  });
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/voice/status`);
 
   if (!response.ok) {
     throw new Error('Failed to check voice status.');
@@ -62,10 +55,8 @@ export async function getVoiceStatus() {
  * @returns {Promise<{ status: string, message: string }>}
  */
 export async function deleteClonedVoice() {
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/voice/clone`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/voice/clone`, {
     method: 'DELETE',
-    headers: authHeaders,
   });
 
   if (!response.ok) {

@@ -174,7 +174,8 @@ async def enhance_text_route(
     else:
         final_transcript = clarity_transcript(raw_transcript)
 
-    if has_cloned_voice(user_id):
+    using_cloned_voice = has_cloned_voice(user_id)
+    if using_cloned_voice:
         synthesis_voice_id = get_user_voice_id(user_id)
         logger.info("enhance-text: using cloned voice for user %s", user_id[:8])
     else:
@@ -202,7 +203,7 @@ async def enhance_text_route(
         "cleaned_transcript": final_transcript,
         "clarity_applied": final_transcript != raw_transcript,
         "audio_url": audio_url,
-        "voice_profile": DEFAULT_PROFILE.to_dict(),
+        "voice_profile": {"cloned": True} if using_cloned_voice else DEFAULT_PROFILE.to_dict(),
     })
 
 

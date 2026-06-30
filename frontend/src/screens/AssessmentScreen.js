@@ -27,10 +27,11 @@ import Svg, { Circle } from 'react-native-svg';
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
 import { setTiersFromAssessment } from '../services/difficultyService';
-import { getAuthHeaders } from '../utils/authHeaders';
+import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
-import { logFunnelEvent } from '../utils/analytics';
+import { logFunnelEvent, logScreenView } from '../utils/analytics';
 import { getVoiceStatus } from '../services/voiceService';
+import { useLargeText } from '../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -101,6 +102,30 @@ const INTRO_ITEMS = [
   { color: WHITE,  badge: '3',  title: 'Free Speech',      hint: 'Speak for at least 20 seconds' },
 ];
 
+// ── Background voice analysis helper ─────────────────────────────────────────
+// Runs independently of task flow so tasks can advance without waiting for the backend.
+async function analyzeTask(uri, taskId, durationS) {
+  const form = new FormData();
+  form.append('file', { uri, type: 'audio/m4a', name: `${taskId}.m4a` });
+  form.append('task_type', taskId);
+  form.append('audio_duration_s', String(durationS));
+  try {
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 12000);
+    const res = await fetchWithAuth(`${API_BASE_URL}/api/analyze-voice`, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const d = await res.json();
+      return { scores: d.data?.scores ?? {}, features: d.data?.features ?? {} };
+    }
+  } catch (_) {}
+  return { scores: { voice_power: null, expression: null, fluency: null }, features: {} };
+}
+
 // ── Score arc ─────────────────────────────────────────────────────────────────
 function ScoreArc({ score, color, label }) {
   const SIZE = 106 * SC;
@@ -147,6 +172,8 @@ export default function AssessmentScreen({ navigation, route }) {
   const { type = 'baseline' } = route.params || {};
   const { top, bottom } = useSafeAreaInsets();
   const isBaseline = type === 'baseline';
+  const largeText = useLargeText();
+  const fs = (base) => largeText ? Math.round(base * 1.25) : base;
 
   // phase: 'intro' | 'active' | 'processing' | 'results' | 'saving'
   const [phase,     setPhase]     = useState('intro');
@@ -171,14 +198,19 @@ export default function AssessmentScreen({ navigation, route }) {
   // Prevent double-firing stopRecording from both timer and silence detector
   const stoppingRef     = useRef(false);
   // URIs of reading + free_speech recordings, used for voice cloning after baseline
-  const cloningUrisRef  = useRef([]);
+  const cloningUrisRef     = useRef([]);
+  const pendingAnalysisRef = useRef([]);
 
   const task = TASKS[Math.min(taskIndex, TASKS.length - 1)];
 
-  useEffect(() => () => {
-    clearInterval(timerRef.current);
-    clearInterval(barTimerRef.current);
-    recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+  useEffect(() => {
+    const logExit = logScreenView('Assessment');
+    return () => {
+      logExit();
+      clearInterval(timerRef.current);
+      clearInterval(barTimerRef.current);
+      recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+    };
   }, []);
 
   // Auto-start recording when phase becomes 'active'
@@ -267,74 +299,52 @@ export default function AssessmentScreen({ navigation, route }) {
     recordingRef.current = null;
     if (!rec) return;
 
-    const durationS = Math.round((Date.now() - startMsRef.current) / 1000);
-    setPhase('processing');
-
-    let scores   = { voice_power: null, expression: null, fluency: null };
-    let features = {};
+    const durationS     = Math.round((Date.now() - startMsRef.current) / 1000);
+    const currentTaskId = TASKS[taskIndexRef.current].id;
+    const currentIdx    = taskIndexRef.current;
 
     try {
       await rec.stopAndUnloadAsync();
-      const uri = rec.getURI();
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-
-      if (uri) {
-        const currentTaskId = TASKS[taskIndexRef.current].id;
-        if (isBaseline && (currentTaskId === 'reading' || currentTaskId === 'free_speech')) {
-          cloningUrisRef.current.push(uri);
-        }
-
-        const form = new FormData();
-        form.append('file', { uri, type: 'audio/m4a', name: `${currentTaskId}.m4a` });
-        form.append('task_type', currentTaskId);
-        form.append('audio_duration_s', String(durationS));
-
-        const authHeaders = await getAuthHeaders();
-        const controller  = new AbortController();
-        const timeoutId   = setTimeout(() => controller.abort(), 30000); // 30s hard timeout
-        try {
-          const res = await fetch(`${API_BASE_URL}/api/analyze-voice`, {
-            method: 'POST',
-            headers: authHeaders,
-            body: form,
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-          if (res.ok) {
-            const d = await res.json();
-            scores   = d.data?.scores   ?? scores;
-            features = d.data?.features ?? {};
-          }
-        } catch (fetchErr) {
-          clearTimeout(timeoutId);
-          // Timeout or network error — continue with null scores (non-fatal)
-          console.warn('[Assessment] analyze-voice failed/timed out:', fetchErr?.message);
-        }
-      }
     } catch (e) {
       console.error('[Assessment] stopRecording error:', e?.message);
     }
 
-    taskResultsRef.current = [
-      ...taskResultsRef.current,
-      { task_id: TASKS[taskIndexRef.current].id, scores, features, durationS },
-    ];
+    const uri = rec.getURI();
+    if (uri && isBaseline && (currentTaskId === 'reading' || currentTaskId === 'free_speech')) {
+      cloningUrisRef.current.push(uri);
+    }
 
-    const nextIdx = taskIndexRef.current + 1;
+    // Push a placeholder immediately so task order is preserved, then fill it in the background
+    const placeholder = { task_id: currentTaskId, scores: { voice_power: null, expression: null, fluency: null }, features: {}, durationS };
+    taskResultsRef.current.push(placeholder);
+
+    if (uri) {
+      const analysisPromise = analyzeTask(uri, currentTaskId, durationS).then(result => {
+        Object.assign(placeholder, result);
+      });
+      pendingAnalysisRef.current.push(analysisPromise);
+    }
+
+    const nextIdx = currentIdx + 1;
     if (nextIdx < TASKS.length) {
+      // Advance immediately — analysis runs in the background while the user does the next task
       taskIndexRef.current = nextIdx;
       setTaskIndex(nextIdx);
       setPhase('active');
     } else {
+      // Last task — wait for all background analyses before showing results
+      setPhase('processing');
+      await Promise.allSettled(pendingAnalysisRef.current);
+      pendingAnalysisRef.current = [];
+
       const comp = computeComposite(taskResultsRef.current);
       setComposite(comp);
       setFocus(pickFocus(comp));
       if (isBaseline && cloningUrisRef.current.length > 0) {
-        setPhase('cloning');
-        cloneVoiceFromAssessment(cloningUrisRef.current).finally(() => setPhase('results'));
-      } else {
-        setPhase('results');
+        cloneVoiceFromAssessment(cloningUrisRef.current).catch(() => {});
       }
+      setPhase('results');
     }
   }
 
@@ -350,10 +360,8 @@ export default function AssessmentScreen({ navigation, route }) {
         form.append('files', { uri, type: 'audio/m4a', name: `voice_sample_${i}.m4a` });
       });
       form.append('user_name', auth.currentUser?.displayName || 'User');
-      const authHeaders = await getAuthHeaders();
-      await fetch(`${API_BASE_URL}/api/voice/clone`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/voice/clone`, {
         method: 'POST',
-        headers: authHeaders,
         body: form,
       });
     } catch (e) {
@@ -369,7 +377,20 @@ export default function AssessmentScreen({ navigation, route }) {
       .filter(r => r.task_id === 'sustained_a')
       .map(r => r.scores?.voice_power)
       .filter(v => v != null && Number.isFinite(v));
-    const out = { voice_power: phonationVP.length ? Math.max(...phonationVP) : null };
+    let voice_power = phonationVP.length ? Math.max(...phonationVP) : null;
+
+    // Duration fallback when backend cannot compute intensity (e.g. parselmouth missing)
+    if (voice_power == null) {
+      const bestDuration = Math.max(
+        0,
+        ...results.filter(r => r.task_id === 'sustained_a').map(r => r.durationS ?? 0)
+      );
+      if (bestDuration > 0) {
+        voice_power = Math.round(Math.min(85, Math.max(10, 10 + (bestDuration / 15) * 75)));
+      }
+    }
+
+    const out = { voice_power };
 
     // expression + fluency: average across all tasks (reading + free_speech drive these)
     for (const k of ['expression', 'fluency']) {
@@ -393,53 +414,61 @@ export default function AssessmentScreen({ navigation, route }) {
   // ── Save + finish — uses backend endpoint (Admin SDK bypasses Firestore rules)
   async function finishAssessment() {
     setPhase('saving');
-    try {
-      if (auth.currentUser) {
-        if (isBaseline && (composite.voice_power != null || composite.expression != null || composite.fluency != null)) {
-          const FOCUS_DIM_TO_EXERCISE = {
-            voice_power: 'phonation',
-            expression:  'pitchGlides',
-            fluency:     'speech',
-          };
-          const exerciseFocusKey = FOCUS_DIM_TO_EXERCISE[focus?.key] ?? null;
-          setTiersFromAssessment(composite, exerciseFocusKey).catch(() => {});
-        }
+    let saved     = true;
+    let completed = true;
 
-        const authHeaders = await getAuthHeaders();
-        const taskObj = {};
-        taskResultsRef.current.forEach((r, i) => {
-          const key = r.task_id === 'sustained_a' ? `sustained_a_${i + 1}` : r.task_id;
-          taskObj[key] = { scores: r.scores };
-        });
+    if (auth.currentUser) {
+      if (isBaseline && (composite.voice_power != null || composite.expression != null || composite.fluency != null)) {
+        const FOCUS_DIM_TO_EXERCISE = {
+          voice_power: 'phonation',
+          expression:  'pitchGlides',
+          fluency:     'speech',
+        };
+        const exerciseFocusKey = FOCUS_DIM_TO_EXERCISE[focus?.key] ?? null;
+        setTiersFromAssessment(composite, exerciseFocusKey).catch(() => {});
+      }
 
+      const taskObj = {};
+      taskResultsRef.current.forEach((r, i) => {
+        const key = r.task_id === 'sustained_a' ? `sustained_a_${i + 1}` : r.task_id;
+        taskObj[key] = { scores: r.scores };
+      });
+
+      // Save assessment — non-blocking on failure
+      try {
         const assessForm = new FormData();
         assessForm.append('assessment_type', type);
         if (composite.voice_power != null) assessForm.append('voice_power', String(composite.voice_power));
         if (composite.expression  != null) assessForm.append('expression',  String(composite.expression));
         if (composite.fluency     != null) assessForm.append('fluency',     String(composite.fluency));
         assessForm.append('task_results_json', JSON.stringify(taskObj));
-
-        const saveRes = await fetch(`${API_BASE_URL}/api/save-assessment`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: assessForm,
+        const saveRes = await fetchWithAuth(`${API_BASE_URL}/api/save-assessment`, {
+          method: 'POST', body: assessForm,
         });
-        if (!saveRes.ok) throw new Error(`save-assessment: ${saveRes.status}`);
+        saved = saveRes.ok;
+        if (!saved) console.warn('[Assessment] save-assessment returned', saveRes.status);
+      } catch (e) {
+        saved = false;
+        console.warn('[Assessment] save-assessment error:', e?.message);
+      }
 
+      // Complete session — independent of save so roadmap always advances
+      try {
         const sessionForm = new FormData();
         sessionForm.append('assessment_type', type);
-        const sessionRes = await fetch(`${API_BASE_URL}/api/complete-session`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: sessionForm,
+        const sessionRes = await fetchWithAuth(`${API_BASE_URL}/api/complete-session`, {
+          method: 'POST', body: sessionForm,
         });
-        if (!sessionRes.ok) throw new Error(`complete-session: ${sessionRes.status}`);
-        onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
+        completed = sessionRes.ok;
+        if (completed) onSessionComplete().catch(() => {});
+        else console.warn('[Assessment] complete-session returned', sessionRes.status);
+      } catch (e) {
+        completed = false;
+        console.warn('[Assessment] complete-session error:', e?.message);
       }
-      if (isBaseline) logFunnelEvent('assessment_baseline_completed');
-      navigation.replace('Home');
-    } catch (e) {
-      console.error('[Assessment] finish:', e?.message);
+    }
+
+    if (!saved && !completed) {
       setPhase('results');
       Alert.alert(
         'Could not save results',
@@ -449,7 +478,11 @@ export default function AssessmentScreen({ navigation, route }) {
           { text: 'Continue anyway', style: 'destructive', onPress: () => navigation.replace('Home') },
         ]
       );
+      return;
     }
+
+    if (isBaseline) logFunnelEvent('assessment_baseline_completed');
+    navigation.replace('Home');
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -470,7 +503,7 @@ export default function AssessmentScreen({ navigation, route }) {
           </TouchableOpacity>
           <Text style={s.eyebrow}>{isBaseline ? 'VOICE ASSESSMENT' : 'PROGRESS CHECK-IN'}</Text>
           <Text style={s.heroTitle}>{isBaseline ? "Let's hear\nyour voice" : "How's your\nvoice today?"}</Text>
-          <Text style={s.bodyText}>
+          <Text style={[s.bodyText, { fontSize: fs(18) }]}>
             {isBaseline
               ? 'Three tasks — about 3 minutes. We use these to personalise your training plan.'
               : "Same three tasks as before. Let's see how far you've come."}
@@ -542,11 +575,11 @@ export default function AssessmentScreen({ navigation, route }) {
             <>
               <Text style={s.bodyText}>{task.instruction}</Text>
               <View style={[s.passageCard, { borderColor: task.color + '44' }]}>
-                <Text style={[s.passageText, { color: task.color }]}>{task.passage}</Text>
+                <Text style={[s.passageText, { color: task.color, fontSize: fs(18), lineHeight: fs(18) * 1.56 }]}>{task.passage}</Text>
               </View>
             </>
           ) : (
-            <Text style={s.instructionText}>{task.instruction}</Text>
+            <Text style={[s.instructionText, { fontSize: fs(18) }]}>{task.instruction}</Text>
           )}
 
           <Text style={s.hintText}>{task.hint}</Text>
@@ -559,7 +592,7 @@ export default function AssessmentScreen({ navigation, route }) {
                   key={i}
                   style={[s.bar, {
                     height: Math.max(4, v * 80),
-                    backgroundColor: v > 0.5 ? GREEN_BAR : v > 0.15 ? WHITE : DIM_BAR,
+                    backgroundColor: v > SPEAK_THRESHOLD ? GREEN_BAR : v > 0.15 ? WHITE : DIM_BAR,
                   }]}
                 />
               ))}
@@ -628,7 +661,7 @@ export default function AssessmentScreen({ navigation, route }) {
             <View style={s.focusCard}>
               <Text style={s.focusEyebrow}>YOUR FOCUS</Text>
               <Text style={s.focusTitle}>{focus.label}</Text>
-              <Text style={s.focusTip}>{focus.tip}</Text>
+              <Text style={[s.focusTip, { fontSize: fs(16) }]}>{focus.tip}</Text>
             </View>
           )}
 
@@ -722,9 +755,9 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5,
   },
-  taskBadgeNum: { fontSize: 17 * SC, fontWeight: '800' },
-  taskRowTitle: { color: WHITE, fontSize: 16 * SC, fontWeight: '700' },
-  taskRowHint:  { color: 'rgba(255,255,255,0.38)', fontSize: 16, marginTop: 1 },
+  taskBadgeNum: { fontSize: 17, fontWeight: '800' },
+  taskRowTitle: { color: WHITE, fontSize: 17, fontWeight: '700' },
+  taskRowHint:  { color: 'rgba(255,255,255,0.55)', fontSize: 16, marginTop: 1 },
 
   primaryBtn: {
     backgroundColor: ORANGE,
@@ -745,7 +778,7 @@ const s = StyleSheet.create({
   },
   primaryBtnText: {
     color: '#1A1A1A',
-    fontSize: 18 * SC,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.5,
     textAlign: 'center',
@@ -776,9 +809,9 @@ const s = StyleSheet.create({
 
   instructionText: {
     color: 'rgba(255,255,255,0.82)',
-    fontSize: 18 * SC,
+    fontSize: 18,
     textAlign: 'center',
-    lineHeight: 28 * SC,
+    lineHeight: 28,
   },
 
   passageCard: {
@@ -789,15 +822,15 @@ const s = StyleSheet.create({
     width: '100%',
   },
   passageText: {
-    fontSize: 17 * SC,
-    lineHeight: 27 * SC,
+    fontSize: 18,
+    lineHeight: 28,
     textAlign: 'center',
     fontStyle: 'italic',
     fontWeight: '500',
   },
 
   hintText: {
-    color: 'rgba(255,255,255,0.38)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 16,
     textAlign: 'center',
     fontStyle: 'italic',
@@ -854,7 +887,7 @@ const s = StyleSheet.create({
   },
   processingText: {
     color: 'rgba(255,255,255,0.60)',
-    fontSize: 16 * SC,
+    fontSize: 16,
     fontWeight: '600',
   },
 
@@ -891,7 +924,7 @@ const s = StyleSheet.create({
     lineHeight: 24,
   },
   baselineNote: {
-    color: 'rgba(255,255,255,0.38)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
