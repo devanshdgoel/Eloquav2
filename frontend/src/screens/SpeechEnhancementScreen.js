@@ -616,12 +616,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={['#E0ECDE', '#68B39F']}
+      colors={['#37767A', '#1C4047', '#0A1618']}
       start={{ x: 0.07, y: 0 }}
       end={{ x: 0.93, y: 1 }}
       style={styles.root}
     >
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
 
       <TouchableOpacity
         style={styles.backBtn}
@@ -685,7 +685,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {/* ── ENHANCING ─────────────────────────────────────────────────────── */}
       {phase === S.ENHANCING && (
         <View style={styles.enhancingArea}>
-          <ActivityIndicator size="large" color="#1C4047" />
+          <ActivityIndicator size="large" color="rgba(255,255,255,0.85)" />
           <Text style={[styles.enhancingText, { fontSize: fs(20) }]}>Polishing your words…</Text>
 
           {/* Keep the raw transcript visible while the AI works */}
@@ -776,20 +776,20 @@ const styles = StyleSheet.create({
   backBtn: {
     position: 'absolute', top: 52, left: 20, zIndex: 10,
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(28,64,71,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(28,64,71,0.20)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
-  backArrow: { color: TEAL, fontSize: 24, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
+  backArrow: { color: WHITE, fontSize: 24, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 
   title: {
-    marginTop: 116,  // clears the absolute-positioned back button (top:52, height:56, gap:8)
-    fontSize: Math.round(42 * SC),
+    marginTop: 116,
+    fontSize: 42,
     fontWeight: '800',
-    color: TEAL,
+    color: WHITE,
     textAlign: 'center',
     letterSpacing: 2.25,
-    lineHeight: Math.round(56 * SC),
+    lineHeight: 56,
   },
 
   // ── IDLE ──
@@ -811,7 +811,7 @@ const styles = StyleSheet.create({
 
   hintText: {
     fontSize: 20,
-    color: TEAL,
+    color: 'rgba(255,255,255,0.80)',
     letterSpacing: 2,
     textAlign: 'center',
   },
@@ -890,7 +890,7 @@ const styles = StyleSheet.create({
   },
   enhancingText: {
     fontSize: 20,
-    color: TEAL,
+    color: WHITE,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
     flex: 1, alignItems: 'center', justifyContent: 'center',
     gap: 16, paddingBottom: 60,
   },
-  errorTitle: { fontSize: 22, fontWeight: '700', color: TEAL, textAlign: 'center' },
+  errorTitle: { fontSize: 22, fontWeight: '700', color: WHITE, textAlign: 'center' },
   retryText:  { color: WHITE, fontSize: 18, fontWeight: '600' },
 
   // ── RESULTS ──
@@ -947,7 +947,7 @@ const styles = StyleSheet.create({
   },
 
   actionBtn: {
-    backgroundColor: 'rgba(28,64,71,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 28,
     height: 56,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
@@ -959,7 +959,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
   },
   actionBtnDisabled: {
-    backgroundColor: 'rgba(28,64,71,0.30)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     shadowOpacity: 0, elevation: 0,
   },
   actionLabel: { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 1.8 },
@@ -1010,16 +1010,16 @@ const styles = StyleSheet.create({
 
   errorSub: {
     fontSize: 18,
-    color: 'rgba(28,64,71,0.7)',
+    color: 'rgba(255,255,255,0.70)',
     textAlign: 'center',
     lineHeight: 26,
     paddingHorizontal: 32,
   },
   retryBtn: {
     marginTop: 8,
-    backgroundColor: TEAL,
-    borderRadius: 14,
+    backgroundColor: ORANGE,
+    borderRadius: 28,
     paddingHorizontal: 32,
-    paddingVertical: 18,
+    paddingVertical: 20,
   },
 });

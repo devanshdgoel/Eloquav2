@@ -77,13 +77,13 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   closeBtn: {
-    position: 'absolute', top: 56, left: 20,
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    position: 'absolute', top: 52, left: 18,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
   },
-  closeText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  closeText: { color: WHITE, fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
   content: {
     alignItems: 'center', paddingHorizontal: 40, gap: 20,
   },
@@ -114,12 +114,12 @@ const s = StyleSheet.create({
   pipNext: { backgroundColor: 'rgba(255,255,255,0.45)' },
   continueBtn: {
     marginTop: 16,
-    backgroundColor: ORANGE, borderRadius: 18,
-    paddingHorizontal: 44, paddingVertical: 18,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 44, paddingVertical: 20,
     shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.45, shadowRadius: 12, elevation: 8,
   },
   continueTxt: {
-    color: WHITE, fontSize: 18, fontWeight: '800', letterSpacing: 0.4,
+    color: '#1A1A1A', fontSize: 18, fontWeight: '800', letterSpacing: 0.4,
   },
 });

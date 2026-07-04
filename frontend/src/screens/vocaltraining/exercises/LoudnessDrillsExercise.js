@@ -35,7 +35,7 @@ const { width: W, height: H } = Dimensions.get('window');
 
 // ── Config ──────────────────────────────────────────────────────────────────────
 const DEMO_KEY        = '@eloqua_loudness_drills_demo_seen';
-const MIN_SPEAK_MS    = 280;   // must sustain threshold for this long (ms)
+const MIN_SPEAK_MS    = 700;   // must sustain threshold for this long (ms)
 const CALIBRATION_MS  = 1500;  // ambient noise sampling window
 const MAX_THRESHOLD   = 0.70;
 

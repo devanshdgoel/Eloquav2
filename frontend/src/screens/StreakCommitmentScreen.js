@@ -402,9 +402,9 @@ const styles = StyleSheet.create({
   },
   headerText: {
     color: WHITE,
-    fontSize: 22 * SC,
+    fontSize: 22,
     fontWeight: '600',
-    lineHeight: 30 * SC,
+    lineHeight: 30,
     letterSpacing: 0.3,
   },
 
@@ -420,16 +420,16 @@ const styles = StyleSheet.create({
   },
   counterNumber: {
     color: ORANGE,
-    fontSize: 96 * SC,
+    fontSize: 96,
     fontWeight: '800',
-    lineHeight: 96 * SC,
+    lineHeight: 96,
     letterSpacing: -2,
   },
   counterSuffix: {
     color: WHITE,
-    fontSize: 20 * SC,
+    fontSize: 20,
     fontWeight: '700',
-    lineHeight: 24 * SC,
+    lineHeight: 24,
     marginLeft: 10 * SC,
     marginBottom: 10 * SC,
     letterSpacing: 1,

@@ -118,9 +118,9 @@ const s = StyleSheet.create({
   },
   title: {
     color: WHITE,
-    fontSize: 32 * SC,
+    fontSize: 32,
     fontWeight: '800',
-    lineHeight: 40 * SC,
+    lineHeight: 40,
     letterSpacing: 0.2,
   },
 
@@ -162,7 +162,7 @@ const s = StyleSheet.create({
   },
   btnText: {
     color: '#1A1A1A',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.3,
   },

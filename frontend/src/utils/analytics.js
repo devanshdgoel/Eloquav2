@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
 // ── Eloqua analytics helpers ────────────────────────────────────────────────
@@ -86,6 +86,6 @@ export function logScreenView(screen) {
   return function logExit() {
     if (!docRef) return;
     const durationS = Math.round((Date.now() - enteredMs) / 1000);
-    docRef.update({ exited_at: serverTimestamp(), duration_s: durationS }).catch(() => {});
+    updateDoc(docRef, { exited_at: serverTimestamp(), duration_s: durationS }).catch(() => {});
   };
 }

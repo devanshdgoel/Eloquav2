@@ -14,6 +14,7 @@ import {
   FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Constants from 'expo-constants';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -443,7 +444,7 @@ function Avatar({ name, size = 64 }) {
 
   return (
     <View style={[av.circle, { width: size * SC, height: size * SC, borderRadius: size * SC / 2 }]}>
-      <Text style={[av.text, { fontSize: (size * 0.38) * SC }]}>{initials}</Text>
+      <Text style={[av.text, { fontSize: size * 0.38 }]}>{initials}</Text>
     </View>
   );
 }
@@ -924,7 +925,7 @@ export default function SettingsScreen({ navigation }) {
           <Row
             label="Version"
             isLast
-            right={<ValueTag label="1.0.0" color={DIM} />}
+            right={<ValueTag label={Constants.expoConfig?.version ?? '—'} color={DIM} />}
           />
         </Section>
 
@@ -991,13 +992,13 @@ const s = StyleSheet.create({
   },
   backArrow: {
     color: WHITE,
-    fontSize: 22 * SC,
+    fontSize: 22,
     fontWeight: '300',
     includeFontPadding: false,
   },
   headerTitle: {
     color: WHITE,
-    fontSize: 20 * SC,
+    fontSize: 20,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
@@ -1019,7 +1020,7 @@ const s = StyleSheet.create({
   profileText: { flex: 1, gap: 3 * SC },
   profileName: {
     color: WHITE,
-    fontSize: 20 * SC,
+    fontSize: 20,
     fontWeight: '700',
     letterSpacing: 0.2,
   },

@@ -149,12 +149,9 @@ export default function HomeScreen({ navigation }) {
 
   const activeNode = Math.max(0, Math.min(progress.current_node, TOTAL_NODES - 1));
 
-  // Node 0 = baseline assessment. Nodes at multiples of LEVELS_EVERY (7, 14…) = check-ins.
   function handleNodePress(i) {
     const { sessions_completed: done, last_checkin_session: lastCI } = progress;
-    if (i === 0 && done === 0) {
-      navigation.navigate('Assessment', { type: 'baseline' });
-    } else if (i > 0 && i % LEVELS_EVERY === 0 && i === activeNode && done > lastCI) {
+    if (i > 0 && i % LEVELS_EVERY === 0 && i === activeNode && done > lastCI) {
       navigation.navigate('Checkin', { nodeIndex: i });
     } else {
       navigation.navigate('VocalTrainingSession', { nodeIndex: i });
@@ -374,9 +371,7 @@ export default function HomeScreen({ navigation }) {
                     cx={def.cx}
                     cy={def.cy}
                     r={r}
-                    fill={isActive
-                      ? (i === 0 && isFirstSession ? COLORS.orange : COLORS.nodeActiveBg)
-                      : COLORS.nodeBg}
+                    fill={isActive ? COLORS.nodeActiveBg : COLORS.nodeBg}
                   />
 
                   {/* Bubble image — all non-active nodes; future nodes get partial opacity */}
@@ -394,8 +389,8 @@ export default function HomeScreen({ navigation }) {
                     </G>
                   )}
 
-                  {/* Dolphin — active node on #2D6974 bg (not the baseline node) */}
-                  {isActive && !(i === 0 && isFirstSession) && (
+                  {/* Dolphin — active node */}
+                  {isActive && (
                     <SvgImage
                       href={dolphinUri}
                       x={def.cx - r * 0.88}
@@ -405,17 +400,6 @@ export default function HomeScreen({ navigation }) {
                       clipPath={`url(#cp_${i})`}
                       preserveAspectRatio="xMidYMid meet"
                     />
-                  )}
-                  {/* Star — node 0 before the baseline assessment */}
-                  {isActive && i === 0 && isFirstSession && (
-                    <SvgText
-                      x={def.cx}
-                      y={def.cy + 14}
-                      textAnchor="middle"
-                      fill={COLORS.white}
-                      fontSize={38}
-                      fontWeight="700"
-                    >★</SvgText>
                   )}
 
                   {/* Orange ring — active node */}

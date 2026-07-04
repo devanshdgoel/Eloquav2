@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: colors.splash.buttonBg,
-    paddingVertical: 16,
+    paddingVertical: 20,
     borderRadius: 30,
     width: '100%',
     maxWidth: 320,
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 2,
     borderColor: colors.splash.buttonBorder,
-    paddingVertical: 14,
+    paddingVertical: 20,
     borderRadius: 30,
     width: '100%',
     maxWidth: 320,
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   },
   createAccountButtonText: {
     color: colors.splash.text,
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '500',
   },
   waveLogo: {

@@ -97,7 +97,7 @@ function ScoreArc({ score, label, color = ORANGE }) {
 }
 const arcS = StyleSheet.create({
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  num:    { fontSize: 20 * SC, fontWeight: '800' },
+  num:    { fontSize: 20, fontWeight: '800' },
   label:  { color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '600', letterSpacing: 0.4, textAlign: 'center' },
 });
 
@@ -704,9 +704,9 @@ const s = StyleSheet.create({
   },
   heroTitle: {
     color: WHITE,
-    fontSize: 33 * SC,
+    fontSize: 33,
     fontWeight: '800',
-    lineHeight: 39 * SC,
+    lineHeight: 39,
     marginBottom: 14,
   },
   body: {
@@ -744,7 +744,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  primaryBtnText: { color: WHITE, fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
+  primaryBtnText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
   btnDisabled: { opacity: 0.38 },
 
   // Sentence card

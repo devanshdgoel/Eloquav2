@@ -290,7 +290,7 @@ function TitleScreen({ onNext, onExit, sessionFill = 0.25 }) {
   );
 }
 const tts = StyleSheet.create({
-  title:    { color: WHITE, fontSize: Math.round(fs(64)), fontWeight: '800', letterSpacing: 3.2, textAlign: 'center', lineHeight: Math.round(fs(74)) },
+  title:    { color: WHITE, fontSize: 64, fontWeight: '800', letterSpacing: 3.2, textAlign: 'center', lineHeight: 74 },
   arrowBtn: { alignSelf: 'center', width: Math.round(fs(76)), height: Math.round(fv(64)), borderRadius: 14, backgroundColor: TEAL_MID, justifyContent: 'center', alignItems: 'center', marginBottom: fv(86) },
   arrowText:{ color: WHITE, fontSize: 26, fontWeight: '700', includeFontPadding: false, lineHeight: 26, textAlign: 'center' },
 });
@@ -350,8 +350,8 @@ function TutorialScreen({ onFinish, onExit }) {
   );
 }
 const tus = StyleSheet.create({
-  ahhText:    { position: 'absolute', top: fv(137), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: Math.round(fs(34)), fontWeight: '800', letterSpacing: 1.7, textAlign: 'center' },
-  instruction:{ position: 'absolute', bottom: fv(100), left: fs(24), right: fs(24), zIndex: 20, color: WHITE, fontSize: Math.round(fs(28)), fontWeight: '800', letterSpacing: 1.0, textAlign: 'center', lineHeight: Math.round(fs(40)) },
+  ahhText:    { position: 'absolute', top: fv(137), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 34, fontWeight: '800', letterSpacing: 1.7, textAlign: 'center' },
+  instruction:{ position: 'absolute', bottom: fv(100), left: fs(24), right: fs(24), zIndex: 20, color: WHITE, fontSize: 28, fontWeight: '800', letterSpacing: 1.0, textAlign: 'center', lineHeight: 40 },
   nextBtn:    { width: Math.round(fs(64)), height: Math.round(fv(56)), borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)', justifyContent: 'center', alignItems: 'center' },
   nextText:   { color: WHITE, fontSize: 22, includeFontPadding: false, lineHeight: 22, textAlign: 'center' },
 });
@@ -494,7 +494,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <View style={xs.webviewWrap} pointerEvents="none">
         <WebView
           ref={webViewRef}
-          source={{ html: PITCH_HTML, baseUrl: 'https://eloqua-backend.onrender.com' }}
+          source={{ html: PITCH_HTML, baseUrl: 'https://localhost' }}
           originWhitelist={['*']}
           javaScriptEnabled={true}
           allowsInlineMediaPlayback={true}
@@ -569,13 +569,15 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 }
 
 const xs = StyleSheet.create({
-  // Off-screen with real dimensions so the WebView fully initialises
+  // Visible position at top-left but invisible — iOS suspends JS in fully off-screen WebViews.
+  // opacity: 0 causes iOS to skip compositing, so use 0.001 (imperceptible, still rendered).
   webviewWrap: {
     position: 'absolute',
     width: 300,
     height: 300,
-    top: -600,
-    left: -600,
+    top: 0,
+    left: 0,
+    opacity: 0.001,
     zIndex: -1,
   },
   micErrorOverlay: {
@@ -589,7 +591,7 @@ const xs = StyleSheet.create({
   },
   micErrorTitle: {
     color: WHITE,
-    fontSize: fs(22),
+    fontSize: 22,
     fontWeight: '700',
     marginBottom: fv(12),
     textAlign: 'center',
@@ -605,7 +607,7 @@ const xs = StyleSheet.create({
     backgroundColor: ORANGE,
     paddingHorizontal: fs(28),
     paddingVertical: fv(14),
-    borderRadius: fs(22),
+    borderRadius: 28,
   },
   micErrorBtnText: {
     color: '#1A1A1A',
@@ -615,8 +617,8 @@ const xs = StyleSheet.create({
 });
 
 const exs = StyleSheet.create({
-  prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: Math.round(fs(30)), fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
-  promptBig: { top: fv(137), fontSize: Math.round(fs(34)), letterSpacing: 1.7 },
+  prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 30, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
+  promptBig: { top: fv(137), fontSize: 34, letterSpacing: 1.7 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

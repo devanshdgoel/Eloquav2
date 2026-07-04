@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   micBtn: {
     width: 84,
     height: 84,
-    borderRadius: 18,
+    borderRadius: 42,
     backgroundColor: '#2D6974',
     justifyContent: 'center',
     alignItems: 'center',
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   micBtnRecording: {
-    backgroundColor: '#C0392B',
+    backgroundColor: '#FFA940',
   },
   // Placeholder text label for the mic button until a mic icon asset is added.
   micIcon: {

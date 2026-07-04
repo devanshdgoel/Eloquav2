@@ -4,13 +4,15 @@
 // (gitignored) and passed to the app bundle via the `extra` field, which is
 // accessible at runtime through expo-constants.
 
+const pkg = require('./package.json');
+
 module.exports = {
   expo: {
     name: 'Eloqua',
     slug: 'eloqua2',
     owner: 'eloqua-team',
     privacy: 'public',
-    version: '1.0.0',
+    version: pkg.version,
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',

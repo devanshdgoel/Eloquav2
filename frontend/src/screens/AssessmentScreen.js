@@ -163,7 +163,7 @@ function ScoreArc({ score, color, label }) {
 }
 const arc = StyleSheet.create({
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  num:    { fontSize: 24 * SC, fontWeight: '800', lineHeight: 26 * SC },
+  num:    { fontSize: 24, fontWeight: '800', lineHeight: 26 },
   label:  { color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '600', letterSpacing: 0.5, textAlign: 'center' },
 });
 
@@ -734,10 +734,10 @@ const s = StyleSheet.create({
 
   heroTitle: {
     color: WHITE,
-    fontSize: 38 * SC,
+    fontSize: 38,
     fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 46 * SC,
+    lineHeight: 46,
     letterSpacing: 0.3,
   },
 
@@ -801,7 +801,7 @@ const s = StyleSheet.create({
   },
 
   taskTitle: {
-    fontSize: 30 * SC,
+    fontSize: 30,
     fontWeight: '800',
     textAlign: 'center',
     letterSpacing: 0.3,
@@ -915,7 +915,7 @@ const s = StyleSheet.create({
   },
   focusTitle: {
     color: WHITE,
-    fontSize: 20 * SC,
+    fontSize: 20,
     fontWeight: '800',
   },
   focusTip: {

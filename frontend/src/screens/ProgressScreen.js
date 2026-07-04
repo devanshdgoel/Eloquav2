@@ -234,8 +234,8 @@ const sc = StyleSheet.create({
   },
   top:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   label:   { color: DIM, fontSize: 16, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  score:   { fontSize: 34 * SC, fontWeight: '800', lineHeight: 38 * SC },
-  noData:  { fontSize: 32 * SC, fontWeight: '300', color: 'rgba(255,255,255,0.25)' },
+  score:   { fontSize: 34, fontWeight: '800', lineHeight: 38 },
+  noData:  { fontSize: 32, fontWeight: '300', color: 'rgba(255,255,255,0.25)' },
   deltaRow:{ flexDirection: 'row', alignItems: 'baseline' },
   delta:   { fontSize: 16, fontWeight: '700' },
   deltaLabel: { fontSize: 16, color: DIM, fontWeight: '500' },
@@ -302,7 +302,7 @@ const stat = StyleSheet.create({
     borderRadius: 16, borderWidth: 1,
     borderColor: 'rgba(195,222,206,0.18)', gap: 4,
   },
-  value: { fontSize: 30 * SC, fontWeight: '800', letterSpacing: 0.5 },
+  value: { fontSize: 30, fontWeight: '800', letterSpacing: 0.5 },
   label: { color: DIM, fontSize: 16, fontWeight: '500', textAlign: 'center' },
 });
 
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
   },
-  ringNum:   { color: WHITE, fontSize: 40 * SC, fontWeight: '800', lineHeight: 44 * SC },
+  ringNum:   { color: WHITE, fontSize: 40, fontWeight: '800', lineHeight: 44 },
   ringOf:    { color: DIM, fontSize: 16, fontWeight: '500' },
   ringLabel: { color: DIM, fontSize: 16 },
   levelTag:  {

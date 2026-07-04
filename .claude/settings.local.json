@@ -123,7 +123,17 @@
       "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter \"git rm --cached --ignore-unmatch 'whisper-medium-finetuned.tar.gz' 'backend/test2.mp3' 'backend/temp.wav'\" --prune-empty origin/main..HEAD)",
       "Bash(xargs -r git update-ref -d)",
       "mcp__figma__get_variable_defs",
-      "Bash(dir \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\" /b)"
+      "Bash(dir \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\" /b)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Write-Host \"=== FRONTEND/SRC ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\frontend\\\\src\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Write-Host \"=== BACKEND ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "Bash(xargs -I {} basename {} .js)",
+      "Bash(xargs -I {} basename {} .jsx)",
+      "Bash(xargs -I {} basename {} .tsx)",
+      "PowerShell(Write-Host \"=== .CLAUDE ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\.claude\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Write-Host \"=== FRONTEND COMPONENTS ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\frontend\\\\src\\\\components\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Write-Host \"=== BACKEND API ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\\\\api\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "PowerShell(Write-Host \"=== BACKEND SERVICES ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\\\\services\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)"
     ]
   }
 }

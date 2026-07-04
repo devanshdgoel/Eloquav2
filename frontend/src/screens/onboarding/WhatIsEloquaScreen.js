@@ -104,10 +104,10 @@ const s = StyleSheet.create({
   },
   title: {
     color: WHITE,
-    fontSize: 32 * SC,
+    fontSize: 32,
     fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 40 * SC,
+    lineHeight: 40,
     letterSpacing: 0.2,
   },
   body: {
@@ -120,7 +120,7 @@ const s = StyleSheet.create({
   btn: {
     backgroundColor: ORANGE,
     paddingHorizontal: 40 * SC,
-    paddingVertical: 18,
+    paddingVertical: 20,
     borderRadius: 28,
     shadowColor: ORANGE,
     shadowOffset: { width: 0, height: 6 },
@@ -132,7 +132,7 @@ const s = StyleSheet.create({
   },
   btnText: {
     color: '#1A1A1A',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.3,
   },

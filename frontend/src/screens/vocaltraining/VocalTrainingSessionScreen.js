@@ -72,7 +72,7 @@ const PROGRESS_BAR_H = 8;
 // ── Session complete screen (fallback — shown only if StreakCelebration fails)
 function SessionComplete({ navigation }) {
   return (
-    <LinearGradient colors={['#E0ECDE', '#68B39F']} style={completeStyles.root}>
+    <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={completeStyles.root}>
       <View style={completeStyles.content}>
         <Text style={completeStyles.title}>One session stronger.</Text>
         <Text style={completeStyles.subtitle}>
@@ -99,26 +99,26 @@ const completeStyles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: '800',
-    color: '#1C4047',
+    color: '#FFFFFF',
     letterSpacing: 0.3,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 18,
-    color: '#2D6974',
+    color: 'rgba(255,255,255,0.70)',
     textAlign: 'center',
     lineHeight: 26,
     letterSpacing: 0.2,
   },
   homeBtn: {
     marginTop: 12,
-    backgroundColor: '#1C4047',
-    borderRadius: 16,
+    backgroundColor: '#FFA940',
+    borderRadius: 28,
     paddingHorizontal: 40,
-    paddingVertical: 20,   // ≥ 56px tall
+    paddingVertical: 20,
   },
   homeBtnText: {
-    color: '#FFFFFF',
+    color: '#1A1A1A',
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,

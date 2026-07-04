@@ -712,8 +712,8 @@ const styles = StyleSheet.create({
   introXText: { color: C.white, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
 
   introTitle: {
-    color: C.white, fontSize: 56 * SC, fontWeight: '900',
-    letterSpacing: 2, lineHeight: 66 * SC, marginBottom: 36 * SC,
+    color: C.white, fontSize: 56, fontWeight: '900',
+    letterSpacing: 2, lineHeight: 66, marginBottom: 36 * SC,
   },
 
   bubblesWrap: {
@@ -775,7 +775,7 @@ const styles = StyleSheet.create({
   },
   exXText: { color: C.white, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
   exRepeatLabel: {
-    flex: 1, color: C.white, fontSize: 26 * SC, fontWeight: '800',
+    flex: 1, color: C.white, fontSize: 26, fontWeight: '800',
     letterSpacing: 1, marginLeft: 14 * SC,
   },
   exHelpBtn: {
@@ -789,15 +789,15 @@ const styles = StyleSheet.create({
   speakerBtn: {
     alignSelf: 'center', marginTop: 14 * SC, marginBottom: 8 * SC,
   },
-  speakerIcon: { fontSize: 52 * SC },
+  speakerIcon: { fontSize: 52 },
 
   wordText: {
-    color: C.white, fontSize: 46 * SC, fontWeight: '800',
+    color: C.white, fontSize: 46, fontWeight: '800',
     letterSpacing: 2, textAlign: 'center',
-    paddingHorizontal: 22 * SC, lineHeight: 58 * SC,
+    paddingHorizontal: 22 * SC, lineHeight: 58,
   },
-  wordTextMed: { fontSize: 34 * SC, lineHeight: 44 * SC },
-  wordTextSm:  { fontSize: 24 * SC, lineHeight: 34 * SC },
+  wordTextMed: { fontSize: 34, lineHeight: 44 },
+  wordTextSm:  { fontSize: 24, lineHeight: 34 },
 
   phaseHint: {
     color: C.textDim, fontSize: 16, textAlign: 'center',
@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
     shadowColor: C.orange, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45, shadowRadius: 8, elevation: 6,
   },
-  micIcon: { fontSize: 32 * SC },
+  micIcon: { fontSize: 32 },
 
   readyBtn: {
     alignSelf: 'center', marginBottom: 16 * SC,
@@ -872,15 +872,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 16 * SC,
   },
   drawerText: {
-    flex: 1, color: C.white, fontSize: 20 * SC, fontWeight: '700',
-    lineHeight: 28 * SC, letterSpacing: 0.3,
+    flex: 1, color: C.white, fontSize: 20, fontWeight: '700',
+    lineHeight: 28, letterSpacing: 0.3,
   },
   drawerArrow: {
     width: 60 * SC, height: 60 * SC, borderRadius: 16 * SC,
     backgroundColor: C.tealMid,
     justifyContent: 'center', alignItems: 'center',
   },
-  drawerArrowText: { color: C.white, fontSize: 26 * SC, fontWeight: '700' },
+  drawerArrowText: { color: C.white, fontSize: 26, fontWeight: '700' },
 
   successFlash: {
     ...StyleSheet.absoluteFillObject,
@@ -897,7 +897,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   idleText: {
-    color: C.white, fontSize: 24 * SC, fontWeight: '800',
-    textAlign: 'center', lineHeight: 34 * SC, letterSpacing: 0.3,
+    color: C.white, fontSize: 24, fontWeight: '800',
+    textAlign: 'center', lineHeight: 34, letterSpacing: 0.3,
   },
 });

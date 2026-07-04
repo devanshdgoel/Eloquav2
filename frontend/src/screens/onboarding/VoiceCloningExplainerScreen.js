@@ -118,9 +118,9 @@ const s = StyleSheet.create({
   },
   title: {
     color: WHITE,
-    fontSize: 30 * SC,
+    fontSize: 30,
     fontWeight: '800',
-    lineHeight: 38 * SC,
+    lineHeight: 38,
     letterSpacing: 0.2,
   },
   subtitle: {
@@ -140,7 +140,7 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 14 * SC,
   },
-  cardIcon: { fontSize: 24 * SC, width: 30 * SC, textAlign: 'center', flexShrink: 0 },
+  cardIcon: { fontSize: 24, width: 30 * SC, textAlign: 'center', flexShrink: 0 },
   cardText: { flex: 1, gap: 5 * SC },
   cardTitle: { color: WHITE, fontSize: 16, fontWeight: '700' },
   cardBody:  { color: DIM,   fontSize: 16, lineHeight: 24 },
@@ -161,7 +161,7 @@ const s = StyleSheet.create({
   },
   btnText: {
     color: '#1A1A1A',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.3,
   },

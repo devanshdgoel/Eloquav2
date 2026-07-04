@@ -184,10 +184,10 @@ const styles = StyleSheet.create({
   },
   greeting: {
     color: '#FFFFFF',
-    fontSize: 64 * SX,
+    fontSize: 64,
     fontWeight: '700',
-    letterSpacing: 3.2 * SX,
-    lineHeight: 70 * SX,
+    letterSpacing: 3.2,
+    lineHeight: 70,
     marginBottom: 0,
   },
   taglineBlock: {
@@ -195,14 +195,14 @@ const styles = StyleSheet.create({
   },
   taglineWhite: {
     color: '#FFFFFF',
-    fontSize: 40 * SX,
+    fontSize: 40,
     fontWeight: '400',
-    lineHeight: 52 * SX,
+    lineHeight: 52,
   },
   taglineMint: {
     color: '#C3DECE',
-    fontSize: 40 * SX,
+    fontSize: 40,
     fontWeight: '400',
-    lineHeight: 52 * SX,
+    lineHeight: 52,
   },
 });

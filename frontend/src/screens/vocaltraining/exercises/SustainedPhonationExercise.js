@@ -1,17 +1,3 @@
-/**
- * SustainedPhonationExercise — LSVT-inspired maximum phonation time training.
- *
- * Flow: Title (SP1) → Demo slides (SP2-SP4) → Ready countdown (SP5) → Exercise (SP6+)
- *
- * Key mechanics:
- *   - Adaptive threshold: mic samples ambient noise for 1.5 s, then sets a
- *     per-session threshold well above the noise floor.
- *   - Score = whole seconds of voice sustained above the adaptive threshold.
- *   - Silence for 800 ms ends the round; 6.5 s breathing rest follows each round.
- *   - 3 rounds per session. Best score tracked with gold star marker.
- *   - ? button returns to demo slides from the exercise screen.
- *   - "Can't do now" is available on every screen.
- */
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -22,62 +8,53 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { Audio } from 'expo-av';
-import Svg, { Circle, Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Audio } from 'expo-av';
 import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-// ── Steps ──────────────────────────────────────────────────────────────────────
-const STEP_TITLE    = 0;
-const STEP_DEMO     = 1;
-const STEP_READY    = 2;
-const STEP_EXERCISE = 3;
-
-// ── Timing config ──────────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
 const TOTAL_ROUNDS    = 3;
-const BARS_COUNT      = 26;
-const BAR_INTERVAL_MS = 80;
-const COUNTDOWN_S     = 3;
 const CALIBRATION_MS  = 1500;
-const MAX_PHONATE_MS  = 20000;
+const MAX_THRESHOLD   = 0.60;
 const SILENCE_END_MS  = 800;
+const MAX_PHONATE_MS  = 20000;
 const REST_MS         = 6500;
 
-// ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
-// targetSeconds: visual goal shown to the user during scoring
-// minVolume: minimum adaptive threshold floor (0–1 normalised dB scale)
 const PHONATION_TIERS = [
-  { targetSeconds: 4,  minVolume: 0.22 },  // Tier 1 — low floor so quieter voices still register
-  { targetSeconds: 5,  minVolume: 0.27 },  // Tier 2
-  { targetSeconds: 7,  minVolume: 0.32 },  // Tier 3
-  { targetSeconds: 9,  minVolume: 0.37 },  // Tier 4
-  { targetSeconds: 12, minVolume: 0.42 },  // Tier 5
+  { targetSeconds: 4,  minVolume: 0.22 },
+  { targetSeconds: 5,  minVolume: 0.27 },
+  { targetSeconds: 7,  minVolume: 0.32 },
+  { targetSeconds: 9,  minVolume: 0.37 },
+  { targetSeconds: 12, minVolume: 0.42 },
 ];
 
-// ── Adaptive threshold bounds ──────────────────────────────────────────────────
-const MIN_THRESHOLD = 0.18;
-const MAX_THRESHOLD = 0.60;
+const REST_SEQUENCES = [
+  { praise: 'Great start!',    in: 'Breathe in slowly…',   out: 'And breathe out…' },
+  { praise: 'Keep it up!',     in: 'Inhale deeply…',        out: 'Breathe out gently…' },
+  { praise: 'Excellent work!', in: 'One last deep breath…', out: 'Release slowly…' },
+];
 
-// ── Layout ─────────────────────────────────────────────────────────────────────
-const SPLIT_RATIO = 0.46;
-const TOP_H  = H * SPLIT_RATIO;
-const BAR_W  = Math.max(3, Math.floor((W - 40) / BARS_COUNT) - 2);
+// ── Colors ────────────────────────────────────────────────────────────────────
+const BG        = '#1C4047';
+const ORANGE    = '#FFA940';
+const WHITE     = '#FFFFFF';
+const MINT      = '#C3DECE';
+const GREEN     = '#48D28C';
+const GREEN_BAR = 'rgba(72,210,140,0.90)';
+const WHITE_BAR = 'rgba(255,255,255,0.88)';
 
-// ── Colors ─────────────────────────────────────────────────────────────────────
-const DARK_TEAL  = '#1C4047';
-const DARK_GREEN = '#1E3828';
-const TEAL_MID   = '#2D6974';
-const ORANGE     = '#FFA940';
-const MINT       = '#C3DECE';
-const WHITE      = '#FFFFFF';
-const GREEN_BAR  = 'rgba(72,210,140,0.90)';
-const WHITE_BAR  = 'rgba(255,255,255,0.88)';
-const DIM_BAR    = 'rgba(255,255,255,0.14)';
-const MID_BAR    = 'rgba(255,255,255,0.28)';
+// ── Bar chart config ──────────────────────────────────────────────────────────
+const BARS_COUNT = 26;
+const BAR_GAP    = 2;
+const BAR_W      = Math.max(3, Math.floor((W - 32 - BAR_GAP * (BARS_COUNT - 1)) / BARS_COUNT));
+const BAR_MAX_H  = 110;
 
-// ── Fade-in wrapper ────────────────────────────────────────────────────────────
+const BG_GRADIENT = ['#37767A', '#1C4047', '#0A1618'];
+
+// ── Shared UI pieces ──────────────────────────────────────────────────────────
+
 function FadeIn({ children, duration = 380 }) {
   const opacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -86,11 +63,44 @@ function FadeIn({ children, duration = 380 }) {
   return <Animated.View style={{ flex: 1, opacity }}>{children}</Animated.View>;
 }
 
-// ── Header button styles ───────────────────────────────────────────────────────
-const BTN = 56;
+function SessionBar({ fill }) {
+  return (
+    <View style={sb.track}>
+      <View style={[sb.fill, { width: `${Math.min(1, fill) * 100}%` }]} />
+    </View>
+  );
+}
+const sb = StyleSheet.create({
+  track: {
+    position: 'absolute', bottom: 28, left: 47,
+    width: W - 94, height: 12, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  fill: { height: '100%', borderRadius: 13, backgroundColor: ORANGE },
+});
+
+function RoundPills({ current, done }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center' }}>
+      {[0, 1, 2].map(i => (
+        <View
+          key={i}
+          style={{
+            width: 96, height: 10, borderRadius: 5,
+            backgroundColor:
+              i < done        ? GREEN
+              : i === current ? '#2D9BA2'
+                              : 'rgba(255,255,255,0.22)',
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 const hb = StyleSheet.create({
   ghostBtn: {
-    width: BTN, height: BTN, borderRadius: BTN / 2,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center', alignItems: 'center',
@@ -100,7 +110,7 @@ const hb = StyleSheet.create({
     includeFontPadding: false, textAlign: 'center', lineHeight: 20,
   },
   orangeBtn: {
-    width: BTN, height: BTN, borderRadius: BTN / 2,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: ORANGE,
     justifyContent: 'center', alignItems: 'center',
     shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 },
@@ -112,73 +122,41 @@ const hb = StyleSheet.create({
   },
 });
 
-// ── Waveform bars (static illustration) ───────────────────────────────────────
-const BELL_V = [0.10, 0.22, 0.38, 0.54, 0.70, 0.84, 0.94, 1.0, 0.94, 0.84, 0.70, 0.54, 0.38, 0.22, 0.10];
+// ── Title screen ──────────────────────────────────────────────────────────────
 
-function BellWaveform() {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 96, gap: 5 }}>
-      {BELL_V.map((v, i) => (
-        <View key={i} style={{
-          flex: 1,
-          height: Math.max(6, v * 96),
-          borderRadius: 5,
-          backgroundColor: i < 7
-            ? `rgba(72,210,140,${0.55 + v * 0.40})`
-            : `rgba(195,222,206,${0.35 + v * 0.40})`,
-        }} />
-      ))}
-    </View>
-  );
-}
-
-// ── Session progress bar ───────────────────────────────────────────────────────
-function SessionBar({ fill = 0.28 }) {
-  return (
-    <View style={sb.track}>
-      <View style={[sb.fill, { width: `${fill * 100}%` }]} />
-    </View>
-  );
-}
-const sb = StyleSheet.create({
-  track: {
-    position: 'absolute', bottom: 30, left: 44,
-    width: W - 88, height: 8, borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  fill: { height: '100%', borderRadius: 8, backgroundColor: ORANGE },
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// SP1 — Title screen
-// ══════════════════════════════════════════════════════════════════════════════
-function TitleScreen({ onNext, onExit, onSkip, sessionFill = 0.14 }) {
+function TitleScreen({ onNext, onExit, sessionFill }) {
   return (
     <FadeIn>
-      <View style={{ flex: 1, backgroundColor: DARK_TEAL }}>
+      <View style={{ flex: 1, backgroundColor: BG }}>
         <StatusBar barStyle="light-content" />
 
         <View style={ts.header}>
-          <TouchableOpacity style={hb.ghostBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
+          <TouchableOpacity
+            style={hb.ghostBtn}
+            onPress={onExit}
+            accessibilityRole="button"
+            accessibilityLabel="Exit exercise"
+          >
             <Text style={hb.ghostText}>✕</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 }}>
-          <Text style={ts.tag}>VOCAL TRAINING</Text>
-          <Text style={ts.title}>Sustained{'\n'}Phonation</Text>
-          <Text style={ts.subtitle}>Hold a steady "Aah" to build{'\n'}vocal strength and endurance</Text>
-          <View style={ts.waveWrap}>
-            <BellWaveform />
-          </View>
+        <View style={ts.body}>
+          <Text style={ts.title}>{'Sustained\nSound'}</Text>
+          <Text style={ts.subtitle}>
+            {"Hold a steady \"Aah\" as long as you can.\nThree rounds — your best score counts."}
+          </Text>
         </View>
 
-        <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8}
-          accessibilityRole="button" accessibilityLabel="Continue to instructions">
-          <Text style={ts.arrowText}>Get started  →</Text>
+        <TouchableOpacity
+          style={ts.arrowBtn}
+          onPress={onNext}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Continue"
+        >
+          <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
-
-        <CantDoNow onSkip={onSkip} onEnd={onExit} style={ts.cantDo} />
 
         <SessionBar fill={sessionFill} />
       </View>
@@ -187,212 +165,93 @@ function TitleScreen({ onNext, onExit, onSkip, sessionFill = 0.14 }) {
 }
 
 const ts = StyleSheet.create({
-  header: { paddingTop: 56, paddingHorizontal: 20, flexDirection: 'row' },
-  tag: {
-    color: MINT, fontSize: 16, fontWeight: '700',
-    letterSpacing: 2, opacity: 0.7, marginBottom: 12,
+  header: { paddingTop: 52, paddingHorizontal: 18, flexDirection: 'row' },
+  body: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 32,
   },
   title: {
-    color: WHITE, fontSize: 48, fontWeight: '800',
-    letterSpacing: 0.8, textAlign: 'center',
-    marginBottom: 14, lineHeight: 56,
+    color: WHITE, fontSize: 56, fontWeight: '800',
+    letterSpacing: 1.5, textAlign: 'center', marginBottom: 16,
   },
   subtitle: {
-    color: 'rgba(255,255,255,0.60)', fontSize: 17, fontWeight: '400',
-    letterSpacing: 0.3, textAlign: 'center', lineHeight: 24,
-    marginBottom: 40,
+    color: MINT, fontSize: 17, textAlign: 'center',
+    lineHeight: 26, opacity: 0.85,
   },
-  waveWrap: { width: '100%', paddingHorizontal: 12 },
   arrowBtn: {
-    alignSelf: 'center', marginBottom: 16,
-    paddingHorizontal: 32, paddingVertical: 16,
-    borderRadius: 16,
-    backgroundColor: TEAL_MID,
-    borderWidth: 1, borderColor: 'rgba(195,222,206,0.25)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25, shadowRadius: 10, elevation: 6,
+    alignSelf: 'center', marginBottom: 60,
+    width: 80, height: 64, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  arrowText: { color: WHITE, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
-  cantDo: { marginBottom: 56 },
+  arrowText: { color: WHITE, fontSize: 26, fontWeight: '300' },
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SP2-SP4 — Demo slides
-// ══════════════════════════════════════════════════════════════════════════════
-const SP2_BARS = [0.14, 0.26, 0.46, 0.66, 0.82, 0.90, 0.86, 0.76, 0.84, 0.88, 0.72, 0.56, 0.40, 0.26, 0.14];
+// ── Instructions screen ───────────────────────────────────────────────────────
 
-function Slide1() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-      {/* Decorative large soft circle */}
-      <View style={{
-        position: 'absolute', width: W * 0.85, height: W * 0.85,
-        borderRadius: W * 0.425, backgroundColor: 'rgba(45,105,116,0.22)',
-        top: -W * 0.22, alignSelf: 'center',
-      }} />
-      <Text style={sl.stepNum}>01</Text>
-      <Text style={sl.title1}>Say "Aah" for as long as you can</Text>
-      <Text style={sl.body1}>At a comfortable volume — loud enough that your voice is clear and steady.</Text>
-      <View style={sl.waveRow}>
-        {SP2_BARS.map((v, i) => (
-          <View key={i} style={{
-            width: 14, height: Math.max(5, v * 84),
-            borderRadius: 5,
-            backgroundColor: i < 8 ? GREEN_BAR : WHITE_BAR,
-            marginHorizontal: 3,
-          }} />
-        ))}
-      </View>
-    </View>
-  );
-}
+const INSTRUCTIONS = [
+  { step: '1', text: 'Sit up straight and take a slow, deep breath.' },
+  { step: '2', text: "Say \"Aah\" in a loud, steady voice — project across the room." },
+  { step: '3', text: 'Hold it as long as you can. Think LOUD. Don\'t stop.' },
+  { step: '4', text: 'Watch the waveform bars — keep them high to score!' },
+];
 
-function Slide2() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
-      <View style={{
-        position: 'absolute', width: W * 0.90, height: W * 0.90,
-        borderRadius: W * 0.45, backgroundColor: 'rgba(24,76,46,0.45)',
-        alignSelf: 'center', top: H * 0.02,
-      }} />
-      <Text style={sl.stepNum}>02</Text>
-      <Text style={sl.bigNum}>11</Text>
-      <Text style={sl.body2}>Each second your voice is{'\n'}above the threshold scores a point.</Text>
-      <View style={sl.scoreTag}>
-        <Text style={sl.scoreTagText}>Best score wins</Text>
-      </View>
-    </View>
-  );
-}
-
-function Slide3() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
-      <Text style={sl.stepNum}>03</Text>
-      <Text style={sl.andRemember}>and remember...</Text>
-      <Text style={sl.thinkLoud}>THINK{'\n'}LOUD</Text>
-      <Text style={sl.body2}>Project your voice as if{'\n'}speaking across a room.</Text>
-    </View>
-  );
-}
-
-const sl = StyleSheet.create({
-  stepNum: {
-    color: MINT, fontSize: 16, fontWeight: '800',
-    letterSpacing: 2, opacity: 0.6, marginBottom: 16,
-  },
-  title1: {
-    color: WHITE, fontSize: 28, fontWeight: '700',
-    textAlign: 'center', lineHeight: 38, marginBottom: 14,
-    letterSpacing: 0.2,
-  },
-  body1: {
-    color: 'rgba(255,255,255,0.60)', fontSize: 16,
-    textAlign: 'center', lineHeight: 24, letterSpacing: 0.2,
-    marginBottom: 36,
-  },
-  waveRow: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  bigNum: {
-    color: WHITE, fontSize: 120, fontWeight: '900',
-    letterSpacing: -4, lineHeight: 128,
-    includeFontPadding: false,
-    textShadowColor: 'rgba(72,210,140,0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
-  },
-  body2: {
-    color: 'rgba(255,255,255,0.70)', fontSize: 17,
-    textAlign: 'center', lineHeight: 26, letterSpacing: 0.2, marginTop: 16,
-  },
-  scoreTag: {
-    marginTop: 20, paddingHorizontal: 16, paddingVertical: 6,
-    backgroundColor: 'rgba(254,156,45,0.18)',
-    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(254,156,45,0.35)',
-  },
-  scoreTagText: { color: ORANGE, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
-  andRemember: {
-    color: 'rgba(255,255,255,0.60)', fontSize: 17,
-    fontStyle: 'italic', letterSpacing: 1.5, marginBottom: 16,
-  },
-  thinkLoud: {
-    color: WHITE, fontSize: 68, fontWeight: '900',
-    letterSpacing: 3, textAlign: 'center', lineHeight: 76, marginBottom: 20,
-    textShadowColor: 'rgba(72,210,140,0.3)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 16,
-  },
-});
-
-function DemoScreen({ onFinish, onExit, onSkip }) {
-  const [slide, setSlide] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-
-  function go(next) {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
-      setSlide(next);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-    });
-  }
-
-  function next() { if (slide < 2) go(slide + 1); else onFinish(); }
-  function back() { if (slide > 0) go(slide - 1); else onExit(); }
-
+function InstructScreen({ onNext, onExit }) {
   return (
     <FadeIn>
-      <LinearGradient colors={['#1C3242', '#0D1E2B']} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        <LinearGradient
+          colors={['#1C3242', '#0D1E2B']}
+          style={StyleSheet.absoluteFillObject}
+        />
         <StatusBar barStyle="light-content" />
 
-        <View style={dm.header}>
-          <TouchableOpacity style={hb.ghostBtn} onPress={back} accessibilityRole="button" accessibilityLabel="Go back">
+        <View style={ins.header}>
+          <TouchableOpacity
+            style={hb.ghostBtn}
+            onPress={onExit}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Text style={hb.ghostText}>←</Text>
           </TouchableOpacity>
-
-          <View style={dm.pill}>
-            <Text style={dm.pillText}>INSTRUCTIONS</Text>
+          <View style={ins.pill}>
+            <Text style={ins.pillText}>INSTRUCTIONS</Text>
           </View>
-
-          {/* Step indicator */}
-          <View style={dm.stepWrap}>
-            <Text style={dm.stepText}>{slide + 1} / 3</Text>
-          </View>
+          <View style={{ width: 56 }} />
         </View>
 
-        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-          {slide === 0 && <Slide1 />}
-          {slide === 1 && <Slide2 />}
-          {slide === 2 && <Slide3 />}
-        </Animated.View>
+        <Text style={ins.heading}>{'How to do\nSustained Sound'}</Text>
 
-        <View style={dm.footer}>
-          {/* Progress dots */}
-          <View style={dm.dots}>
-            {[0, 1, 2].map(i => (
-              <View key={i} style={[dm.dot, i === slide && dm.dotActive, i < slide && dm.dotDone]} />
-            ))}
-          </View>
-
-          {/* Next / Done */}
-          <TouchableOpacity style={dm.nextBtn} onPress={next} activeOpacity={0.8}
-            accessibilityRole="button" accessibilityLabel={slide < 2 ? 'Next slide' : 'Start exercise'}>
-            {slide < 2
-              ? <Text style={dm.nextText}>Next  →</Text>
-              : <Text style={dm.nextText}>Ready  ✓</Text>
-            }
-          </TouchableOpacity>
+        <View style={ins.card}>
+          {INSTRUCTIONS.map(({ step, text }) => (
+            <View key={step} style={ins.row}>
+              <View style={ins.badge}>
+                <Text style={ins.badgeNum}>{step}</Text>
+              </View>
+              <Text style={ins.stepText}>{text}</Text>
+            </View>
+          ))}
         </View>
 
-        <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 24 }} />
-      </LinearGradient>
+        <TouchableOpacity
+          style={ins.startBtn}
+          onPress={onNext}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Begin exercise"
+        >
+          <Text style={ins.startText}>Begin Exercise  →</Text>
+        </TouchableOpacity>
+      </View>
     </FadeIn>
   );
 }
 
-const dm = StyleSheet.create({
+const ins = StyleSheet.create({
   header: {
-    paddingTop: 56, paddingHorizontal: 20,
+    paddingTop: 52, paddingHorizontal: 20,
     flexDirection: 'row', alignItems: 'center', gap: 10,
   },
   pill: {
@@ -400,291 +259,138 @@ const dm = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
   },
   pillText: { color: '#1A1A1A', fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
-  stepWrap: {
-    width: 52, alignItems: 'center',
+  heading: {
+    color: 'rgba(255,255,255,0.90)', fontSize: 20, fontWeight: '700',
+    textAlign: 'center', letterSpacing: 0.4, lineHeight: 28,
+    marginTop: 18, marginBottom: 24, paddingHorizontal: 24,
   },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
   stepText: {
-    color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '600',
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 16, lineHeight: 23, fontWeight: '400',
   },
-  footer: {
-    paddingHorizontal: 32, paddingBottom: 16,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  startBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-  dots: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  dot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.20)' },
-  dotActive: { width: 24, backgroundColor: WHITE, borderRadius: 4 },
-  dotDone:   { backgroundColor: MINT, opacity: 0.6 },
-  nextBtn: {
-    paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14,
-    backgroundColor: TEAL_MID,
-    borderWidth: 1, borderColor: 'rgba(195,222,206,0.25)',
-  },
-  nextText: { color: WHITE, fontSize: 16, fontWeight: '700', letterSpacing: 0.4 },
+  startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SP5 — Ready countdown
-// ══════════════════════════════════════════════════════════════════════════════
-function ReadyScreen({ onDone, onSkip, onExit }) {
-  const [progress, setProgress] = useState(0);
-  const [countdown, setCountdown] = useState(COUNTDOWN_S);
+// ── Exercise screen ───────────────────────────────────────────────────────────
 
-  const SIZE    = 160;
-  const r       = SIZE / 2;
-  const strokeW = 14;
-  const innerR  = r - strokeW / 2;
-  const circ    = 2 * Math.PI * innerR;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    // Pulse ring
-    const pulse = Animated.loop(Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: 1.06, duration: 600, useNativeDriver: true }),
-      Animated.timing(pulseAnim, { toValue: 1.00, duration: 600, useNativeDriver: true }),
-    ]));
-    pulse.start();
-
-    // Countdown
-    const start    = Date.now();
-    const duration = COUNTDOWN_S * 1000;
-    const id = setInterval(() => {
-      const p = Math.min(1, (Date.now() - start) / duration);
-      setProgress(p);
-      setCountdown(Math.max(1, Math.ceil(COUNTDOWN_S * (1 - p))));
-      if (p >= 1) { clearInterval(id); pulse.stop(); setTimeout(onDone, 300); }
-    }, 50);
-    return () => { clearInterval(id); pulse.stop(); };
-  }, []);
-
-  return (
-    <FadeIn>
-      <LinearGradient
-        colors={['#1E3A4A', '#0D2530']}
-        start={{ x: 0.3, y: 0 }} end={{ x: 0.7, y: 1 }}
-        style={{ flex: 1 }}
-      >
-        <StatusBar barStyle="light-content" />
-
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 40 }}>
-          <Text style={rdy.preLabel}>Get ready to say</Text>
-          <Text style={rdy.vowel}>"Aah"</Text>
-
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <Svg width={SIZE} height={SIZE}>
-              <Circle
-                cx={r} cy={r} r={innerR}
-                stroke="rgba(195,222,206,0.15)"
-                strokeWidth={strokeW} fill="none"
-              />
-              <Circle
-                cx={r} cy={r} r={innerR}
-                stroke={MINT}
-                strokeWidth={strokeW} fill="none"
-                strokeDasharray={circ}
-                strokeDashoffset={circ * (1 - progress)}
-                strokeLinecap="round"
-                transform={`rotate(-90 ${r} ${r})`}
-              />
-            </Svg>
-            {/* Countdown number inside ring */}
-            <View style={rdy.countWrap}>
-              <Text style={rdy.countNum}>{countdown}</Text>
-            </View>
-          </Animated.View>
-
-          <Text style={rdy.hint}>Breathe in now...</Text>
-        </View>
-
-        <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 52 }} />
-      </LinearGradient>
-    </FadeIn>
-  );
-}
-
-const rdy = StyleSheet.create({
-  preLabel: {
-    color: 'rgba(255,255,255,0.60)', fontSize: 16, fontWeight: '500', letterSpacing: 0.5,
-  },
-  vowel: {
-    color: WHITE, fontSize: 52, fontWeight: '800', letterSpacing: 1,
-    textShadowColor: 'rgba(72,210,140,0.35)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 16,
-  },
-  countWrap: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  countNum: {
-    color: WHITE, fontSize: 62, fontWeight: '900',
-    includeFontPadding: false,
-  },
-  hint: {
-    color: MINT, fontSize: 18, fontWeight: '500',
-    letterSpacing: 0.5, opacity: 0.75,
-  },
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// SP6+ — Exercise screen
-// ══════════════════════════════════════════════════════════════════════════════
-
-function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }) {
   const tierConfig = PHONATION_TIERS[Math.max(0, Math.min(4, tier - 1))];
-  const [score,     setScore]     = useState(0);
-  const [bestScore, setBestScore] = useState(0);
-  const [bars,      setBars]      = useState(Array(BARS_COUNT).fill(0.02));
-  const [phase,     setPhase]     = useState('calibrating');
-  const [round,     setRound]     = useState(1);
-  const [restLabel, setRestLabel] = useState('');
 
-  // Refs
+  const [phase,      setPhase]      = useState('calibrating');
+  const [round,      setRound]      = useState(0);
+  const [doneRounds, setDoneRounds] = useState(0);
+  const [seconds,    setSeconds]    = useState(0);
+  const [bestScore,  setBestScore]  = useState(0);
+  const [msg,        setMsg]        = useState('Listening to room…');
+  const [bars,       setBars]       = useState(() => Array(BARS_COUNT).fill(0.015));
+
   const phaseRef          = useRef('calibrating');
-  const roundRef          = useRef(1);
+  const roundRef          = useRef(0);
   const scoreRef          = useRef(0);
   const bestRef           = useRef(0);
-  const volumeRef         = useRef(0);
-  const adaptiveThreshRef = useRef(MIN_THRESHOLD);
-  const ambientSamplesRef = useRef([]);
-
   const recordingRef      = useRef(null);
-  const barTimerRef       = useRef(null);
-  const scoreTimerRef     = useRef(null);
+  const adaptiveThreshRef = useRef(tierConfig.minVolume);
+  const ambientSamplesRef = useRef([]);
+  const calibrateTimerRef = useRef(null);
   const silenceTimerRef   = useRef(null);
   const maxTimerRef       = useRef(null);
-  const calibrateTimerRef = useRef(null);
-  const idleTimerRef      = useRef(null);
-  const restTimerRef      = useRef(null);   // tracks the inter-round REST_MS timeout
-  const breathe1Ref       = useRef(null);   // "breathe in" message timer
-  const breathe2Ref       = useRef(null);   // "breathe out" message timer
-  const micSessionGenRef  = useRef(0);      // generation counter — prevents stale onMeter callbacks
-  const calibratedRef     = useRef(false);  // true after round 1 calibration completes; rounds 2+ skip re-calibration
+  const scoreTimerRef     = useRef(null);
+  const restTimerRef      = useRef(null);
+  const msgTimer1Ref      = useRef(null);
+  const msgTimer2Ref      = useRef(null);
 
-  // Animated
-  const restOverlayAnim = useRef(new Animated.Value(0)).current;
-  const idleOverlayAnim = useRef(new Animated.Value(0)).current;
-  const scoreScaleAnim  = useRef(new Animated.Value(1)).current;
-  const [showIdleMsg,   setShowIdleMsg]   = useState(false);
-  const [restMsgQueue,  setRestMsgQueue]  = useState([]);
-  const [currentMsg,    setCurrentMsg]    = useState('');
-
-  // ── Cross-fade rest message ─────────────────────────────────────────────────
-  const msgFadeAnim = useRef(new Animated.Value(0)).current;
-  const msgSlideAnim = useRef(new Animated.Value(12)).current;
-
-  function showMsg(text) {
-    // Fade out → swap → fade in
-    Animated.parallel([
-      Animated.timing(msgFadeAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
-      Animated.timing(msgSlideAnim, { toValue: 12, duration: 180, useNativeDriver: true }),
-    ]).start(() => {
-      setCurrentMsg(text);
-      Animated.parallel([
-        Animated.timing(msgFadeAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
-        Animated.timing(msgSlideAnim, { toValue: 0, duration: 280, useNativeDriver: true }),
-      ]).start();
-    });
-  }
+  function setPhaseS(p) { phaseRef.current = p; setPhase(p); }
 
   useEffect(() => {
-    startMicSession();
-    return () => cleanupAll();
+    calibrateAmbient();
+    return () => { cleanupAll(); };
   }, []);
 
-  // Idle timer
-  useEffect(() => {
-    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
-    if (phase !== 'listening') {
-      setShowIdleMsg(false);
-      Animated.timing(idleOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-      return;
-    }
-    idleTimerRef.current = setTimeout(() => {
-      idleTimerRef.current = null;
-      setShowIdleMsg(true);
-      Animated.timing(idleOverlayAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start(() => {
-        setTimeout(() => {
-          Animated.timing(idleOverlayAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(
-            () => setShowIdleMsg(false)
-          );
-        }, 3500);
-      });
-    }, 7000);
-    return () => { if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; } };
-  }, [phase]);
+  // ── Audio (mirrors LoudnessDrillsExercise — never toggle mode between rounds) ─
 
-  // Score pop animation
-  useEffect(() => {
-    if (phase !== 'scoring') return;
-    Animated.sequence([
-      Animated.timing(scoreScaleAnim, { toValue: 1.08, duration: 120, useNativeDriver: true }),
-      Animated.timing(scoreScaleAnim, { toValue: 1.00, duration: 200, useNativeDriver: true }),
-    ]).start();
-  }, [score]);
-
-  async function startMicSession() {
-    const gen = ++micSessionGenRef.current;
+  async function calibrateAmbient() {
     ambientSamplesRef.current = [];
-    // Calibration only runs on the first round.
-    // Rounds 2+ re-use round 1's threshold — re-calibrating during the breathing rest
-    // picks up the user's exhale as "ambient noise", raising the bar far above what a
-    // Parkinson's patient can sustain, making round 2 impossible to trigger.
-    const doCalibrate = !calibratedRef.current;
-    if (doCalibrate) adaptiveThreshRef.current = MIN_THRESHOLD;
     try {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true },
         (status) => {
-          if (micSessionGenRef.current !== gen) return; // stale callback from a previous round
-          onMeter(status);
+          if (!status.isRecording) return;
+          const db  = status.metering ?? -160;
+          const vol = Math.min(1, Math.max(0, (db + 70) / 60));
+          ambientSamplesRef.current.push(vol);
         },
-        BAR_INTERVAL_MS,
+        80,
       );
-      if (micSessionGenRef.current !== gen) {
-        recording.stopAndUnloadAsync().catch(() => {});
-        return;
-      }
-      recordingRef.current = recording;
-      barTimerRef.current = setInterval(() => {
-        const v = volumeRef.current;
-        setBars(prev => [...prev.slice(1), Math.max(0.015, v + Math.random() * 0.018)]);
-      }, BAR_INTERVAL_MS);
-      if (doCalibrate) {
-        calibrateTimerRef.current = setTimeout(finishCalibration, CALIBRATION_MS);
-      } else {
-        // Skip calibration: jump straight to listening with round 1's established threshold
-        phaseRef.current = 'listening';
-        setPhase('listening');
-      }
+      calibrateTimerRef.current = setTimeout(async () => {
+        calibrateTimerRef.current = null;
+        const samples = ambientSamplesRef.current;
+        if (samples.length > 0) {
+          const sorted = [...samples].sort((a, b) => a - b);
+          const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? tierConfig.minVolume;
+          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 1.6 + 0.12));
+        }
+        // Stop calibration recording — DO NOT change audio mode
+        try { await recording.stopAndUnloadAsync(); } catch (_) {}
+        startNextRound();
+      }, CALIBRATION_MS);
     } catch (_) {
-      if (micSessionGenRef.current !== gen) return;
-      phaseRef.current = 'listening';
-      setPhase('listening');
+      adaptiveThreshRef.current = tierConfig.minVolume;
+      startNextRound();
     }
   }
 
-  function finishCalibration() {
-    calibratedRef.current = true; // rounds 2+ will skip recalibration
-    calibrateTimerRef.current = null;
-    const samples = ambientSamplesRef.current;
-    if (samples.length > 0) {
-      const sorted = [...samples].sort((a, b) => a - b);
-      const p90    = sorted[Math.floor(sorted.length * 0.90)] ?? MIN_THRESHOLD;
-      adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 1.6 + 0.12));
+  async function startNextRound() {
+    if (phaseRef.current === 'done') return;
+    scoreRef.current = 0;
+    setSeconds(0);
+    setRound(roundRef.current);
+    setPhaseS('ready');
+    setMsg('Say "Aah" — as loud and long as you can!');
+    await startMic();
+  }
+
+  async function startMic() {
+    try {
+      // setAudioModeAsync(true) is idempotent — safe to call every round
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true },
+        onMeter,
+        80,
+      );
+      recordingRef.current = recording;
+    } catch (_) {
+      // Mic unavailable — let CantDoNow handle it
     }
-    phaseRef.current = 'listening';
-    setPhase('listening');
-    ambientSamplesRef.current = [];
   }
 
   function onMeter(status) {
     if (!status.isRecording) return;
     const db  = status.metering ?? -160;
     const vol = Math.min(1, Math.max(0, (db + 70) / 60));
-    volumeRef.current = vol;
-    if (phaseRef.current === 'calibrating') { ambientSamplesRef.current.push(vol); return; }
-    if (phaseRef.current === 'listening' && vol >= adaptiveThreshRef.current) {
+    setBars(prev => [...prev.slice(1), Math.max(0.015, vol + Math.random() * 0.018)]);
+
+    if (phaseRef.current === 'ready' && vol >= adaptiveThreshRef.current) {
       beginScoring();
     } else if (phaseRef.current === 'scoring') {
       if (vol < adaptiveThreshRef.current) {
@@ -701,116 +407,68 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   }
 
   function beginScoring() {
-    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
-    setShowIdleMsg(false);
-    Animated.timing(idleOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-
-    phaseRef.current = 'scoring';
-    setPhase('scoring');
-    scoreRef.current = 0;
-    setScore(0);
+    setPhaseS('scoring');
+    setMsg('Keep going!');
     scoreTimerRef.current = setInterval(() => {
       scoreRef.current += 1;
-      setScore(scoreRef.current);
+      setSeconds(scoreRef.current);
     }, 1000);
     maxTimerRef.current = setTimeout(finishRound, MAX_PHONATE_MS);
   }
 
-  function finishRound() {
+  async function finishRound() {
     if (phaseRef.current !== 'scoring') return;
-    phaseRef.current = 'resting';
-    setPhase('resting');
-    Animated.timing(restOverlayAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    setPhaseS('resting');
 
-    if (scoreTimerRef.current)   { clearInterval(scoreTimerRef.current);   scoreTimerRef.current  = null; }
+    if (scoreTimerRef.current)   { clearInterval(scoreTimerRef.current);  scoreTimerRef.current  = null; }
     if (maxTimerRef.current)     { clearTimeout(maxTimerRef.current);      maxTimerRef.current    = null; }
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current);  silenceTimerRef.current = null; }
 
     const final = scoreRef.current;
-    bestRef.current = Math.max(bestRef.current, final);
-    setBestScore(bestRef.current);
+    if (final > bestRef.current) {
+      bestRef.current = final;
+      setBestScore(final);
+    }
 
-    // Breathing guidance sequence — matches the Breathing exercise style
-    const REST_SETS = [
-      { praise: 'Great start!',    breatheIn: 'Breathe in slowly...',   breatheOut: 'And breathe out...',   rest: 'Almost ready...' },
-      { praise: 'Keep it up!',     breatheIn: 'Inhale deeply...',        breatheOut: 'Breathe out gently...', rest: 'One more round...' },
-      { praise: 'Excellent work!', breatheIn: 'One last deep breath...', breatheOut: 'Release slowly...',     rest: 'Well done!' },
-    ];
-    const msgs = REST_SETS[(roundRef.current - 1) % REST_SETS.length];
+    // Stop recording — DO NOT call setAudioModeAsync(false) between rounds
+    try {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
+    } catch (_) {}
+
+    const seqIdx = roundRef.current % REST_SEQUENCES.length;
+    const seq    = REST_SEQUENCES[seqIdx];
     const nextRound = roundRef.current + 1;
 
-    if (breathe1Ref.current) { clearTimeout(breathe1Ref.current); breathe1Ref.current = null; }
-    if (breathe2Ref.current) { clearTimeout(breathe2Ref.current); breathe2Ref.current = null; }
-    showMsg(msgs.praise);
-    breathe1Ref.current = setTimeout(() => { breathe1Ref.current = null; showMsg(msgs.breatheIn); }, 2200);
-    breathe2Ref.current = setTimeout(() => { breathe2Ref.current = null; showMsg(msgs.breatheOut); }, 4400);
-
-    if (restTimerRef.current) { clearTimeout(restTimerRef.current); restTimerRef.current = null; }
-
-    if (nextRound > TOTAL_ROUNDS) {
-      restTimerRef.current = setTimeout(() => {
-        restTimerRef.current = null;
-        showMsg(msgs.rest);
-        setTimeout(() => {
-          Animated.timing(restOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-          phaseRef.current = 'done';
-          setPhase('done');
-          setTimeout(async () => {
-            if (barTimerRef.current) { clearInterval(barTimerRef.current); barTimerRef.current = null; }
-            try {
-              if (recordingRef.current) {
-                await recordingRef.current.stopAndUnloadAsync();
-                recordingRef.current = null;
-              }
-              await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-            } catch (_) {}
-            const exerciseScore = Math.min(100, Math.round((bestRef.current / tierConfig.targetSeconds) * 100));
-            onComplete(exerciseScore);
-          }, 1800);
-        }, REST_MS - 800);
-      }, 6000);
-      return;
-    }
+    setMsg(seq.praise);
+    msgTimer1Ref.current = setTimeout(() => { msgTimer1Ref.current = null; setMsg(seq.in); }, 2200);
+    msgTimer2Ref.current = setTimeout(() => { msgTimer2Ref.current = null; setMsg(seq.out); }, 4400);
 
     restTimerRef.current = setTimeout(async () => {
       restTimerRef.current = null;
-      Animated.timing(restOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-      setCurrentMsg('');
-      roundRef.current = nextRound;
-      setRound(nextRound);
-      scoreRef.current = 0;
-      setScore(0);
-      setBars(Array(BARS_COUNT).fill(0.015));
-
-      if (barTimerRef.current)       { clearInterval(barTimerRef.current);  barTimerRef.current = null; }
-      if (calibrateTimerRef.current) { clearTimeout(calibrateTimerRef.current); calibrateTimerRef.current = null; }
-      try {
-        if (recordingRef.current) {
-          await recordingRef.current.stopAndUnloadAsync();
-          recordingRef.current = null;
-        }
-        // Explicitly release the iOS audio session before re-acquiring for the next round.
-        // Without this, createAsync can silently succeed but emit zero metering data.
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-        await new Promise(r => setTimeout(r, 350));
-      } catch (_) {}
-
-      phaseRef.current = 'calibrating';
-      setPhase('calibrating');
-      await startMicSession();
+      if (nextRound >= TOTAL_ROUNDS) {
+        setPhaseS('done');
+        setMsg('Well done!');
+        const exerciseScore = Math.min(100, Math.round((bestRef.current / tierConfig.targetSeconds) * 100));
+        setTimeout(() => onComplete(exerciseScore), 1500);
+      } else {
+        roundRef.current = nextRound;
+        setDoneRounds(nextRound);
+        await startNextRound();
+      }
     }, REST_MS);
   }
 
   async function cleanupAll() {
-    micSessionGenRef.current += 1; // invalidate any in-flight mic session callback
-    [barTimerRef, scoreTimerRef, maxTimerRef, silenceTimerRef, calibrateTimerRef, idleTimerRef, restTimerRef, breathe1Ref, breathe2Ref]
-      .forEach(r => {
-        if (r.current) {
-          if (r === barTimerRef || r === scoreTimerRef) clearInterval(r.current);
-          else clearTimeout(r.current);
-          r.current = null;
-        }
-      });
+    if (calibrateTimerRef.current) { clearTimeout(calibrateTimerRef.current); calibrateTimerRef.current = null; }
+    if (silenceTimerRef.current)   { clearTimeout(silenceTimerRef.current);   silenceTimerRef.current   = null; }
+    if (maxTimerRef.current)       { clearTimeout(maxTimerRef.current);        maxTimerRef.current       = null; }
+    if (scoreTimerRef.current)     { clearInterval(scoreTimerRef.current);     scoreTimerRef.current     = null; }
+    if (restTimerRef.current)      { clearTimeout(restTimerRef.current);       restTimerRef.current      = null; }
+    if (msgTimer1Ref.current)      { clearTimeout(msgTimer1Ref.current);       msgTimer1Ref.current      = null; }
+    if (msgTimer2Ref.current)      { clearTimeout(msgTimer2Ref.current);       msgTimer2Ref.current      = null; }
     try {
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
@@ -820,270 +478,158 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     } catch (_) {}
   }
 
-  function barColor(v, idx) {
-    if ((phase === 'scoring' || phase === 'listening') && v >= adaptiveThreshRef.current) {
-      return (BARS_COUNT - 1 - idx) < 4 ? WHITE_BAR : GREEN_BAR;
-    }
-    if (v < 0.05) return DIM_BAR;
-    return MID_BAR;
-  }
-
-  function phaseLabel() {
-    if (phase === 'calibrating') return 'Listening to room...';
-    if (phase === 'listening')   return 'Say  "Aah"...';
-    if (phase === 'done')        return 'Session complete!';
-    return '';
-  }
-
-  const isScoring  = phase === 'scoring';
-  const isResting  = phase === 'resting';
-  const showScore  = isScoring || (isResting && scoreRef.current > 0);
-  const showBest   = bestScore > 0 && !['calibrating', 'done'].includes(phase);
-  const showStar   = bestScore > 0 && isScoring && score > bestScore;
+  const isScoring = phase === 'scoring';
 
   return (
-    <View style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" />
+    <FadeIn>
+      <LinearGradient colors={BG_GRADIENT} style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
 
-      {/* Split background */}
-      <View style={StyleSheet.absoluteFillObject}>
-        <View style={{ height: TOP_H, backgroundColor: DARK_GREEN }} />
-        <View style={{ flex: 1, backgroundColor: DARK_TEAL }} />
-      </View>
-
-      {/* Header buttons — X and ? */}
-      <View style={exc.headerLeft}>
-        <TouchableOpacity style={hb.ghostBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
-          <Text style={hb.ghostText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={exc.headerRight}>
-        <TouchableOpacity style={hb.orangeBtn} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
-          <Text style={hb.orangeText}>?</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Green zone — score / phase label */}
-      <View style={exc.topZone}>
-        {/* Round pills */}
-        <View style={exc.roundRow}>
-          {Array.from({ length: TOTAL_ROUNDS }, (_, i) => (
-            <View key={i} style={[
-              exc.roundDot,
-              i < round - 1  && exc.roundDone,
-              i === round - 1 && exc.roundActive,
-            ]} />
-          ))}
+        {/* Header */}
+        <View style={ex.header}>
+          <TouchableOpacity
+            style={hb.ghostBtn}
+            onPress={onExit}
+            accessibilityRole="button"
+            accessibilityLabel="Exit exercise"
+          >
+            <Text style={hb.ghostText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={ex.roundLabel}>Round {round + 1} / {TOTAL_ROUNDS}</Text>
+          <TouchableOpacity
+            style={hb.orangeBtn}
+            onPress={onShowInstructions}
+            accessibilityRole="button"
+            accessibilityLabel="Show instructions"
+          >
+            <Text style={hb.orangeText}>?</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Score / phase message */}
-        {showScore ? (
-          <Animated.Text style={[exc.scoreNum, { transform: [{ scale: scoreScaleAnim }] }]}>
-            {score}
-          </Animated.Text>
-        ) : (
-          <Text style={[exc.phaseLabel, phase === 'listening' && exc.phaseLabelLoud]}>
-            {phaseLabel()}
+        {/* Timer */}
+        <View style={ex.timerArea}>
+          <Text
+            style={[
+              ex.timerNum,
+              isScoring && { textShadowColor: 'rgba(72,210,140,0.40)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 24 },
+            ]}
+          >
+            {phase === 'calibrating' ? '–' : seconds}
           </Text>
-        )}
+          <Text style={ex.timerUnit}>seconds</Text>
+          {bestScore > 0 && (
+            <Text style={ex.bestLabel}>Best: {bestScore}s</Text>
+          )}
+        </View>
 
-        {/* Best score */}
-        {showBest && (
-          <View style={exc.bestRow}>
-            <Text style={exc.bestLabel}>Best  {bestScore}s</Text>
-          </View>
-        )}
-
-        {/* Tier goal indicator */}
-        {isScoring && score < tierConfig.targetSeconds && (
-          <Text style={exc.goalHint}>Goal  {tierConfig.targetSeconds}s</Text>
-        )}
-        {isScoring && score >= tierConfig.targetSeconds && (
-          <Text style={exc.goalReached}>✓ Goal reached!</Text>
-        )}
-      </View>
-
-      {/* Waveform — straddles the split line, fills most of the lower screen */}
-      <View style={exc.waveWrap}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
+        {/* 26-bar waveform visualization */}
+        <View style={ex.barsWrap}>
           {bars.map((v, i) => (
-            <View key={i} style={{
-              width: BAR_W,
-              height: Math.max(4, v * (H * 0.40)),
-              borderRadius: 3,
-              backgroundColor: barColor(v, i),
-            }} />
+            <View
+              key={i}
+              style={[
+                ex.bar,
+                {
+                  height: Math.max(3, Math.round(v * BAR_MAX_H)),
+                  backgroundColor: isScoring ? GREEN_BAR : WHITE_BAR,
+                },
+              ]}
+            />
           ))}
         </View>
-        {showStar && (
-          <View style={exc.starWrap}>
-            <Text style={exc.star}>★</Text>
-            <View style={exc.starLine} />
-          </View>
-        )}
-      </View>
 
-      {/* Bottom zone — cant do only; bars fill most of this area visually */}
-      <View style={exc.bottomZone}>
-        <CantDoNow
-          onSkip={onSkip}
-          onEnd={onExit}
-          style={exc.cantDo}
-        />
-      </View>
+        {/* Instruction message */}
+        <Text style={ex.msg}>{msg}</Text>
 
-      {/* Rest motivational overlay */}
-      {isResting && (
-        <Animated.View style={[exc.restOverlay, { opacity: restOverlayAnim }]} pointerEvents="none">
-          <Animated.Text style={[exc.restMsg, { opacity: msgFadeAnim, transform: [{ translateY: msgSlideAnim }] }]}>
-            {currentMsg}
-          </Animated.Text>
-        </Animated.View>
-      )}
-
-      {/* Idle encouragement overlay */}
-      {showIdleMsg && (
-        <Animated.View style={[exc.idleOverlay, { opacity: idleOverlayAnim }]} pointerEvents="none">
-          <Text style={exc.idleTitle}>Take your time.</Text>
-          <Text style={exc.idleBody}>You can do this!</Text>
-        </Animated.View>
-      )}
-    </View>
+        {/* Bottom: CantDoNow + pills */}
+        <View style={ex.bottom}>
+          <CantDoNow onSkip={onSkip} onEnd={onExit} />
+          <View style={{ height: 16 }} />
+          <RoundPills current={round} done={doneRounds} />
+        </View>
+      </LinearGradient>
+    </FadeIn>
   );
 }
 
-const exc = StyleSheet.create({
-  headerLeft:  { position: 'absolute', top: 56, left: 20,  zIndex: 20 },
-  headerRight: { position: 'absolute', top: 56, right: 20, zIndex: 20 },
-
-  topZone: {
-    height: TOP_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingTop: 56,
+const ex = StyleSheet.create({
+  header: {
+    paddingTop: 52, paddingHorizontal: 18,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-
-  // Round indicators
-  roundRow:   { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  roundDot:   { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.18)' },
-  roundActive: { backgroundColor: WHITE, width: 28, borderRadius: 5 },
-  roundDone:  { backgroundColor: '#64C882' },
-
-  scoreNum: {
-    color: WHITE, fontSize: 128, fontWeight: '900', letterSpacing: -5,
-    includeFontPadding: false,
-    textShadowColor: 'rgba(72,210,140,0.30)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 24,
+  roundLabel: {
+    color: WHITE, fontSize: 22, fontWeight: '800', letterSpacing: 1,
   },
-  phaseLabel: {
-    color: 'rgba(255,255,255,0.60)', fontSize: 26, fontWeight: '600',
-    letterSpacing: 0.8, includeFontPadding: false, textAlign: 'center',
-    paddingHorizontal: 32,
+  timerArea: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
   },
-  phaseLabelLoud: {
-    color: 'rgba(255,255,255,0.82)', fontSize: 30, fontWeight: '700',
-    letterSpacing: 1.5,
+  timerNum: {
+    color: WHITE, fontSize: 100, fontWeight: '900',
+    letterSpacing: -4, lineHeight: 108, includeFontPadding: false,
   },
-  bestRow: { marginTop: 4 },
+  timerUnit: {
+    color: 'rgba(255,255,255,0.55)', fontSize: 18, fontWeight: '500',
+    letterSpacing: 2, marginTop: 4,
+  },
   bestLabel: {
-    color: 'rgba(255,255,255,0.65)', fontSize: 16, fontWeight: '600', letterSpacing: 0.8,
-    includeFontPadding: false,
+    marginTop: 16, color: ORANGE, fontSize: 20, fontWeight: '700', letterSpacing: 0.5,
   },
-
-  // Waveform — tall, fills most of the lower half of the screen
-  waveWrap: {
-    position: 'absolute',
-    top: TOP_H - 90,
-    height: H * 0.42,
-    left: 16, right: 16,
-    justifyContent: 'flex-end',
+  msg: {
+    color: 'rgba(255,255,255,0.80)', fontSize: 20, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.5, lineHeight: 28,
+    paddingHorizontal: 32, marginBottom: 20,
   },
-  starWrap: { position: 'absolute', right: 0, bottom: 0, alignItems: 'center' },
-  star:     { color: '#FFD700', fontSize: 20, includeFontPadding: false },
-  starLine: { width: 1.5, height: 50, backgroundColor: '#FFD700', opacity: 0.45 },
-
-  // Bottom zone — CantDoNow anchored to the very bottom; bars overlay this zone visually
-  bottomZone: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 40,
+  barsWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: BAR_GAP,
+    height: BAR_MAX_H + 4,
+    marginHorizontal: 16,
+    marginBottom: 20,
   },
-  goalHint: {
-    color: 'rgba(255,255,255,0.72)', fontSize: 16, fontWeight: '600',
-    letterSpacing: 0.3, textAlign: 'center',
+  bar: {
+    width: BAR_W,
+    borderRadius: Math.ceil(BAR_W / 2),
   },
-  goalReached: {
-    color: '#68D88C', fontSize: 16, fontWeight: '700',
-    letterSpacing: 0.3, textAlign: 'center',
-  },
-  cantDo: {},
-
-  // Rest overlay
-  restOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: TOP_H,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  restMsg: {
-    fontSize: 36, fontWeight: '900', color: WHITE,
-    textAlign: 'center', letterSpacing: 0.5,
-    includeFontPadding: false,
-    textShadowColor: 'rgba(0,0,0,0.35)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
-  },
-
-  // Idle overlay
-  idleOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: TOP_H * 0.55,
-    backgroundColor: 'rgba(0,0,0,0.40)',
-    justifyContent: 'center', alignItems: 'center',
-    gap: 8,
-  },
-  idleTitle: {
-    fontSize: 28, color: WHITE, fontWeight: '800',
-    letterSpacing: 0.5, textAlign: 'center',
-    includeFontPadding: false,
-  },
-  idleBody: {
-    fontSize: 18, color: MINT, fontWeight: '500',
-    textAlign: 'center', letterSpacing: 0.3, opacity: 0.8,
-    includeFontPadding: false,
-  },
+  bottom: { alignItems: 'center', paddingBottom: 44 },
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Root
-// ══════════════════════════════════════════════════════════════════════════════
-export default function SustainedPhonationExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  const [step, setStep] = useState(STEP_TITLE);
+// ── Root export ───────────────────────────────────────────────────────────────
 
-  const handleSkip = onComplete; // skip this exercise = advance to next
+export default function SustainedPhonationExercise({
+  onComplete,
+  onExit,
+  tier = 1,
+  exerciseIndex = 0,
+  totalExercises = 8,
+}) {
+  const [step, setStep] = useState(0);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
-  if (step === STEP_TITLE) {
-    return <TitleScreen onNext={() => setStep(STEP_DEMO)} onExit={onExit} onSkip={handleSkip} sessionFill={sessionFill} />;
+  if (step === 0) {
+    return (
+      <TitleScreen
+        onNext={() => setStep(1)}
+        onExit={onExit}
+        sessionFill={sessionFill}
+      />
+    );
   }
-  if (step === STEP_DEMO) {
-    return <DemoScreen onFinish={() => setStep(STEP_READY)} onExit={() => setStep(STEP_TITLE)} onSkip={handleSkip} />;
-  }
-  if (step === STEP_READY) {
-    return <ReadyScreen onDone={() => setStep(STEP_EXERCISE)} onSkip={handleSkip} onExit={onExit} />;
+  if (step === 1) {
+    return (
+      <InstructScreen
+        onNext={() => setStep(2)}
+        onExit={() => setStep(0)}
+      />
+    );
   }
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
-      onShowDemo={() => setStep(STEP_DEMO)}
-      onSkip={handleSkip}
+      onShowInstructions={() => setStep(1)}
+      onSkip={onComplete}
       tier={tier}
     />
   );

@@ -113,7 +113,7 @@ const hb = StyleSheet.create({
     shadowColor: '#FFA940', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-  helpText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
+  helpText: { color: '#1A1A1A', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 });
 
 // ── Screen 0: Title ───────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ const vs = StyleSheet.create({
     flex: 1, backgroundColor: '#FFA940', borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
   },
-  pillText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
+  pillText: { color: '#1A1A1A', fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
   heading: {
     color: 'rgba(255,255,255,0.90)', fontSize: 20, fontWeight: '700',
     textAlign: 'center', letterSpacing: 0.4, lineHeight: 28,
@@ -261,19 +261,19 @@ const vs = StyleSheet.create({
     backgroundColor: '#FFA940',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  stepNum: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  stepNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
   instrText: {
     flex: 1, color: 'rgba(255,255,255,0.85)',
     fontSize: 16, lineHeight: 23, fontWeight: '400',
   },
   startBtn: {
     alignSelf: 'center', marginTop: 32,
-    backgroundColor: '#FFA940', borderRadius: 14,
-    paddingHorizontal: 40, paddingVertical: 16,
+    backgroundColor: '#FFA940', borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
     shadowColor: '#FFA940', shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-  startText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', letterSpacing: 0.4 },
+  startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ── Screen 2: Drill ───────────────────────────────────────────────────────────
