@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { logScreenView } from '../../utils/analytics';
+import { MicIcon, SpeakerIcon } from '../../components/Icons';
 
 const TEAL_DARK = '#1C4047';
 const TEAL_MID  = '#2D6974';
@@ -23,12 +24,12 @@ const CARD_BORD = 'rgba(195,222,206,0.18)';
 
 const WHY_POINTS = [
   {
-    icon: '🎤',
+    renderIcon: () => <MicIcon size={26} color={WHITE} />,
     title: 'Voice exercises',
     body: 'Records short sounds to measure your loudness, pitch, and clarity.',
   },
   {
-    icon: '🔊',
+    renderIcon: () => <SpeakerIcon size={26} color={WHITE} />,
     title: 'Speech enhancement',
     body: 'Records your speech, cleans it up, and plays it back.',
   },
@@ -85,9 +86,9 @@ export default function SetupPermissionsScreen({ navigation }) {
         </View>
 
         <View style={s.cards}>
-          {WHY_POINTS.map((p) => (
-            <View key={p.icon} style={s.card}>
-              <Text style={s.cardIcon}>{p.icon}</Text>
+          {WHY_POINTS.map((p, i) => (
+            <View key={i} style={s.card}>
+              <View style={s.cardIconWrap}>{p.renderIcon()}</View>
               <View style={s.cardText}>
                 <Text style={s.cardTitle}>{p.title}</Text>
                 <Text style={s.cardBody}>{p.body}</Text>
@@ -160,7 +161,7 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 14,
   },
-  cardIcon: { fontSize: 26, width: 32, textAlign: 'center', flexShrink: 0 },
+  cardIconWrap: { width: 32, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   cardText: { flex: 1, gap: 6 },
   cardTitle: { color: WHITE, fontSize: 18, fontWeight: '700' },
   cardBody:  { color: DIM,   fontSize: 16, lineHeight: 23 },

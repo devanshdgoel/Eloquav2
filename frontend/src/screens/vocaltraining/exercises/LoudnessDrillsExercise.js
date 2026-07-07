@@ -35,7 +35,9 @@ const { width: W, height: H } = Dimensions.get('window');
 
 // ── Config ──────────────────────────────────────────────────────────────────────
 const DEMO_KEY        = '@eloqua_loudness_drills_demo_seen';
-const MIN_SPEAK_MS    = 700;   // must sustain threshold for this long (ms)
+// Reduced from 700 ms to 400 ms so that users who speak the word clearly but briefly
+// (e.g. elderly users with reduced breath support) still register a successful whack.
+const MIN_SPEAK_MS    = 400;   // must sustain threshold for this long (ms)
 const CALIBRATION_MS  = 1500;  // ambient noise sampling window
 const MAX_THRESHOLD   = 0.70;
 
@@ -66,37 +68,41 @@ const LOUDNESS_TIER_CONFIG = [
       { word: 'Everyone needs to be able to hear me',   tip: 'Excellent!' },
     ],
   },
-  // Tier 3: ~10-word sentences, 55% threshold
+  // Tier 3: ~7-word phrases, 55% threshold.
+  // Phrases shortened from ~10 words (was 6000 ms timer) so users at this tier
+  // can complete the utterance within the window and feel successful.
   {
-    minVolume: 0.55, timerMs: 6000,
+    minVolume: 0.55, timerMs: 5000,
     rounds: [
-      { word: 'Good morning I hope you can all hear me',               tip: 'Keep projecting!' },
-      { word: 'I practise my voice so I can speak more clearly',       tip: 'Big voice!' },
-      { word: 'Every day my speaking gets stronger and more confident', tip: "You're doing great!" },
-      { word: 'I use my full voice so I can be heard when I speak',    tip: 'Keep going!' },
-      { word: 'Speaking loudly helps me communicate better every day', tip: 'Outstanding!' },
+      { word: 'Good morning, I hope you hear me',       tip: 'Keep projecting!' },
+      { word: 'I practise my voice every single day',   tip: 'Big voice!' },
+      { word: 'My speaking gets stronger each day',     tip: "You're doing great!" },
+      { word: 'Please listen, I have something to say', tip: 'Keep going!' },
+      { word: 'Every day I speak more clearly',         tip: 'Outstanding!' },
     ],
   },
-  // Tier 4: ~15-word sentences, 60% threshold
+  // Tier 4: ~10-word sentences, 60% threshold.
+  // Shortened from ~15 words (was 7500 ms timer).
   {
-    minVolume: 0.60, timerMs: 7500,
+    minVolume: 0.60, timerMs: 6000,
     rounds: [
-      { word: 'Good morning everyone, I am speaking as clearly as I possibly can right now',  tip: 'Amazing!' },
-      { word: 'I would like some coffee please, could you bring it when it is ready',         tip: 'Keep it up!' },
-      { word: 'Thank you for helping me practise my speech, I really do appreciate it',       tip: 'Excellent!' },
-      { word: 'Could you ask the receptionist to call my name when the doctor is ready',      tip: 'Big voice!' },
-      { word: 'I have been practising every day and am noticing a real difference in my voice', tip: 'Wonderful!' },
+      { word: 'Good morning, I am speaking as clearly as I can',          tip: 'Amazing!' },
+      { word: 'Could you bring my coffee when it is ready please',        tip: 'Keep it up!' },
+      { word: 'Thank you for helping me practise my speech today',        tip: 'Excellent!' },
+      { word: 'Please ask reception to call me when the doctor is ready', tip: 'Big voice!' },
+      { word: 'I practise every day and notice a real difference',        tip: 'Wonderful!' },
     ],
   },
-  // Tier 5: ~20-word sentences, 65% threshold
+  // Tier 5: ~13-word sentences, 65% threshold.
+  // Shortened from ~20 words (was 9000 ms timer).
   {
-    minVolume: 0.65, timerMs: 9000,
+    minVolume: 0.65, timerMs: 7500,
     rounds: [
-      { word: 'Good morning to everyone here, I am going to speak as clearly and loudly as I possibly can so every person can hear me',          tip: 'Incredible!' },
-      { word: 'I would like to order a hot drink and a snack, and could you also bring some water and napkins when you have a moment please',     tip: 'Keep projecting!' },
-      { word: 'Thank you for taking time to help me practise, the exercises are making a noticeable difference to my confidence and my speech',  tip: 'Outstanding!' },
-      { word: 'Could you help me find information about my appointment, as I am not sure what time it starts and I really cannot be late today', tip: 'Loud and clear!' },
-      { word: 'I have been doing voice exercises every single day for several weeks now and I am genuinely beginning to notice a real improvement', tip: 'Phenomenal!' },
+      { word: 'Good morning to all, I will speak loudly so everyone can hear',            tip: 'Incredible!' },
+      { word: 'I would like a hot drink and a snack, and some water too please',          tip: 'Keep projecting!' },
+      { word: 'Thank you for your help, these exercises are making a real difference',    tip: 'Outstanding!' },
+      { word: 'Could you help me find my appointment time, as I cannot be late today',   tip: 'Loud and clear!' },
+      { word: 'I do voice exercises every day and am noticing real improvement',          tip: 'Phenomenal!' },
     ],
   },
 ];
@@ -941,19 +947,31 @@ const ex = StyleSheet.create({
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────────
 
-export default function LoudnessDrillsExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  const [showDemo, setShowDemo] = useState(false);
+export default function LoudnessDrillsExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
+  const [showDemo, setShowDemo] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
-  function finishDemo() { setShowDemo(false); }
+  useEffect(() => {
+    AsyncStorage.getItem(DEMO_KEY)
+      .then(val => setShowDemo(!val))
+      .catch(() => setShowDemo(false));
+  }, []);
 
+  function finishDemo() {
+    // Mark the intro as seen so future sessions skip straight to the exercise.
+    AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
+    setShowDemo(false);
+  }
+
+  if (showDemo === null) return null;
   if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} sessionFill={sessionFill} />;
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
       onShowDemo={() => setShowDemo(true)}
-      onSkip={onComplete}
+      onSkip={onSkip ?? onComplete}
       tier={tier}
     />
   );

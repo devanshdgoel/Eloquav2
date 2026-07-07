@@ -24,6 +24,7 @@ import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
+import { MicIcon } from '../../../components/Icons';
 import { API_BASE_URL } from '../../../config/env';
 import { fetchWithAuth } from '../../../utils/authHeaders';
 
@@ -183,7 +184,7 @@ function MicBlob({ pulsing }) {
 
       {/* Orange mic button */}
       <View style={[styles.micBtn, { width: btnSz, height: btnSz, borderRadius: btnSz / 2 }]}>
-        <Text style={styles.micIcon}>🎙️</Text>
+        <MicIcon size={32} color={C.white} />
       </View>
     </Animated.View>
   );
@@ -683,13 +684,29 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function FunctionalSpeechExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  const [showIntro, setShowIntro] = useState(true);
+export default function FunctionalSpeechExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
+  const [showIntro, setShowIntro] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
+  useEffect(() => {
+    AsyncStorage.getItem(INTRO_KEY)
+      .then(val => setShowIntro(!val))
+      .catch(() => setShowIntro(false));
+  }, []);
+
+  if (showIntro === null) return null;
   return showIntro
-    ? <IntroScreen onStart={() => setShowIntro(false)} onExit={onExit} progress={sessionFill} />
-    : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onComplete} tier={tier} />;
+    ? <IntroScreen
+        onStart={() => {
+          // Mark the intro as seen so future sessions skip straight to the exercise.
+          AsyncStorage.setItem(INTRO_KEY, '1').catch(() => {});
+          setShowIntro(false);
+        }}
+        onExit={onExit}
+        progress={sessionFill}
+      />
+    : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onSkip ?? onComplete} tier={tier} />;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────

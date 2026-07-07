@@ -248,22 +248,42 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     }
   }
 
+  // Called when the user taps "Can't do now" / "Skip" inside an exercise.
+  // Skips go through a separate path so the encouragement message is never shown
+  // for an exercise the user did not actually complete.
+  function handleExerciseSkip() {
+    handleExerciseComplete(null, true);
+  }
+
   // V2: exercises pass an optional score (0–100). Collect per exercise type,
   // then show a brief warm encouragement message before advancing.
-  async function handleExerciseComplete(score = null) {
+  // wasSkipped=true suppresses the transition message and auto-advances through
+  // the MidpointScreen if it is next (a rest screen makes no sense after a skip).
+  async function handleExerciseComplete(score = null, wasSkipped = false) {
     const { type } = SESSION_EXERCISES[exerciseIndex];
-    if (score !== null && Number.isFinite(score) && EXERCISE_KEYS.includes(type)) {
+    // Only persist scores for exercises that were genuinely completed.
+    if (!wasSkipped && score !== null && Number.isFinite(score) && EXERCISE_KEYS.includes(type)) {
       exerciseScoresRef.current[type] = Math.round(score);
     }
 
     const nextIndex = exerciseIndex + 1;
-    animateProgressTo(nextIndex / SESSION_EXERCISES.length);
+    const isLast    = nextIndex >= SESSION_EXERCISES.length;
+    // Show encouragement only when the user actually completed a scored exercise.
+    const doEncourage = !wasSkipped && SCORED_TYPES_SET.has(type);
 
-    const isLast   = nextIndex >= SESSION_EXERCISES.length;
-    const doEncourage = SCORED_TYPES_SET.has(type);
+    // If the user just skipped and the next screen is MidpointScreen, skip it too.
+    // Showing a "halfway there!" rest screen immediately after a skip feels incoherent.
+    const nextType        = !isLast ? SESSION_EXERCISES[nextIndex]?.type : null;
+    const autoSkipMidpoint = wasSkipped && nextType === 'midpoint';
+    const targetIndex     = autoSkipMidpoint ? nextIndex + 1 : nextIndex;
+    const targetIsLast    = targetIndex >= SESSION_EXERCISES.length;
+
+    // Animate progress bar to the index we are actually landing on.
+    animateProgressTo(targetIndex / SESSION_EXERCISES.length);
 
     if (doEncourage) {
-      // Show warm message for 1.5 s, then advance or finish
+      // Show warm message for 1.5 s, then advance or finish.
+      // doEncourage is only true when wasSkipped=false, so targetIndex === nextIndex here.
       const msg = ENC_MSGS[encMsgIdxRef.current % ENC_MSGS.length];
       encMsgIdxRef.current += 1;
       setTransitionMsg(msg);
@@ -285,10 +305,10 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
         }
       }, 1500);
     } else {
-      if (isLast) {
+      if (targetIsLast) {
         await finishSession();
       } else {
-        setExerciseIndex(nextIndex);
+        setExerciseIndex(targetIndex);
       }
     }
   }
@@ -314,6 +334,7 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
           <>
             <ExerciseComponent
               onComplete={handleExerciseComplete}
+              onSkip={handleExerciseSkip}
               onExit={() => navigation.goBack()}
               exerciseIndex={exerciseIndex}
               totalExercises={SESSION_EXERCISES.length}

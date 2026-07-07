@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Polygon } from 'react-native-svg';
 import CantDoNow from '../../../components/CantDoNow';
 
@@ -20,6 +21,9 @@ const { width: W, height: H } = Dimensions.get('window');
 const STEP_TITLE = 0;
 const STEP_VIDEO = 1;
 const STEP_DRILL = 2;
+
+// AsyncStorage key — once written, the intro is skipped on all future sessions.
+const DEMO_KEY = '@eloqua_breathing_demo_seen';
 
 // ── Timing ────────────────────────────────────────────────────────────────────
 const INHALE_S  = 4;
@@ -427,9 +431,18 @@ const ds = StyleSheet.create({
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function BreathingExercise({ onComplete, onExit, exerciseIndex = 0, totalExercises = 8 }) {
-  const [step, setStep] = useState(STEP_TITLE);
+export default function BreathingExercise({ onComplete, onExit, onSkip, exerciseIndex = 0, totalExercises = 8 }) {
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
+  const [step, setStep] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
+
+  useEffect(() => {
+    AsyncStorage.getItem(DEMO_KEY)
+      .then(val => setStep(val ? STEP_DRILL : STEP_TITLE))
+      .catch(() => setStep(STEP_TITLE));
+  }, []);
+
+  if (step === null) return null;
 
   if (step === STEP_TITLE) {
     return (
@@ -443,7 +456,11 @@ export default function BreathingExercise({ onComplete, onExit, exerciseIndex = 
   if (step === STEP_VIDEO) {
     return (
       <VideoScreen
-        onNext={() => setStep(STEP_DRILL)}
+        onNext={() => {
+          // Mark the intro as seen so future sessions skip straight to the drill.
+          AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
+          setStep(STEP_DRILL);
+        }}
         onExit={() => setStep(STEP_TITLE)}
       />
     );
@@ -453,7 +470,7 @@ export default function BreathingExercise({ onComplete, onExit, exerciseIndex = 
       onComplete={onComplete}
       onExit={onExit}
       onShowVideo={() => setStep(STEP_VIDEO)}
-      onSkip={onComplete}
+      onSkip={onSkip ?? onComplete}
     />
   );
 }

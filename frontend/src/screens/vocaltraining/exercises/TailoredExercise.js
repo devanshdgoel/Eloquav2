@@ -54,11 +54,13 @@ function findWeakestKey(tiers, focusKey) {
   return tied.includes('phonation') ? 'phonation' : tied[0];
 }
 
-export default function TailoredExercise({ onComplete, onExit, tiers = {}, focusKey = null }) {
+export default function TailoredExercise({ onComplete, onExit, onSkip, tiers = {}, focusKey = null }) {
   // Selection is stable across re-renders — picked once on mount.
   const selectedKey = useRef(findWeakestKey(tiers, focusKey)).current;
   const Exercise    = EXERCISE_KEY_MAP[selectedKey];
   const tier        = tiers[selectedKey] ?? 1;
 
-  return <Exercise onComplete={onComplete} onExit={onExit} tier={tier} />;
+  // Pass onSkip through so the session screen's skip handler reaches the inner exercise
+  // (e.g. SustainedPhonationExercise inside TailoredExercise).
+  return <Exercise onComplete={onComplete} onExit={onExit} onSkip={onSkip} tier={tier} />;
 }

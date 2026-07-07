@@ -26,7 +26,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { auth } from '../config/firebase';
 import { API_BASE_URL } from '../config/env';
-import { setTiersFromAssessment } from '../services/difficultyService';
+import { setTiersFromAssessment, computeProgressPlan, storeProgressPlan } from '../services/difficultyService';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
@@ -79,7 +79,14 @@ const TASKS = [
     minS: 4, maxS: 12, color: ORANGE, autostop: true,
   },
   {
-    id: 'reading', groupLabel: 'Task 2 of 3',
+    id: 'pitch_glide', groupLabel: 'Task 2 of 4',
+    title: 'Pitch Range',
+    instruction: "Say 'Ahhh' and slowly slide\nyour voice from low to high.",
+    hint: 'Go as high as you can, then let it fall back down',
+    minS: 6, maxS: 18, color: MINT, autostop: false,
+  },
+  {
+    id: 'reading', groupLabel: 'Task 3 of 4',
     title: 'Reading Aloud',
     instruction: 'Read this sentence aloud\nat your natural pace.',
     passage: '"When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow."',
@@ -87,7 +94,7 @@ const TASKS = [
     minS: 5, maxS: 35, color: MINT, autostop: false,
   },
   {
-    id: 'free_speech', groupLabel: 'Task 3 of 3',
+    id: 'free_speech', groupLabel: 'Task 4 of 4',
     title: 'Free Speech',
     instruction: 'Tell us about your favourite\nplace in the world.',
     hint: 'Speak for at least 20 seconds',
@@ -95,11 +102,12 @@ const TASKS = [
   },
 ];
 
-// Three grouped items shown in the intro task list.
+// Four grouped items shown in the intro task list.
 const INTRO_ITEMS = [
-  { color: ORANGE, badge: '×3', title: 'Sustained Sound',  hint: '3 rounds — recording auto-stops each time' },
-  { color: MINT,   badge: '2',  title: 'Reading Aloud',    hint: 'Read clearly at a comfortable pace' },
-  { color: WHITE,  badge: '3',  title: 'Free Speech',      hint: 'Speak for at least 20 seconds' },
+  { color: ORANGE, badge: '×3', title: 'Sustained Sound', hint: '3 rounds — recording auto-stops each time' },
+  { color: MINT,   badge: '2',  title: 'Pitch Range',     hint: 'Slide your voice from low to high' },
+  { color: MINT,   badge: '3',  title: 'Reading Aloud',   hint: 'Read clearly at a comfortable pace' },
+  { color: WHITE,  badge: '4',  title: 'Free Speech',     hint: 'Speak for at least 20 seconds' },
 ];
 
 // ── Background voice analysis helper ─────────────────────────────────────────
@@ -180,9 +188,11 @@ export default function AssessmentScreen({ navigation, route }) {
   const [taskIndex, setTaskIndex] = useState(0);
   const [elapsedS,  setElapsedS]  = useState(0);
   const [canStop,   setCanStop]   = useState(false);
-  const [composite, setComposite] = useState({ voice_power: null, expression: null, fluency: null });
-  const [focus,     setFocus]     = useState(null);
-  const [bars,      setBars]      = useState(Array(BARS_COUNT).fill(0.015));
+  const [composite,    setComposite]    = useState({ voice_power: null, expression: null, fluency: null });
+  const [focus,        setFocus]        = useState(null);
+  const [mptSeconds,   setMptSeconds]   = useState(null);
+  const [progressPlan, setProgressPlan] = useState(null);
+  const [bars,         setBars]         = useState(Array(BARS_COUNT).fill(0.015));
 
   const taskIndexRef    = useRef(0);
   const taskResultsRef  = useRef([]);
@@ -338,9 +348,20 @@ export default function AssessmentScreen({ navigation, route }) {
       await Promise.allSettled(pendingAnalysisRef.current);
       pendingAnalysisRef.current = [];
 
-      const comp = computeComposite(taskResultsRef.current);
+      const { mpt_best_seconds, ...compScores } = computeComposite(taskResultsRef.current);
+      const comp = compScores;
       setComposite(comp);
       setFocus(pickFocus(comp));
+
+      // MPT stored separately for display and progress plan computation
+      const mptVal = mpt_best_seconds > 0 ? mpt_best_seconds : null;
+      setMptSeconds(mptVal);
+
+      // Compute the progress plan now so it renders immediately on the results screen
+      if (isBaseline) {
+        setProgressPlan(computeProgressPlan(comp, mptVal));
+      }
+
       if (isBaseline && cloningUrisRef.current.length > 0) {
         cloneVoiceFromAssessment(cloningUrisRef.current).catch(() => {});
       }
@@ -372,32 +393,35 @@ export default function AssessmentScreen({ navigation, route }) {
   // ── Score helpers ──────────────────────────────────────────────────────────
 
   function computeComposite(results) {
-    // voice_power: best of the 3 sustained_a runs (best-of-3 reflects true capability)
-    const phonationVP = results
-      .filter(r => r.task_id === 'sustained_a')
+    const phonationResults = results.filter(r => r.task_id === 'sustained_a');
+
+    // MPT: the actual hold duration is the most direct clinical measure.
+    // We take the best of all three rounds since effort varies across rounds.
+    const mpt_best_seconds = Math.max(
+      0,
+      ...phonationResults.map(r => r.durationS ?? 0)
+    );
+
+    // voice_power: best backend score across 3 sustained_a runs
+    const phonationVP = phonationResults
       .map(r => r.scores?.voice_power)
       .filter(v => v != null && Number.isFinite(v));
     let voice_power = phonationVP.length ? Math.max(...phonationVP) : null;
 
     // Duration fallback when backend cannot compute intensity (e.g. parselmouth missing)
-    if (voice_power == null) {
-      const bestDuration = Math.max(
-        0,
-        ...results.filter(r => r.task_id === 'sustained_a').map(r => r.durationS ?? 0)
-      );
-      if (bestDuration > 0) {
-        voice_power = Math.round(Math.min(85, Math.max(10, 10 + (bestDuration / 15) * 75)));
-      }
+    if (voice_power == null && mpt_best_seconds > 0) {
+      voice_power = Math.round(Math.min(85, Math.max(10, 10 + (mpt_best_seconds / 15) * 75)));
     }
 
     const out = { voice_power };
 
-    // expression + fluency: average across all tasks (reading + free_speech drive these)
+    // expression + fluency: averaged across all tasks that return these dimensions
+    // (pitch_glide contributes to expression; reading + free_speech contribute to both)
     for (const k of ['expression', 'fluency']) {
       const vals = results.map(r => r.scores?.[k]).filter(v => v != null && Number.isFinite(v));
       out[k] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
     }
-    return out;
+    return { ...out, mpt_best_seconds };
   }
 
   function pickFocus(comp) {
@@ -426,6 +450,11 @@ export default function AssessmentScreen({ navigation, route }) {
         };
         const exerciseFocusKey = FOCUS_DIM_TO_EXERCISE[focus?.key] ?? null;
         setTiersFromAssessment(composite, exerciseFocusKey).catch(() => {});
+
+        // Persist the personalised progress plan so future check-ins can compare against it
+        if (progressPlan) {
+          storeProgressPlan(progressPlan).catch(() => {});
+        }
       }
 
       const taskObj = {};
@@ -441,6 +470,7 @@ export default function AssessmentScreen({ navigation, route }) {
         if (composite.voice_power != null) assessForm.append('voice_power', String(composite.voice_power));
         if (composite.expression  != null) assessForm.append('expression',  String(composite.expression));
         if (composite.fluency     != null) assessForm.append('fluency',     String(composite.fluency));
+        if (mptSeconds           != null) assessForm.append('mpt_seconds', String(mptSeconds));
         assessForm.append('task_results_json', JSON.stringify(taskObj));
         const saveRes = await fetchWithAuth(`${API_BASE_URL}/api/save-assessment`, {
           method: 'POST', body: assessForm,
@@ -505,8 +535,8 @@ export default function AssessmentScreen({ navigation, route }) {
           <Text style={s.heroTitle}>{isBaseline ? "Let's hear\nyour voice" : "How's your\nvoice today?"}</Text>
           <Text style={[s.bodyText, { fontSize: fs(18) }]}>
             {isBaseline
-              ? 'Three tasks — about 3 minutes. We use these to personalise your training plan.'
-              : "Same three tasks as before. Let's see how far you've come."}
+              ? 'Four tasks — about 5 minutes. We use these to personalise your training plan.'
+              : "Same four tasks as before. Let's see how far you've come."}
           </Text>
 
           <View style={s.taskList}>
@@ -657,11 +687,54 @@ export default function AssessmentScreen({ navigation, route }) {
             <ScoreArc score={composite.fluency}     color={WHITE}  label={'Speech\nRhythm'} />
           </View>
 
+          {/* MPT: a direct, clinical measure independent of the backend scores */}
+          {mptSeconds != null && (
+            <View style={s.mptCard}>
+              <Text style={s.mptEyebrow}>SUSTAINED HOLD (MPT)</Text>
+              <View style={s.mptRow}>
+                <Text style={s.mptValue}>{mptSeconds}s</Text>
+                <Text style={s.mptNote}>Typical adult range: 15–25 seconds</Text>
+              </View>
+            </View>
+          )}
+
           {focus && (
             <View style={s.focusCard}>
               <Text style={s.focusEyebrow}>YOUR FOCUS</Text>
               <Text style={s.focusTitle}>{focus.label}</Text>
               <Text style={[s.focusTip, { fontSize: fs(16) }]}>{focus.tip}</Text>
+            </View>
+          )}
+
+          {/* Progress plan — shown only after the baseline assessment */}
+          {isBaseline && progressPlan && (
+            <View style={s.planCard}>
+              <Text style={s.planEyebrow}>YOUR 20-SESSION PLAN</Text>
+              <View style={s.planGrid}>
+                {/* Header row */}
+                <Text style={[s.planCell, s.planLabelCell]} />
+                <Text style={[s.planCell, s.planHeaderText]}>Now</Text>
+                <Text style={[s.planCell, s.planHeaderText]}>Session 7</Text>
+                <Text style={[s.planCell, s.planHeaderText]}>Goal</Text>
+                {/* Score rows */}
+                {[
+                  { label: 'Power',  key: 'voice_power' },
+                  { label: 'Pitch',  key: 'expression' },
+                  { label: 'Rhythm', key: 'fluency' },
+                ].map(({ label, key }) => (
+                  <React.Fragment key={key}>
+                    <Text style={[s.planCell, s.planLabel]}>{label}</Text>
+                    <Text style={[s.planCell, s.planVal]}>{progressPlan.baseline[key] ?? '–'}</Text>
+                    <Text style={[s.planCell, s.planVal]}>{progressPlan.checkin1[key] ?? '–'}</Text>
+                    <Text style={[s.planCell, s.planVal, { color: ORANGE }]}>{progressPlan.goal[key] ?? '–'}</Text>
+                  </React.Fragment>
+                ))}
+                {/* MPT row */}
+                <Text style={[s.planCell, s.planLabel]}>Hold</Text>
+                <Text style={[s.planCell, s.planVal]}>{progressPlan.baseline.mpt_seconds}s</Text>
+                <Text style={[s.planCell, s.planVal]}>{progressPlan.checkin1.mpt_seconds}s</Text>
+                <Text style={[s.planCell, s.planVal, { color: ORANGE }]}>{progressPlan.goal.mpt_seconds}s</Text>
+              </View>
             </View>
           )}
 
@@ -929,5 +1002,88 @@ const s = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     paddingHorizontal: 8,
+  },
+
+  // MPT card
+  mptCard: {
+    backgroundColor: 'rgba(195,222,206,0.08)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: `${MINT}30`,
+    padding: 16,
+    width: '100%',
+    gap: 6,
+  },
+  mptEyebrow: {
+    color: MINT,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
+  mptRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+  },
+  mptValue: {
+    color: WHITE,
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  mptNote: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 15,
+    flex: 1,
+    lineHeight: 21,
+  },
+
+  // Progress plan card
+  planCard: {
+    backgroundColor: `${ORANGE}0D`,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: `${ORANGE}30`,
+    padding: 18,
+    width: '100%',
+    gap: 14,
+  },
+  planEyebrow: {
+    color: ORANGE,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
+  // 4-column grid: label | now | session7 | goal
+  planGrid: {
+    display: 'flex',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  planCell: {
+    width: '25%',
+    paddingVertical: 5,
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  planLabelCell: {
+    textAlign: 'left',
+  },
+  planHeaderText: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  planLabel: {
+    color: 'rgba(255,255,255,0.70)',
+    fontWeight: '600',
+    textAlign: 'left',
+    fontSize: 16,
+  },
+  planVal: {
+    color: WHITE,
+    fontWeight: '700',
+    fontSize: 17,
   },
 });

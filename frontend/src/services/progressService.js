@@ -17,14 +17,18 @@ function calcNode(sessionsCompleted) {
   return Math.min(TOTAL_NODES - 1, sessionsCompleted);
 }
 
-/** Returns today's date as a YYYY-MM-DD string (UTC). */
+/** Returns today's date as a YYYY-MM-DD string (local time).
+ *  Using local time so "today" matches the user's calendar day, not UTC —
+ *  a user doing a session at 11 pm in UTC+1 should not see their streak reset
+ *  because the UTC clock has already ticked to the next day.
+ */
 function today() {
-  return new Date().toISOString().split('T')[0];
+  return new Date().toLocaleDateString('en-CA');
 }
 
-/** Returns yesterday's date as a YYYY-MM-DD string (UTC). */
+/** Returns yesterday's date as a YYYY-MM-DD string (local time). */
 function yesterday() {
-  return new Date(Date.now() - 86_400_000).toISOString().split('T')[0];
+  return new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA');
 }
 
 /**

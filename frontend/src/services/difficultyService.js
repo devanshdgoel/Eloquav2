@@ -310,6 +310,118 @@ export async function nudgeTiersFromRecentScores() {
   }
 }
 
+// ── Progress Plan ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute a personalised progress plan from baseline voice scores and MPT.
+ *
+ * Three milestone targets are generated:
+ *   checkin1 → session 7  (35% of gap closed)
+ *   checkin2 → session 14 (65% of gap closed)
+ *   goal     → session 20 (100% of gap closed / programme end)
+ *
+ * The gap is measured from the user's baseline to clinically informed targets:
+ *   composite score → 80 (upper-end of typical PD improvement range)
+ *   MPT             → 15 s (lower bound of healthy adult range; achievable
+ *                           with LSVT-style daily practice)
+ *
+ * @param {{ voice_power, expression, fluency }} baselineScores
+ * @param {number|null} mptSeconds - best MPT from the baseline assessment
+ * @returns {{ baseline, checkin1, checkin2, goal, created_at }}
+ */
+export function computeProgressPlan(baselineScores = {}, mptSeconds = null) {
+  const SCORE_GOAL = 80;
+  const MPT_GOAL   = 15;  // seconds
+  const FRACTIONS  = [0.35, 0.65, 1.0];
+
+  // Fall back to 5 s if MPT was not captured (e.g. backend unavailable at baseline)
+  const baseMPT = (mptSeconds != null && mptSeconds > 0) ? mptSeconds : 5;
+
+  // Build one milestone snapshot for a given gap-close fraction
+  function milestone(frac) {
+    const m = {
+      mpt_seconds: Math.round((baseMPT + (MPT_GOAL - baseMPT) * frac) * 10) / 10,
+    };
+    for (const k of ['voice_power', 'expression', 'fluency']) {
+      const base = baselineScores[k];
+      m[k] = base != null ? Math.round(base + (SCORE_GOAL - base) * frac) : null;
+    }
+    return m;
+  }
+
+  const [checkin1, checkin2, goal] = FRACTIONS.map(milestone);
+
+  return {
+    baseline:   { ...baselineScores, mpt_seconds: baseMPT },
+    checkin1,
+    checkin2,
+    goal,
+    created_at: new Date().toISOString().split('T')[0],
+  };
+}
+
+/**
+ * Persist the progress plan to user_progress/{uid}.progress_plan.
+ * Called once after the baseline assessment. Safe to re-call (idempotent).
+ */
+export async function storeProgressPlan(plan) {
+  const uid = auth.currentUser?.uid;
+  if (!uid || !plan) return;
+  try {
+    const ref  = doc(db, 'user_progress', uid);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateDoc(ref, { progress_plan: plan });
+    } else {
+      await setDoc(ref, {
+        progress_plan:      plan,
+        difficulty_tiers:   { ...DEFAULT_TIERS },
+        current_node:       0,
+        sessions_completed: 0,
+        streak_days:        0,
+      });
+    }
+  } catch (err) {
+    console.warn('[difficultyService] storeProgressPlan write failed:', err?.message);
+  }
+}
+
+/**
+ * Fetch the stored progress plan from Firestore.
+ * Returns null for pre-baseline users or when Firestore is unreachable.
+ */
+export async function fetchProgressPlan() {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return null;
+  try {
+    const snap = await getDoc(doc(db, 'user_progress', uid));
+    if (!snap.exists()) return null;
+    return snap.data().progress_plan ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns which check-in number this session represents (1 or 2+).
+ * Drives which milestone targets are shown in the comparison screen.
+ *
+ * Returns 1 if the user has never completed a check-in (last_checkin_session == 0).
+ * Returns 2 for their second check-in onwards.
+ */
+export async function fetchCheckinNumber() {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return 1;
+  try {
+    const snap = await getDoc(doc(db, 'user_progress', uid));
+    if (!snap.exists()) return 1;
+    const last = snap.data().last_checkin_session ?? 0;
+    return last > 0 ? 2 : 1;
+  } catch {
+    return 1;
+  }
+}
+
 // ── Exercise score persistence ────────────────────────────────────────────────
 
 /**

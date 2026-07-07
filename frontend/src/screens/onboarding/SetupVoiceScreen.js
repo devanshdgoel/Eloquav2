@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MicIcon, StopIcon } from '../../components/Icons';
 import { Audio } from 'expo-av';
 import { auth } from '../../config/firebase';
 import { cloneVoice, getVoiceStatus } from '../../services/voiceService';
@@ -162,7 +163,10 @@ export default function SetupVoiceScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
         >
-          <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
+          {isRecording
+            ? <StopIcon size={28} color="#1A1A1A" />
+            : <MicIcon  size={28} color="#FFFFFF" />
+          }
         </TouchableOpacity>
 
         <Text style={styles.recordingStatus} accessibilityLiveRegion="polite">
@@ -267,12 +271,7 @@ const styles = StyleSheet.create({
   micBtnRecording: {
     backgroundColor: '#FFA940',
   },
-  // Placeholder text label for the mic button until a mic icon asset is added.
-  micIcon: {
-    fontSize: 28,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
+  // Removed: micIcon text style replaced by MicIcon/StopIcon SVG components.
 
   dotsRow: {
     flexDirection: 'row',

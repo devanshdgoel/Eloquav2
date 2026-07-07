@@ -12,6 +12,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { StarIcon } from '../../../components/Icons';
 
 const { width: W } = Dimensions.get('window');
 
@@ -50,7 +51,7 @@ export default function MidpointScreen({ onComplete, onExit }) {
       <Animated.View style={[s.content, { opacity, transform: [{ translateY: slideY }] }]}>
         {/* Star badge */}
         <Animated.View style={[s.badge, { transform: [{ scale: starScale }] }]}>
-          <Text style={s.badgeEmoji}>{m.emoji}</Text>
+          <StarIcon size={52} color={ORANGE} />
         </Animated.View>
 
         <Text style={s.heading}>{m.heading}</Text>
@@ -94,7 +95,7 @@ const s = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     marginBottom: 8,
   },
-  badgeEmoji: { fontSize: 52 },
+  badgeIcon: { width: 52, height: 52 },
   heading: {
     color: WHITE, fontSize: 40, fontWeight: '900',
     letterSpacing: 0.5, textAlign: 'center',

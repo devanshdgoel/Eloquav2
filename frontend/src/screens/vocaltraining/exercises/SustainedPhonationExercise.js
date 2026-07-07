@@ -10,9 +10,13 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
+
+// AsyncStorage key — once written, the intro is skipped on all future sessions.
+const DEMO_KEY = '@eloqua_phonation_demo_seen';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const TOTAL_ROUNDS    = 3;
@@ -22,12 +26,15 @@ const SILENCE_END_MS  = 800;
 const MAX_PHONATE_MS  = 20000;
 const REST_MS         = 6500;
 
+// minVolume raised significantly (was 0.22–0.42) so that ambient sounds like
+// table tapping or light breathing can no longer trigger the scoring state.
+// The previous floor of 0.22 was low enough to fire on any gentle knock.
 const PHONATION_TIERS = [
-  { targetSeconds: 4,  minVolume: 0.22 },
-  { targetSeconds: 5,  minVolume: 0.27 },
-  { targetSeconds: 7,  minVolume: 0.32 },
-  { targetSeconds: 9,  minVolume: 0.37 },
-  { targetSeconds: 12, minVolume: 0.42 },
+  { targetSeconds: 4,  minVolume: 0.38 },
+  { targetSeconds: 5,  minVolume: 0.42 },
+  { targetSeconds: 7,  minVolume: 0.46 },
+  { targetSeconds: 9,  minVolume: 0.50 },
+  { targetSeconds: 12, minVolume: 0.54 },
 ];
 
 const REST_SEQUENCES = [
@@ -347,7 +354,10 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         if (samples.length > 0) {
           const sorted = [...samples].sort((a, b) => a - b);
           const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? tierConfig.minVolume;
-          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 1.6 + 0.12));
+          // More aggressive noise floor: multiplier 2.0 + offset 0.18 (was 1.6 + 0.12).
+          // In a quiet room p90 ≈ 0.02 → 0.06 + 0.18 = 0.24, still below the 0.38 tier floor.
+          // In a noisy room p90 ≈ 0.25 → 0.50 + 0.18 = 0.68, capped by MAX_THRESHOLD.
+          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 2.0 + 0.18));
         }
         // Stop calibration recording — DO NOT change audio mode
         try { await recording.stopAndUnloadAsync(); } catch (_) {}
@@ -443,8 +453,12 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
     const nextRound = roundRef.current + 1;
 
     setMsg(seq.praise);
-    msgTimer1Ref.current = setTimeout(() => { msgTimer1Ref.current = null; setMsg(seq.in); }, 2200);
-    msgTimer2Ref.current = setTimeout(() => { msgTimer2Ref.current = null; setMsg(seq.out); }, 4400);
+    // Only guide the user through breathing between rounds — not after the last round,
+    // since the exercise is about to end and the breathing prompt would feel odd.
+    if (nextRound < TOTAL_ROUNDS) {
+      msgTimer1Ref.current = setTimeout(() => { msgTimer1Ref.current = null; setMsg(seq.in); }, 2200);
+      msgTimer2Ref.current = setTimeout(() => { msgTimer2Ref.current = null; setMsg(seq.out); }, 4400);
+    }
 
     restTimerRef.current = setTimeout(async () => {
       restTimerRef.current = null;
@@ -600,12 +614,22 @@ const ex = StyleSheet.create({
 export default function SustainedPhonationExercise({
   onComplete,
   onExit,
+  onSkip,
   tier = 1,
   exerciseIndex = 0,
   totalExercises = 8,
 }) {
-  const [step, setStep] = useState(0);
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
+  const [step, setStep] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
+
+  useEffect(() => {
+    AsyncStorage.getItem(DEMO_KEY)
+      .then(val => setStep(val ? 2 : 0))
+      .catch(() => setStep(0));
+  }, []);
+
+  if (step === null) return null;
 
   if (step === 0) {
     return (
@@ -619,7 +643,11 @@ export default function SustainedPhonationExercise({
   if (step === 1) {
     return (
       <InstructScreen
-        onNext={() => setStep(2)}
+        onNext={() => {
+          // Mark the intro as seen so future sessions skip straight to the exercise.
+          AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
+          setStep(2);
+        }}
         onExit={() => setStep(0)}
       />
     );
@@ -629,7 +657,7 @@ export default function SustainedPhonationExercise({
       onComplete={onComplete}
       onExit={onExit}
       onShowInstructions={() => setStep(1)}
-      onSkip={onComplete}
+      onSkip={onSkip ?? onComplete}
       tier={tier}
     />
   );

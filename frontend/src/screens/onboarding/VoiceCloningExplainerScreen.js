@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { logScreenView } from '../../utils/analytics';
+import { MicIcon, LockIcon, TrashIcon } from '../../components/Icons';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -26,17 +27,17 @@ const CARD_BORD  = 'rgba(195,222,206,0.20)';
 
 const POINTS = [
   {
-    icon: '🎙',
+    renderIcon: () => <MicIcon size={24} color={MINT} />,
     title: 'Why we record your voice',
     body: "During setup, you'll read two short passages aloud. We use those recordings to create a personalised voice model — so the Speech Enhancement feature plays back in a voice that sounds like yours.",
   },
   {
-    icon: '🔒',
+    renderIcon: () => <LockIcon size={24} color={MINT} />,
     title: 'How your voice is stored',
     body: 'Your voice model is processed by ElevenLabs, a voice AI service. Recordings are deleted from our server immediately after processing. ElevenLabs stores only the voice model, not your original audio.',
   },
   {
-    icon: '🗑',
+    renderIcon: () => <TrashIcon size={24} color={MINT} />,
     title: 'You are always in control',
     body: 'You can delete your voice model at any time from Settings. Deleting your account removes it permanently from all systems.',
   },
@@ -65,9 +66,9 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
         </View>
 
         <View style={s.points}>
-          {POINTS.map((p) => (
-            <View key={p.icon} style={s.card}>
-              <Text style={s.cardIcon}>{p.icon}</Text>
+          {POINTS.map((p, i) => (
+            <View key={i} style={s.card}>
+              <View style={s.cardIconWrap}>{p.renderIcon()}</View>
               <View style={s.cardText}>
                 <Text style={s.cardTitle}>{p.title}</Text>
                 <Text style={s.cardBody}>{p.body}</Text>
@@ -140,7 +141,7 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 14 * SC,
   },
-  cardIcon: { fontSize: 24, width: 30 * SC, textAlign: 'center', flexShrink: 0 },
+  cardIconWrap: { width: 30, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   cardText: { flex: 1, gap: 5 * SC },
   cardTitle: { color: WHITE, fontSize: 16, fontWeight: '700' },
   cardBody:  { color: DIM,   fontSize: 16, lineHeight: 24 },

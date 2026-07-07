@@ -20,6 +20,7 @@ async def save_assessment(
     voice_power: Optional[int] = Form(None),
     expression: Optional[int] = Form(None),
     fluency: Optional[int] = Form(None),
+    mpt_seconds: Optional[float] = Form(None),  # Maximum Phonation Time from sustained_a tasks
     task_results_json: str = Form("{}"),
     current_user: dict = Depends(get_current_user),
 ):
@@ -52,6 +53,7 @@ async def save_assessment(
                 "voice_power": voice_power,
                 "expression":  expression,
                 "fluency":     fluency,
+                "mpt_seconds": mpt_seconds,
             },
             "tasks": task_results,
         }

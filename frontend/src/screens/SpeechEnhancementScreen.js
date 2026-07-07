@@ -21,6 +21,7 @@ import { API_BASE_URL } from '../config/env';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { logUsageEvent, logScreenView } from '../utils/analytics';
 import { useLargeText } from '../context/PrefsContext';
+import { MicIcon, ClipboardIcon } from '../components/Icons';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -738,12 +739,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
           <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Copy transcript">
             <Text style={styles.actionLabel}>Copy text</Text>
-            <Text style={styles.actionIcon}>📋</Text>
+            <ClipboardIcon size={22} color="#FFFFFF" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.newRecordBtn} onPress={reset} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Start new recording">
             <Text style={styles.actionLabel}>New recording</Text>
-            <Text style={styles.actionIcon}>🎙️</Text>
+            <MicIcon size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       )}

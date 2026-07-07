@@ -138,20 +138,16 @@ export default function CantDoNow({ onSkip, onEnd, style }) {
 }
 
 const styles = StyleSheet.create({
-  // ── Trigger ──────────────────────────────────────────────────────────────────
+  // ── Trigger — plain faded text link, intentionally subtle ───────────────────
   trigger: {
     alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.55)',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   triggerText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: 'rgba(255,255,255,0.38)',
+    fontSize: 15,
+    fontWeight: '500',
     letterSpacing: 0.3,
     textAlign: 'center',
   },

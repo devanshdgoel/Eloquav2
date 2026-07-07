@@ -28,6 +28,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Svg, { Ellipse, Path } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -37,6 +38,9 @@ const FW = 402;
 const FH = 874;
 const fs = x => (x * W) / FW;
 const fv = y => (y * H) / FH;
+
+// AsyncStorage key — once written, the intro is skipped on all future sessions.
+const DEMO_KEY = '@eloqua_pitchglides_demo_seen';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const TOTAL_HOOPS    = 4;
@@ -51,15 +55,19 @@ const MAX_PITCH_HZ   = 600;
 
 // ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
 // pitchRangeHz: Hz span from calibrated baseline to the top of the scale.
-//               ±N Hz target → range = 2N (tier 1 is ±20 → 40Hz span).
+//               Ranges raised significantly (was 40–120 Hz) because the old values
+//               were too narrow — a speaker could not glide enough to move the dolphin.
+//               A typical conversational male voice spans ~80–250 Hz; female ~160–260 Hz.
+//               With a calibrated base of ~130 Hz, a 100 Hz span covers 130–230 Hz,
+//               which is achievable with deliberate effort at tier 1.
 // holdMs:       milliseconds the pitch must stay in the target zone.
 // totalHoops:   number of hoops to complete the exercise.
 const PITCH_TIERS = [
-  { pitchRangeHz: 40,  holdMs:  700, totalHoops: 4 },  // Tier 1: ±20Hz
-  { pitchRangeHz: 60,  holdMs:  700, totalHoops: 4 },  // Tier 2: ±30Hz
-  { pitchRangeHz: 80,  holdMs:  700, totalHoops: 4 },  // Tier 3: ±40Hz
-  { pitchRangeHz: 100, holdMs:  700, totalHoops: 4 },  // Tier 4: ±50Hz (original)
-  { pitchRangeHz: 120, holdMs: 1200, totalHoops: 6 },  // Tier 5: ±60Hz, sustained
+  { pitchRangeHz: 100, holdMs:  700, totalHoops: 4 },  // Tier 1: ±50 Hz
+  { pitchRangeHz: 130, holdMs:  700, totalHoops: 4 },  // Tier 2: ±65 Hz
+  { pitchRangeHz: 160, holdMs:  700, totalHoops: 4 },  // Tier 3: ±80 Hz
+  { pitchRangeHz: 190, holdMs:  900, totalHoops: 5 },  // Tier 4: ±95 Hz, one extra hoop
+  { pitchRangeHz: 220, holdMs: 1200, totalHoops: 6 },  // Tier 5: ±110 Hz, sustained
 ];
 
 // ── Colours ───────────────────────────────────────────────────────────────────
@@ -139,7 +147,10 @@ const PITCH_HTML = `<!DOCTYPE html>
       var vol = Math.min(1, rms * 7);
       // Pitch
       var pitch = -1;
-      if (rms > 0.008) {
+      // Threshold raised from 0.008 to 0.025 so that near-silence (breath noise,
+      // light ambient rumble) no longer triggers the autocorrelation path and
+      // produces spurious pitch readings that confuse the dolphin position.
+      if (rms > 0.025) {
         var cap = Math.min(maxP, Math.floor(n / 2) - 1);
         // Compute autocorrelation for each candidate period
         var acLen = cap - minP + 1;
@@ -628,17 +639,36 @@ const STEP_TITLE    = 0;
 const STEP_TUTORIAL = 1;
 const STEP_EXERCISE = 2;
 
-export default function PitchGlidesExercise({ onComplete, onExit, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  const [step, setStep] = useState(STEP_TITLE);
+export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
+  const [step, setStep] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
+
+  useEffect(() => {
+    AsyncStorage.getItem(DEMO_KEY)
+      .then(val => setStep(val ? STEP_EXERCISE : STEP_TITLE))
+      .catch(() => setStep(STEP_TITLE));
+  }, []);
+
+  if (step === null) return null;
+
   if (step === STEP_TITLE)    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} sessionFill={sessionFill} />;
-  if (step === STEP_TUTORIAL) return <TutorialScreen onFinish={() => setStep(STEP_EXERCISE)} onExit={() => setStep(STEP_TITLE)} />;
+  if (step === STEP_TUTORIAL) return (
+    <TutorialScreen
+      onFinish={() => {
+        // Mark the intro as seen so future sessions skip straight to the exercise.
+        AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
+        setStep(STEP_EXERCISE);
+      }}
+      onExit={() => setStep(STEP_TITLE)}
+    />
+  );
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
       onShowDemo={() => setStep(STEP_TUTORIAL)}
-      onSkip={onComplete}
+      onSkip={onSkip ?? onComplete}
       tier={tier}
     />
   );

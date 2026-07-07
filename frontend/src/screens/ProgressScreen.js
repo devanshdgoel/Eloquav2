@@ -25,6 +25,10 @@ import { API_BASE_URL } from '../config/env';
 import { fetchProgress, TOTAL_NODES } from '../services/progressService';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { logScreenView } from '../utils/analytics';
+import {
+  MicIcon, FireIcon, LightningIcon, ChartIcon,
+  MegaphoneIcon, MusicIcon, SpeakingIcon, TrophyIcon, StarIcon,
+} from '../components/Icons';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -36,33 +40,34 @@ const WHITE  = '#FFFFFF';
 const DIM    = 'rgba(255,255,255,0.60)';
 
 // ── Milestone definitions ─────────────────────────────────────────────────────
+// renderIcon receives `unlocked` so icons can be dimmed when locked.
 const MILESTONES = [
   {
     id: 'first_voice',
     label: 'First Voice',
     desc: 'Completed your baseline assessment',
-    icon: '🎤',
+    renderIcon: (unlocked) => <MicIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFFFFF' : 'rgba(255,255,255,0.35)'} />,
     check: ({ hasBaseline }) => hasBaseline,
   },
   {
     id: 'week_warrior',
     label: 'Week Warrior',
     desc: 'Maintained a 7-day streak',
-    icon: '🔥',
+    renderIcon: (unlocked) => <FireIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFA940' : 'rgba(255,255,255,0.35)'} />,
     check: ({ streak }) => streak >= 7,
   },
   {
     id: 'committed',
     label: 'Committed',
     desc: 'Completed 10 sessions',
-    icon: '⚡',
+    renderIcon: (unlocked) => <LightningIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFFFFF' : 'rgba(255,255,255,0.35)'} />,
     check: ({ sessions }) => sessions >= 10,
   },
   {
     id: 'voice_growing',
     label: 'Voice Growing',
     desc: 'Improved a score vs your baseline',
-    icon: '📈',
+    renderIcon: (unlocked) => <ChartIcon size={unlocked ? 26 : 22} color={unlocked ? '#C3DECE' : 'rgba(255,255,255,0.35)'} />,
     check: ({ baseline, latest }) => {
       if (!baseline || !latest) return false;
       return ['voice_power', 'expression', 'fluency'].some(k =>
@@ -74,35 +79,35 @@ const MILESTONES = [
     id: 'loud_proud',
     label: 'Loud & Proud',
     desc: 'Voice Power score above 70',
-    icon: '📢',
+    renderIcon: (unlocked) => <MegaphoneIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFA940' : 'rgba(255,255,255,0.35)'} />,
     check: ({ latest }) => (latest?.voice_power ?? 0) >= 70,
   },
   {
     id: 'expressive',
     label: 'Expressive',
     desc: 'Expression score above 70',
-    icon: '🎵',
+    renderIcon: (unlocked) => <MusicIcon size={unlocked ? 26 : 22} color={unlocked ? '#C3DECE' : 'rgba(255,255,255,0.35)'} />,
     check: ({ latest }) => (latest?.expression ?? 0) >= 70,
   },
   {
     id: 'fluent',
     label: 'Fluent Speaker',
     desc: 'Fluency score above 70',
-    icon: '🗣️',
+    renderIcon: (unlocked) => <SpeakingIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFFFFF' : 'rgba(255,255,255,0.35)'} />,
     check: ({ latest }) => (latest?.fluency ?? 0) >= 70,
   },
   {
     id: 'checkin_champ',
     label: 'Check-in Champ',
     desc: 'Completed 3 progress check-ins',
-    icon: '🏆',
+    renderIcon: (unlocked) => <TrophyIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFA940' : 'rgba(255,255,255,0.35)'} />,
     check: ({ checkInCount }) => checkInCount >= 3,
   },
   {
     id: 'journey_complete',
     label: 'Journey Complete',
     desc: 'All 20 sessions finished',
-    icon: '🌟',
+    renderIcon: (unlocked) => <StarIcon size={unlocked ? 26 : 22} color={unlocked ? '#FFA940' : 'rgba(255,255,255,0.35)'} />,
     check: ({ sessions }) => sessions >= TOTAL_NODES,
   },
 ];
@@ -242,7 +247,7 @@ const sc = StyleSheet.create({
 });
 
 // ── Milestone badge ───────────────────────────────────────────────────────────
-function MilestoneBadge({ label, desc, icon, unlocked }) {
+function MilestoneBadge({ label, desc, renderIcon, unlocked }) {
   return (
     <View
       style={[mb.card, !unlocked && mb.locked]}
@@ -251,7 +256,7 @@ function MilestoneBadge({ label, desc, icon, unlocked }) {
       accessibilityLabel={`${label}: ${desc}. ${unlocked ? 'Unlocked' : 'Locked'}`}
     >
       <View style={[mb.iconWrap, unlocked && mb.iconWrapUnlocked]}>
-        <Text style={{ fontSize: unlocked ? 26 : 22, opacity: unlocked ? 1 : 0.35 }}>{icon}</Text>
+        {renderIcon(unlocked)}
       </View>
       <Text style={[mb.title, !unlocked && mb.dim]}>{label}</Text>
       <Text style={mb.desc}>{desc}</Text>
@@ -462,7 +467,7 @@ export default function ProgressScreen({ navigation }) {
           <Text style={styles.sectionTitle}>Voice Scores</Text>
           {!hasBaseline ? (
             <View style={styles.noBaselineCard}>
-              <Text style={styles.noBaselineIcon}>🎤</Text>
+              <MicIcon size={36} color="rgba(255,255,255,0.60)" />
               <Text style={styles.noBaselineTitle}>No baseline yet</Text>
               <Text style={styles.noBaselineBody}>
                 Complete your first session to unlock voice score tracking.
@@ -508,7 +513,7 @@ export default function ProgressScreen({ navigation }) {
                 key={m.id}
                 label={m.label}
                 desc={m.desc}
-                icon={m.icon}
+                renderIcon={m.renderIcon}
                 unlocked={m.check(mCtx)}
               />
             ))}
@@ -583,7 +588,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(195,222,206,0.18)',
     padding: 28 * SC, alignItems: 'center', gap: 10,
   },
-  noBaselineIcon:  { fontSize: 36 },
+  noBaselineIcon:  { width: 36, height: 36 },
   noBaselineTitle: { color: WHITE, fontSize: 18, fontWeight: '700' },
   noBaselineBody:  { color: DIM, fontSize: 16, textAlign: 'center', lineHeight: 24 },
 

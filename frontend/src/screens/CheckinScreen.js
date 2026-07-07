@@ -24,7 +24,7 @@ import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../utils/storage';
 import { completeSession } from '../services/progressService';
-import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, DEFAULT_TIERS } from '../services/difficultyService';
+import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, fetchProgressPlan, fetchCheckinNumber, DEFAULT_TIERS } from '../services/difficultyService';
 import { useLargeText } from '../context/PrefsContext';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
 
@@ -122,6 +122,8 @@ export default function CheckinScreen({ navigation }) {
   const [canStop,          setCanStop]          = useState(false);
   const [finishing,        setFinishing]        = useState(false);
   const [tiers,            setTiers]            = useState(DEFAULT_TIERS);
+  const [progressPlan,     setProgressPlan]     = useState(null);
+  const [checkinNumber,    setCheckinNumber]    = useState(1);
 
   const progressAnim   = useRef(new Animated.Value(0)).current;
   const recordingRef   = useRef(null);
@@ -136,6 +138,10 @@ export default function CheckinScreen({ navigation }) {
     const logExit = logScreenView('Checkin');
     loadSentence();
     fetchDifficultyTiers().then(setTiers).catch(() => {/* keep defaults */});
+    // Load the personalised plan and check-in number so the comparison screen
+    // can show whether the user is on track against their session 7 / 14 targets.
+    fetchProgressPlan().then(p => { if (p) setProgressPlan(p); }).catch(() => {});
+    fetchCheckinNumber().then(setCheckinNumber).catch(() => {});
     return () => {
       logExit();
       clearInterval(timerRef.current);
@@ -652,6 +658,57 @@ export default function CheckinScreen({ navigation }) {
             </View>
           )}
 
+          {/* Vs plan — compare postScores against the relevant milestone target */}
+          {progressPlan && postScores && (() => {
+            // Pick the correct milestone: session 7 on first check-in, session 14 on second
+            const target      = checkinNumber === 1 ? progressPlan.checkin1 : progressPlan.checkin2;
+            const targetLabel = checkinNumber === 1 ? 'Session 7 target' : 'Session 14 target';
+
+            // Classify each dimension relative to target (within 8 points = on track)
+            function status(key) {
+              const post = postScores?.[key];
+              const tgt  = target?.[key];
+              if (post == null || tgt == null) return null;
+              if (post >= tgt)         return 'ahead';
+              if (post >= tgt - 8)     return 'on-track';
+              return 'behind';
+            }
+
+            const PLAN_DIMS = [
+              { key: 'voice_power', label: 'Voice Power' },
+              { key: 'expression',  label: 'Pitch Variety' },
+              { key: 'fluency',     label: 'Speech Rhythm' },
+            ];
+
+            return (
+              <View style={s.planCard}>
+                <Text style={s.planEyebrow}>VS YOUR PLAN</Text>
+                <Text style={s.planSubtitle}>{targetLabel}</Text>
+                {PLAN_DIMS.map(({ key, label }) => {
+                  const post  = postScores?.[key] ?? null;
+                  const tgt   = target?.[key]     ?? null;
+                  const st    = status(key);
+                  if (st == null) return null;
+                  return (
+                    <View key={key} style={s.planRow}>
+                      <Text style={s.planRowLabel}>{label}</Text>
+                      <Text style={s.planRowScore}>{post ?? '–'}</Text>
+                      <Text style={s.planRowSep}>/ {tgt ?? '–'}</Text>
+                      <View style={[s.planTag,
+                        st === 'ahead'    ? s.planTagAhead    :
+                        st === 'on-track' ? s.planTagOnTrack  : s.planTagBehind
+                      ]}>
+                        <Text style={s.planTagText}>
+                          {st === 'ahead' ? 'Ahead' : st === 'on-track' ? 'On Track' : 'Behind'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
+
           <TouchableOpacity
             style={[s.primaryBtn, finishing && s.btnDisabled]}
             onPress={handleFinish}
@@ -869,6 +926,72 @@ const s = StyleSheet.create({
   tierPillText: {
     color: WHITE,
     fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+
+  // Vs-plan card in the comparison phase
+  planCard: {
+    backgroundColor: 'rgba(195,222,206,0.07)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.20)',
+    padding: 16,
+    gap: 10,
+    marginBottom: 12,
+  },
+  planEyebrow: {
+    color: MINT,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
+  planSubtitle: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: -4,
+  },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  planRowLabel: {
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 15,
+    fontWeight: '600',
+    flex: 1,
+  },
+  planRowScore: {
+    color: WHITE,
+    fontSize: 17,
+    fontWeight: '700',
+    minWidth: 28,
+    textAlign: 'right',
+  },
+  planRowSep: {
+    color: 'rgba(255,255,255,0.40)',
+    fontSize: 15,
+    minWidth: 36,
+  },
+  planTag: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  planTagAhead: {
+    backgroundColor: 'rgba(104,216,140,0.18)',
+  },
+  planTagOnTrack: {
+    backgroundColor: 'rgba(195,222,206,0.15)',
+  },
+  planTagBehind: {
+    backgroundColor: 'rgba(255,169,64,0.14)',
+  },
+  planTagText: {
+    color: WHITE,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.2,
   },
