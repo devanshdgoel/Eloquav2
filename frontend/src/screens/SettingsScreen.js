@@ -956,6 +956,7 @@ export default function SettingsScreen({ navigation }) {
           )}
         </View>
 
+
       </ScrollView>
 
       <TimePickerModal

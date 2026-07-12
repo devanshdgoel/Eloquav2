@@ -1,12 +1,37 @@
 import React, { useState } from 'react';
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { signInAnonymously } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../../config/firebase';
 import { setOnboardingComplete } from '../../utils/storage';
 import { colors } from '../../theme';
 
 export default function SplashButtons({ buttonsOpacity, orTextOpacity, waveLogoOpacity, navigation }) {
   const [guestLoading, setGuestLoading] = useState(false);
+
+  // Dev-only: wipe all local state, create a brand-new anonymous Firebase user,
+  // and drop into SetupPermissions as if this is a first-time install.
+  async function handleFreshStart() {
+    Alert.alert(
+      'Fresh start',
+      'Clears all data and starts from scratch. Dev use only.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Go',
+          onPress: async () => {
+            // Clear onboarding flags, profile, preferences — everything local.
+            await AsyncStorage.clear();
+            // Sign out so signInAnonymously creates a new UID, not the same one.
+            await auth.signOut().catch(() => {});
+            // New anonymous user = clean Firestore state.
+            await signInAnonymously(auth);
+            navigation.replace('SetupPermissions');
+          },
+        },
+      ]
+    );
+  }
 
   async function handleGuestSignIn() {
     if (guestLoading) return;
@@ -51,6 +76,13 @@ export default function SplashButtons({ buttonsOpacity, orTextOpacity, waveLogoO
           accessibilityLabel="Create a new account"
         >
           <Text style={styles.createAccountButtonText}>Create new account</Text>
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Dev fresh-start — bottom-left, near-invisible to real users */}
+      <Animated.View style={[styles.devBtn, { opacity: waveLogoOpacity }]}>
+        <TouchableOpacity onPress={handleFreshStart} activeOpacity={0.6} accessibilityLabel="Developer fresh start">
+          <Text style={styles.devBtnText}>↺</Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -124,5 +156,19 @@ const styles = StyleSheet.create({
     bottom: 12,
     right: 12,
     padding: 8,          // expand tap area
+  },
+  // Sits in the bottom-left corner opposite the wave logo.
+  // Low opacity so it's invisible to real users but tappable when you know it's there.
+  devBtn: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    padding: 12,
+    opacity: 0.18,
+  },
+  devBtnText: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '300',
   },
 });
