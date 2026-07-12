@@ -116,17 +116,29 @@ const SLIDES = [
 // Runs entirely in the WebView JS context. Posts { pitch, vol } every ~80 ms.
 // pitch = fundamental frequency in Hz, or -1 if silence / undetected.
 // vol   = RMS volume normalised to 0–1.
+//
+// IMPORTANT — deferred start pattern:
+// Audio is NOT started automatically on page load. WKWebView (iOS) starts
+// AudioContext in 'suspended' state and requires a user-gesture-like trigger
+// to resume it. Auto-running on load fails in Expo Go. Instead:
+//   1. Page loads → posts { ready: true }
+//   2. React Native receives 'ready' → injects window.startPitchDetection()
+//   3. This injection acts as the gesture trigger needed by iOS WKWebView.
 const PITCH_HTML = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head><body>
 <script>
-(async function () {
+window.startPitchDetection = async function() {
   try {
     var stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       video: false
     });
     window._stream = stream;
-    var ctx    = new (window.AudioContext || window.webkitAudioContext)();
+    var AudioCtx = window.AudioContext || window.webkitAudioContext;
+    var ctx = new AudioCtx();
+    // Resume suspended context — iOS WKWebView always starts AudioContext
+    // in 'suspended' state; calling resume() here is required for audio to flow.
+    if (ctx.state === 'suspended') { await ctx.resume(); }
     var src    = ctx.createMediaStreamSource(stream);
     var an     = ctx.createAnalyser();
     an.fftSize = 2048;
@@ -136,7 +148,7 @@ const PITCH_HTML = `<!DOCTYPE html>
     var sr     = ctx.sampleRate;
     var minP   = Math.floor(sr / ${MAX_PITCH_HZ});
     var maxP   = Math.floor(sr / ${MIN_PITCH_HZ});
-    window.ReactNativeWebView.postMessage(JSON.stringify({ ready: true }));
+    window.ReactNativeWebView.postMessage(JSON.stringify({ started: true }));
     setInterval(function () {
       an.getFloatTimeDomainData(buf);
       var n = buf.length;
@@ -170,7 +182,7 @@ const PITCH_HTML = `<!DOCTYPE html>
         }
         if (bv > 0.01 && bi >= 0) {
           var t0 = bi + minP;
-          // Parabolic interpolation
+          // Parabolic interpolation for sub-sample accuracy
           if (bi > 0 && bi < acLen - 1) {
             var c1 = acf[bi-1], c2 = acf[bi], c3 = acf[bi+1];
             var den = 2*(2*c2 - c1 - c3);
@@ -184,7 +196,9 @@ const PITCH_HTML = `<!DOCTYPE html>
   } catch (e) {
     window.ReactNativeWebView.postMessage(JSON.stringify({ error: e.message }));
   }
-})();
+};
+// Signal that the page JS is ready — React Native will inject startPitchDetection().
+window.ReactNativeWebView.postMessage(JSON.stringify({ ready: true }));
 </script></body></html>`;
 
 // ── FadeIn wrapper ────────────────────────────────────────────────────────────
@@ -446,7 +460,13 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     try { data = JSON.parse(e.nativeEvent.data); } catch { return; }
 
     if (data.error) { setMicError(true); return; }
-    if (data.ready) return;
+    // Page JS has loaded — inject the start call so iOS WKWebView receives it
+    // as part of a script injection (acts as the gesture-equivalent trigger
+    // that allows AudioContext to resume from its initial suspended state).
+    if (data.ready) {
+      webViewRef.current?.injectJavaScript('window.startPitchDetection(); true;');
+      return;
+    }
 
     const { pitch, vol } = data;
 

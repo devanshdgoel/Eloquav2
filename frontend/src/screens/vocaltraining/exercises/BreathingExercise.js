@@ -18,9 +18,10 @@ import CantDoNow from '../../../components/CantDoNow';
 const { width: W, height: H } = Dimensions.get('window');
 
 // ── Steps ─────────────────────────────────────────────────────────────────────
-const STEP_TITLE = 0;
-const STEP_VIDEO = 1;
-const STEP_DRILL = 2;
+const STEP_TITLE    = 0;
+const STEP_VIDEO    = 1;
+const STEP_DRILL    = 2;
+const STEP_BASELINE = 3; // baseline-only intro — replaces title + instructions
 
 // AsyncStorage key — once written, the intro is skipped on all future sessions.
 const DEMO_KEY = '@eloqua_breathing_demo_seen';
@@ -78,16 +79,16 @@ const sb = StyleSheet.create({
 });
 
 // ── Cycle progress pills ──────────────────────────────────────────────────────
-function CyclePills({ current, done }) {
+function CyclePills({ current, done, total = TOTAL_CYCLES }) {
   return (
     <View style={cp.row}>
-      {[0, 1, 2].map(i => (
+      {Array.from({ length: total }, (_, i) => (
         <View
           key={i}
           style={[
             cp.pill,
-            i < done            && cp.pillDone,
-            i === current && i >= done && cp.pillActive,
+            i < done                    && cp.pillDone,
+            i === current && i >= done  && cp.pillActive,
           ]}
         />
       ))}
@@ -280,13 +281,87 @@ const vs = StyleSheet.create({
   startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
+// ── Screen 3: Baseline intro ──────────────────────────────────────────────────
+// Shown instead of the regular Title + Instructions screens during the baseline
+// session. Single card: a short "let's get started" prompt before one breath cycle.
+
+function BaselineIntroScreen({ onNext, onExit }) {
+  return (
+    <FadeIn>
+      <LinearGradient
+        colors={BG_GRADIENT} locations={BG_LOCATIONS}
+        start={BG_START} end={BG_END}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <StatusBar barStyle="light-content" />
+
+      <View style={bi.header}>
+        <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit">
+          <Text style={hb.closeText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={bi.body}>
+        <Text style={bi.title}>Let's begin.</Text>
+        <Text style={bi.sub}>
+          {"Before we start — settle in and take one slow, deep breath.\n\nBreathe in through your nose… and out through your mouth."}
+        </Text>
+        <Image
+          source={require('../../../../assets/images/bubble2.png')}
+          style={{ width: 140, height: 140, marginTop: 24 }}
+          resizeMode="contain"
+          accessible={false}
+        />
+      </View>
+
+      <TouchableOpacity
+        style={bi.btn}
+        onPress={onNext}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="I'm ready"
+      >
+        <Text style={bi.btnText}>I'm ready  →</Text>
+      </TouchableOpacity>
+    </FadeIn>
+  );
+}
+
+const bi = StyleSheet.create({
+  header: {
+    paddingTop: 52, paddingHorizontal: 18,
+    flexDirection: 'row', alignItems: 'center',
+  },
+  body: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 36,
+  },
+  title: {
+    color: '#FFFFFF', fontSize: 52, fontWeight: '800',
+    letterSpacing: 1.5, textAlign: 'center', marginBottom: 20,
+  },
+  sub: {
+    color: '#C3DECE', fontSize: 18, fontWeight: '400',
+    textAlign: 'center', lineHeight: 28, opacity: 0.90,
+  },
+  btn: {
+    alignSelf: 'center', marginBottom: 60,
+    backgroundColor: '#FFA940', borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  btnText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
+});
+
 // ── Screen 2: Drill ───────────────────────────────────────────────────────────
 //
 // Auto-starts on mount. Phase label crossfades so text changes are seamless.
 // Bubble expands on inhale, holds at full size, then contracts on exhale —
 // no "flying away". No timer shown.
 
-function DrillScreen({ onComplete, onExit, onShowVideo, onSkip }) {
+// maxCycles defaults to TOTAL_CYCLES (3). Baseline passes 1 to keep it short.
+function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTAL_CYCLES }) {
   const [cycleIndex, setCycleIndex] = useState(0);
   const [doneCount,  setDoneCount]  = useState(0);
 
@@ -334,7 +409,7 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip }) {
     // END OF CYCLE
     schedule(() => {
       setDoneCount(index + 1);
-      if (index < TOTAL_CYCLES - 1) {
+      if (index < maxCycles - 1) {
         runCycle(index + 1);
       } else {
         crossfade('Well done');
@@ -395,7 +470,7 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip }) {
       {/* Can't do now — above the cycle progress pills */}
       <View style={ds.bottom}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 20 }} />
-        <CyclePills current={cycleIndex} done={doneCount} />
+        <CyclePills current={cycleIndex} done={doneCount} total={maxCycles} />
       </View>
     </FadeIn>
   );
@@ -431,19 +506,43 @@ const ds = StyleSheet.create({
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function BreathingExercise({ onComplete, onExit, onSkip, exerciseIndex = 0, totalExercises = 8 }) {
-  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
-  const [step, setStep] = useState(null);
+// baseline=true: skip AsyncStorage check, show the "Let's begin" screen,
+// run only 1 breath cycle, and skip the detailed instructions screen.
+// All other sessions: existing behavior (AsyncStorage-gated intro, 3 cycles).
+export default function BreathingExercise({
+  onComplete,
+  onExit,
+  onSkip,
+  exerciseIndex  = 0,
+  totalExercises = 8,
+  baseline       = false,
+}) {
+  // Baseline starts immediately at the simplified intro screen — no AsyncStorage needed.
+  // Regular sessions: null while the AsyncStorage check is in flight.
+  const [step, setStep] = useState(baseline ? STEP_BASELINE : null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   useEffect(() => {
+    // Skip AsyncStorage check entirely for the baseline session.
+    if (baseline) return;
     AsyncStorage.getItem(DEMO_KEY)
       .then(val => setStep(val ? STEP_DRILL : STEP_TITLE))
       .catch(() => setStep(STEP_TITLE));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (step === null) return null;
 
+  // ── Baseline intro: one simple card, then straight to 1 breath cycle ─────────
+  if (step === STEP_BASELINE) {
+    return (
+      <BaselineIntroScreen
+        onNext={() => setStep(STEP_DRILL)}
+        onExit={onExit}
+      />
+    );
+  }
+
+  // ── Regular session: title → instructions → drill ─────────────────────────────
   if (step === STEP_TITLE) {
     return (
       <TitleScreen
@@ -471,6 +570,7 @@ export default function BreathingExercise({ onComplete, onExit, onSkip, exercise
       onExit={onExit}
       onShowVideo={() => setStep(STEP_VIDEO)}
       onSkip={onSkip ?? onComplete}
+      maxCycles={baseline ? 1 : TOTAL_CYCLES}
     />
   );
 }

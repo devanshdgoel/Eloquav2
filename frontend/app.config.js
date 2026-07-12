@@ -11,7 +11,6 @@ module.exports = {
     name: 'Eloqua',
     slug: 'eloqua2',
     owner: 'eloqua-team',
-    privacy: 'public',
     version: pkg.version,
     orientation: 'portrait',
     icon: './assets/icon.png',
@@ -25,6 +24,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.eloqua.app',
+      buildNumber: '1',
       infoPlist: {
         NSMicrophoneUsageDescription:
           'Eloqua needs the microphone to record your voice for training and speech enhancement.',
@@ -74,6 +74,15 @@ module.exports = {
       },
     },
     plugins: [
+      [
+        'expo-av',
+        {
+          // Required by Apple: declares microphone access in Info.plist via CNG.
+          // Belt-and-suspenders alongside the infoPlist entry above.
+          microphonePermission:
+            'Allow $(PRODUCT_NAME) to access your microphone to record and analyse your voice.',
+        },
+      ],
       [
         'expo-notifications',
         {

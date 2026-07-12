@@ -1,6 +1,6 @@
 # Eloqua — Vocal Training System
 
-*Last updated: 2026-05-25 (v1 analysis + v2 critical fixes)*
+*Last updated: 2026-07-07 (v4 — BaselineSession replaces AssessmentScreen for node 0)*
 
 ---
 
@@ -12,8 +12,8 @@ The HomeScreen renders a sine-wave SVG roadmap of 20 nodes. Each node tap routes
 
 | Node | Screen | Purpose |
 |------|--------|---------|
-| **Node 0** | `AssessmentScreen` (type: `baseline`) | First-ever voice baseline |
-| **Nodes 7, 14** | `AssessmentScreen` (type: `checkin`) **if** checkinDue, else `VocalTrainingSession` | Level gates |
+| **Node 0** | `BaselineSessionScreen` | First-ever voice baseline (see §2) |
+| **Nodes 7, 14** | `CheckinScreen` **if** checkinDue, else `VocalTrainingSessionScreen` | Level gates |
 | **All others** | `VocalTrainingSessionScreen` | Regular training |
 
 **checkinDue logic:** `(currentNode - lastCheckinSession) >= LEVELS_EVERY` where `LEVELS_EVERY = 7`. After every 7 sessions since the last check-in, the next tap routes to a check-in instead.
@@ -22,31 +22,80 @@ Progress (`current_node`) advances by 1 on every `completeSession()` call, cappe
 
 ---
 
-### 2. Baseline Assessment
+### 2. Baseline Session (Node 0)
 
-**File:** `frontend/src/screens/AssessmentScreen.js`  
-**Route:** `Assessment` with `{ type: 'baseline' }` params
+**File:** `frontend/src/screens/vocaltraining/BaselineSessionScreen.js`  
+**Route:** `BaselineSession` (no params)  
+**Previous approach:** `AssessmentScreen` with `{ type: 'baseline' }` — replaced in V4 (see §V4 changelog)
 
-Three tasks run back-to-back automatically:
+The baseline session uses the **same exercise components as regular sessions** but with two key differences:
+1. All scored exercises run at **tier 2** (not tier 1) to produce discriminating scores.
+2. After completion, exercise scores are mapped to per-exercise starting tiers for all future sessions.
 
-#### Task 1 — Sustained Vowel (`sustained_a`)
-- User holds "aaah" — auto-stops on silence after they've spoken
-- Silence detection: needs `SPEAK_THRESHOLD=0.25` for `MIN_SPEAK_FRAMES=3` frames to register as "has spoken"; then `SILENCE_THRESHOLD=0.15` for `SILENCE_FRAMES≈22 frames` (≈1.8s) triggers stop
-- Hard cap at `maxS=12s`
+#### Why tier 2 for the baseline?
 
-#### Task 2 — Reading (`reading`)
-- Fixed passage displayed; manual stop enabled after `minS=15s`; hard cap `maxS=90s`
+- **Tier 1** targets are trivially achievable for most users (4s phonation, 5-word loudness phrases). Almost everyone scores 100% → no discrimination.
+- **Tier 2** targets (5s phonation, 8-word phrases, ±30Hz pitch range) reveal genuine capability differences between users with mild vs. moderate speech impact.
+- Scores at tier 2 map directly to a recommended starting tier: ≥80% → tier 3, 35–79% → tier 2, <35% or skipped → tier 1.
 
-#### Task 3 — Free Speech (`free_speech`)
-- Conversational prompt; manual stop after `minS=10s`; hard cap `maxS=60s`
+#### Session Sequence (~12–15 minutes)
 
-Each task's audio is POSTed to `/api/analyze-voice`. After all three complete:
-- `computeComposite()` averages the three tasks' scores into `{ voice_power, expression, fluency }`
-- `pickFocus()` identifies the weakest score dimension — becomes the user's named focus area
-- If `isBaseline=true`, reading + free_speech recordings go to `/api/voice/clone` (ElevenLabs voice clone)
-- On "Start My Journey": scores → `/api/save-assessment` → `/api/complete-session`
+| Step | Exercise | Purpose | Tier |
+|------|----------|---------|------|
+| 1 | **Breathing** | Warm-up, sets tone | — (no tier) |
+| 2 | **Sustained Phonation** | Measures breath support / MPT | 2 (5s @ 42% vol) |
+| 3 | **Pitch Glides** | Measures pitch range / prosody | 2 (±30Hz, 4 hoops) |
+| 4 | **Loudness Drills** | Measures projection / voice power | 2 (8-word, 5s, 50% vol) |
+| 5 | **Functional Speech** | Measures fluency / articulation | 2 (medium phrases) |
+| 6 | **Voice Setup** | Voice clone recording (2 sentences) | — |
 
-**V2 addition:** After baseline completes, `setTiersFromAssessment(composite)` initialises difficulty tiers based on voice scores (see §5).
+#### Post-session processing
+
+After the last exercise completes, `finishBaseline()` runs:
+
+1. **Save exercise scores** — same as regular sessions (`saveSessionExerciseScores()`), feeds the nudge system.
+2. **Derive focus area** — the exercise with the lowest score (or a skipped exercise, which counts as 0) becomes the user's `baseline_focus_key`. Skips naturally surface as weakest area since a skip signals the user couldn't complete it.
+3. **Set difficulty tiers** — `setTiersFromBaselineExercises(scores, focusKey)` writes `difficulty_tiers` and `baseline_focus_key` to Firestore. Tier mapping at tier-2 performance:
+
+| Score at tier 2 | Starting tier |
+|----------------|---------------|
+| ≥ 80% | 3 (found it easy → move up) |
+| 35–79% | 2 (right challenge → stay) |
+| < 35% or skipped | 1 (struggling → step back) |
+
+4. **Complete session** — `completeSession()` advances node 0 → 1, updates streak.
+5. **Navigate** — `StreakCelebration` (with `fromBaseline: true`) → `BaselineResults` → `Home`.
+
+#### Focus Area Labels
+
+| Exercise key | Focus Label | Coaching Tip |
+|-------------|------------|-------------|
+| `phonation` | Breath Support | Hold your voice strong and steady for longer. Deep breaths fuel your sound. |
+| `loudness` | Voice Power | Project your voice clearly across the room. Speak like you mean it. |
+| `pitchGlides` | Pitch Variety | Add natural rise and fall to your speech. Your voice has more range than you think. |
+| `speech` | Clear Speech | Shape each word with intention and clarity. Precision carries further than volume. |
+
+#### Voice Clone
+
+`VoiceSetupExercise` records 2 sentences:
+1. *"I need to schedule an appointment with my doctor for next Tuesday at three o'clock."*
+2. *"The weather today is absolutely beautiful and I feel grateful to be outside enjoying it."*
+
+Recordings are uploaded to ElevenLabs via `POST /api/voice/clone`. Non-fatal: if upload fails, `onComplete(100)` is still called and the session ends normally. Default voice is used for Smart Speech until the clone is available.
+
+#### Key design choices vs. old AssessmentScreen
+
+| Feature | Old `AssessmentScreen` | New `BaselineSessionScreen` |
+|---------|----------------------|---------------------------|
+| Voice analysis | Backend (Praat + librosa → voice_power/expression/fluency) | Exercise performance at tier 2 |
+| MPT measurement | Explicit (3 × sustained_a, best recorded) | Indirect (SustainedPhonation score) |
+| Tier initialisation | `setTiersFromAssessment(composite)` | `setTiersFromBaselineExercises(scores)` |
+| Progress plan | Computed and stored (`computeProgressPlan`) | Not computed (CheckinScreen handles null) |
+| Voice clone | From reading + free speech recordings | Dedicated `VoiceSetupExercise` (2 sentences) |
+| UX | Separate recording interface, results screen | Same exercise components as regular sessions |
+| Time | ~5 min | ~12–15 min |
+
+The tradeoff: slightly less clinical precision on tier initialisation, significantly better user experience (familiar UI, no jarring context switch).
 
 ---
 
@@ -428,20 +477,25 @@ These are independent and can both fire (e.g. a check-in might raise pitchGlides
 ```
 frontend/src/
   services/
-    difficultyService.js     — tier management (fetchDifficultyTiers, setTiersFromAssessment,
-                                adjustDifficultyAfterCheckin, saveSessionExerciseScores)
+    difficultyService.js     — tier management: fetchDifficultyTiers, setTiersFromAssessment,
+                                setTiersFromBaselineExercises [V4], adjustDifficultyAfterCheckin,
+                                saveSessionExerciseScores, nudgeTiersFromRecentScores,
+                                computeProgressPlan, storeProgressPlan, fetchProgressPlan
   screens/
-    AssessmentScreen.js      — baseline + checkin assessment (3 tasks + voice cloning)
+    AssessmentScreen.js      — legacy baseline screen (dead in V4 — not navigated to)
+    BaselineResultsScreen.js — post-baseline motivational results (focusLabel, focusTip)
     CheckinScreen.js         — progress check-in (6 phases + per-dimension tier display)
     ProgressScreen.js        — voice score trends, milestones, session stats
     vocaltraining/
-      VocalTrainingSessionScreen.js   — 8-exercise session runner + score collection
+      BaselineSessionScreen.js        — [V4] first session: 6 exercises at tier 2, derives tiers
+      VocalTrainingSessionScreen.js   — 8-exercise regular session runner + score collection
       exercises/
         BreathingExercise.js
         SustainedPhonationExercise.js — score = bestSeconds/targetSeconds
         PitchGlidesExercise.js        — WebView pitch detection, score=100 on completion
         LoudnessDrillsExercise.js     — score penalised by miss count
         FunctionalSpeechExercise.js   — score=100 on completion
+        VoiceSetupExercise.js         — [V4] 3-phase voice clone recording exercise
         TailoredExercise.js           — picks weakest-tier exercise
         MidpointScreen.js
 
@@ -618,3 +672,82 @@ Splash → SignUp → WhatIsEloqua → HowItWorks → VoiceCloningExplainer → 
 12. **Apple Sign-In / Google Sign-In** — Both still show "Coming soon" alerts.
 
 13. **Android Play Store** — EAS Android build configured but store listing not started.
+
+---
+
+## V4 — Changes Made (2026-07-07)
+
+### V4.1 — BaselineSession replaces AssessmentScreen for node 0
+
+**Problem with the old approach (`AssessmentScreen` with `type: 'baseline'`):**
+The old baseline used a bespoke recording + backend-analysis UI that felt completely different from the regular training sessions. Users were presented with a clinical-looking interface (bar graphs, score arcs, progress plan table) before doing a single session. The UX mismatch was confusing.
+
+**New approach:**
+- **New file:** `frontend/src/screens/vocaltraining/BaselineSessionScreen.js`
+- **New file:** `frontend/src/screens/vocaltraining/exercises/VoiceSetupExercise.js`
+- **New function in `difficultyService.js`:** `setTiersFromBaselineExercises(scores, focusKey)`
+- **Node 0 routing changed:** `HomeScreen.handleNodePress` and the setup banner now navigate to `BaselineSession` instead of `Assessment` with `{ type: 'baseline' }`.
+- **`AssessmentScreen.finishAssessment()`** reverted: no longer navigates to `StreakCelebration` for baseline type; always does `navigation.replace('Home')`. AssessmentScreen remains registered in the navigator as legacy/fallback code but is not reachable from the main flow.
+- **AppNavigator:** `BaselineSession` stack screen added; flow comment updated.
+
+**What changed about the baseline flow:**
+
+| Aspect | Before (V3) | After (V4) |
+|--------|------------|-----------|
+| Screen | `AssessmentScreen` (bespoke UI) | `BaselineSessionScreen` (same exercise components) |
+| Duration | ~5 min | ~12–15 min |
+| Exercise tier | N/A (recording tasks) | Tier 2 (all scored exercises) |
+| Tier initialisation | From backend voice analysis scores | From exercise scores at tier 2 |
+| Voice clone | From reading + free speech audio files | `VoiceSetupExercise` (2 dedicated sentences) |
+| Progress plan | Computed and stored | Not computed (CheckinScreen handles null gracefully) |
+| Post-session flow | AssessmentScreen results → Home | StreakCelebration (`fromBaseline=true`) → BaselineResults → Home |
+| Focus area | From weakest backend score dimension | From lowest-scoring exercise |
+
+### V4.2 — VoiceSetupExercise
+
+**File:** `frontend/src/screens/vocaltraining/exercises/VoiceSetupExercise.js`
+
+A new exercise component used exclusively in the baseline session. Three phases:
+
+1. **Intro** — Explains voice cloning, offers "Begin" and "Skip for now" (skip calls `onSkip()` so the session still completes normally).
+2. **Recording** — Shows one sentence at a time. Progress pill shows "1 of 2" / "2 of 2". Tap mic to start/stop. After both sentences: moves to processing.
+3. **Processing** — Spinner while uploading to ElevenLabs. Non-fatal on failure: `onComplete(100)` is called regardless.
+
+Uses the same visual style as other exercise components (BG_GRADIENT, `hb` header buttons, `FadeIn`, `SessionBar`).
+
+### V4.3 — `setTiersFromBaselineExercises` in difficultyService
+
+**Function:** `setTiersFromBaselineExercises(exerciseScores, focusKey)`
+
+Maps tier-2 exercise performance to a recommended starting tier for regular sessions:
+
+| Score at tier 2 | Starting tier |
+|----------------|---------------|
+| ≥ 80% | 3 |
+| 35–79% | 2 |
+| < 35% or null (skipped) | 1 |
+
+Also writes `baseline_focus_key` to Firestore (same field used by `TailoredExercise` for tie-breaking). This replaces `setTiersFromAssessment()` for the new baseline flow.
+
+### V4.4 — Key file reference updates
+
+```
+frontend/src/
+  screens/
+    vocaltraining/
+      BaselineSessionScreen.js      — NEW: baseline session container (tier-2 exercises)
+      exercises/
+        VoiceSetupExercise.js       — NEW: voice clone recording exercise (3 phases)
+    HomeScreen.js                   — handleNodePress node-0 → 'BaselineSession'
+    AssessmentScreen.js             — finishAssessment() reverted: always → Home
+  services/
+    difficultyService.js            — setTiersFromBaselineExercises() added
+  navigation/
+    AppNavigator.js                 — BaselineSession screen registered
+```
+
+### V4 — Open Questions / Future Work
+
+- **No progress plan after baseline** — `computeProgressPlan()` and `storeProgressPlan()` are not called after the new baseline session. `CheckinScreen` calls `fetchProgressPlan()` which returns null for these users. Currently handled gracefully (the "VS YOUR PLAN" comparison card is simply omitted). A future improvement would compute a lightweight plan from the exercise scores.
+- **AssessmentScreen dead code** — `AssessmentScreen.js` is still registered in the navigator but not reachable from any user flow. It could be repurposed as an "advanced check-in" or removed before App Store submission.
+- **Voice clone timing** — The user leaves the app (via StreakCelebration → BaselineResults → Home) while the voice clone upload may still be in progress on ElevenLabs servers. The first Smart Speech session may therefore fall back to the default voice. This is acceptable for V4 but a "voice clone status" indicator on HomeScreen would help.

@@ -422,6 +422,68 @@ export async function fetchCheckinNumber() {
   }
 }
 
+// ── Baseline exercise tier initialisation ─────────────────────────────────────
+
+/**
+ * Initialise difficulty tiers from baseline session exercise performance.
+ *
+ * The baseline runs all scored exercises at tier 2 (a meaningful mid-point
+ * that separates low-functioning from high-functioning users). The score
+ * achieved at tier 2 determines the tier used for all subsequent sessions:
+ *
+ *   score ≥ 80% at tier 2 → start at tier 3 (user found it easy)
+ *   score 35–79%           → stay at tier 2  (appropriate challenge)
+ *   score < 35% or skipped → start at tier 1 (user struggled)
+ *
+ * PitchGlides and FunctionalSpeech emit 100 on completion (pass/fail), so
+ * "skipped" (null) → tier 1, "completed" (100) → tier 2 by default.
+ *
+ * @param {{ phonation?, loudness?, pitchGlides?, speech? }} exerciseScores - 0–100 each
+ * @param {string|null} focusKey - exercise key with the lowest score (used by
+ *   TailoredExercise for tie-breaking, stored as baseline_focus_key)
+ * @returns {Promise<{ phonation, loudness, pitchGlides, speech }>}
+ */
+export async function setTiersFromBaselineExercises(exerciseScores = {}, focusKey = null) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return { ...DEFAULT_TIERS };
+
+  function scoreToTier(score) {
+    if (score == null || !Number.isFinite(score)) return 1; // skipped → step back to tier 1
+    if (score >= 80) return 3;                               // aced tier 2 → move to tier 3
+    if (score >= 35) return 2;                               // solid at tier 2 → stay
+    return 1;                                                // struggling at tier 2 → step back
+  }
+
+  const tiers = {
+    phonation:   scoreToTier(exerciseScores.phonation   ?? null),
+    loudness:    scoreToTier(exerciseScores.loudness    ?? null),
+    pitchGlides: scoreToTier(exerciseScores.pitchGlides ?? null),
+    speech:      scoreToTier(exerciseScores.speech      ?? null),
+  };
+
+  const payload = { difficulty_tiers: tiers };
+  if (focusKey) payload.baseline_focus_key = focusKey;
+
+  try {
+    const ref  = doc(db, 'user_progress', uid);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateDoc(ref, payload);
+    } else {
+      await setDoc(ref, {
+        ...payload,
+        current_node:       0,
+        sessions_completed: 0,
+        streak_days:        0,
+      });
+    }
+  } catch (err) {
+    console.warn('[difficultyService] setTiersFromBaselineExercises write failed:', err?.message);
+  }
+
+  return tiers;
+}
+
 // ── Exercise score persistence ────────────────────────────────────────────────
 
 /**

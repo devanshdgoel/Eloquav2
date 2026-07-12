@@ -151,6 +151,12 @@ export default function HomeScreen({ navigation }) {
 
   function handleNodePress(i) {
     const { sessions_completed: done, last_checkin_session: lastCI } = progress;
+    // Node 0 before any session has been completed → route to the baseline session.
+    // This is the special first session that builds the voice profile via exercises.
+    if (i === 0 && done === 0) {
+      navigation.navigate('BaselineSession');
+      return;
+    }
     if (i > 0 && i % LEVELS_EVERY === 0 && i === activeNode && done > lastCI) {
       navigation.navigate('Checkin', { nodeIndex: i });
     } else {
@@ -232,10 +238,29 @@ export default function HomeScreen({ navigation }) {
     <View style={[styles.root, { paddingTop: safeTop }]}>
       <StatusBar barStyle="light-content" />
 
-      {!checkinDue && (
-        <Text style={[styles.greeting, { fontSize: fs(17) }]}>
-          {isFirstSession ? 'Welcome. Start your voice journey.' : 'Good to see you.'}
-        </Text>
+      {/* "Set up your voice profile" prompt — shown before the first session is complete */}
+      {isFirstSession && !checkinDue && (
+        <TouchableOpacity
+          style={styles.setupBanner}
+          onPress={() => navigation.navigate('BaselineSession')}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Set up your voice profile — tap to begin"
+        >
+          <View style={styles.setupBannerLeft}>
+            <Text style={[styles.setupBannerEyebrow, { fontSize: fs(16) }]}>GET STARTED</Text>
+            <Text style={[styles.setupBannerTitle, { fontSize: fs(20) }]}>Set Up Your Voice Profile</Text>
+            <Text style={[styles.setupBannerSub, { fontSize: fs(16) }]}>
+              Personalise your training plan and enable Smart Speech
+            </Text>
+          </View>
+          <Text style={styles.setupBannerArrow}>›</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Greeting — shown once the first session is done and no check-in is pending */}
+      {!isFirstSession && !checkinDue && (
+        <Text style={[styles.greeting, { fontSize: fs(17) }]}>Good to see you.</Text>
       )}
 
       {/* ── Check-in due banner — shown instead of greeting ─────────────── */}
@@ -544,6 +569,48 @@ const styles = StyleSheet.create({
     color: '#FFA940',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  // ── Voice profile setup banner — shown before the first session ──────────
+  setupBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(195,222,206,0.10)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(195,222,206,0.35)',
+  },
+  setupBannerLeft: { flex: 1 },
+  setupBannerEyebrow: {
+    color: COLORS.pathColor,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  setupBannerTitle: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginBottom: 3,
+  },
+  setupBannerSub: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 22,
+  },
+  setupBannerArrow: {
+    color: COLORS.pathColor,
+    fontSize: 30,
+    fontWeight: '300',
+    paddingLeft: 12,
   },
 
   // ── Check-in due banner ───────────────────────────────────────────────────

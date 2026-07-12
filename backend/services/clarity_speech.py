@@ -7,6 +7,12 @@ logger = logging.getLogger(__name__)
 
 ENABLE_CLARITY = True
 
+# Single client instance reused across all calls — avoids the ~150 ms of
+# connection setup overhead that comes with instantiating OpenAI() per request.
+# Initialised lazily (None when the key is absent) so the module still imports
+# cleanly even without a configured API key.
+_client: OpenAI | None = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
 # Output must be same length or shorter in almost all cases: we only remove
 # artefacts (fillers, repetitions) and split fused words. The 1.1 margin
 # covers rare cases where splitting several fused words adds spaces.
@@ -16,7 +22,9 @@ MAX_LENGTH_EXPANSION_RATIO = 1.10
 # the per-request user prompt is sent.
 _SYSTEM_PROMPT = (
     "You are a minimal transcription artefact remover for people with Hypokinetic Dysarthria "
-    "caused by Parkinson's disease. You remove only four things: palilalia (word repetitions), "
+    "caused by Parkinson's disease. Their speech is often soft, slurred, or run together, so "
+    "Whisper frequently mishears function words or merges nearby words. "
+    "You remove only four things: palilalia (word repetitions), "
     "filler sounds (um/uh/ah/er/hmm), non-speech sounds, and unambiguously fused words. "
     "You never add, infer, or change any words. When in doubt, return the text unchanged."
 )
@@ -173,12 +181,11 @@ def clarity_final_pass(enhanced_text: str) -> str:
     if not enhanced_text or len(enhanced_text.strip()) < 10:
         return enhanced_text
 
-    if not ENABLE_CLARITY or not OPENAI_API_KEY:
+    if not ENABLE_CLARITY or not _client:
         return enhanced_text
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
+        response = _client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": _FINAL_PASS_SYSTEM_PROMPT},
@@ -220,15 +227,14 @@ def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
     if not context.strip():
         return clarity_transcript(raw_text)
 
-    if not ENABLE_CLARITY or not OPENAI_API_KEY:
+    if not ENABLE_CLARITY or not _client:
         return raw_text
 
     # Keep only the tail of the context to stay within token budget
     context_window = context[-400:] if len(context) > 400 else context
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
+        response = _client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
@@ -240,8 +246,10 @@ def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
                     ),
                 },
             ],
-            temperature=0.15,
-            max_tokens=300,
+            temperature=0.10,
+            # 400 tokens handles chunks where Whisper produced a long run-on
+            # sentence with several fused words to split. 300 could truncate.
+            max_tokens=400,
         )
 
         cleaned = _strip_wrapping_quotes(response.choices[0].message.content.strip())
@@ -272,13 +280,11 @@ def clarity_transcript(raw_text: str) -> str:
     if not raw_text or len(raw_text.strip()) < 3:
         return raw_text
 
-    if not ENABLE_CLARITY or not OPENAI_API_KEY:
+    if not ENABLE_CLARITY or not _client:
         return raw_text
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
-        response = client.chat.completions.create(
+        response = _client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
@@ -287,10 +293,9 @@ def clarity_transcript(raw_text: str) -> str:
                     "content": _CORRECTION_PROMPT_TEMPLATE.format(raw_text=raw_text),
                 },
             ],
-            # Low temperature keeps corrections deterministic and literal.
-            # A small non-zero value prevents the model from being overconfident
-            # about ambiguous restorations.
-            temperature=0.15,
+            # Low temperature keeps corrections deterministic and literal —
+            # the model must copy the text and remove artefacts, not rewrite.
+            temperature=0.10,
             max_tokens=500,
         )
 

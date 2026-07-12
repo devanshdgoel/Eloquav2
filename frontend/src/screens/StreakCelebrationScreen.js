@@ -134,7 +134,11 @@ function GlowRing({ size, bgOpacity, delay }) {
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function StreakCelebrationScreen({ navigation, route }) {
-  const { streakDays = 1, userName = '' } = route?.params ?? {};
+  const {
+    streakDays = 1, userName = '', fromBaseline = false,
+    focusKey = null, focusLabel = null, focusTip = null,
+    phonationScore = null, loudnessScore = null,
+  } = route?.params ?? {};
   const { bottom: safeBottom } = useSafeAreaInsets();
 
   // Animation values
@@ -244,7 +248,15 @@ export default function StreakCelebrationScreen({ navigation, route }) {
 
   function handleContinue() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.replace('StreakCommitment', { streakDays, userName });
+    if (fromBaseline) {
+      // Pass the full assessment profile through to the results screen.
+      navigation.replace('BaselineResults', {
+        focusKey, focusLabel, focusTip,
+        phonationScore, loudnessScore,
+      });
+    } else {
+      navigation.replace('StreakCommitment', { streakDays, userName });
+    }
   }
 
   const isNewStreak = streakDays === 1;

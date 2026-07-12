@@ -438,8 +438,8 @@ export default function AssessmentScreen({ navigation, route }) {
   // ── Save + finish — uses backend endpoint (Admin SDK bypasses Firestore rules)
   async function finishAssessment() {
     setPhase('saving');
-    let saved     = true;
-    let completed = true;
+    let saved      = true;
+    let completed  = true;
 
     if (auth.currentUser) {
       if (isBaseline && (composite.voice_power != null || composite.expression != null || composite.fluency != null)) {
@@ -490,8 +490,11 @@ export default function AssessmentScreen({ navigation, route }) {
           method: 'POST', body: sessionForm,
         });
         completed = sessionRes.ok;
-        if (completed) onSessionComplete().catch(() => {});
-        else console.warn('[Assessment] complete-session returned', sessionRes.status);
+        if (completed) {
+          onSessionComplete().catch(() => {});
+        } else {
+          console.warn('[Assessment] complete-session returned', sessionRes.status);
+        }
       } catch (e) {
         completed = false;
         console.warn('[Assessment] complete-session error:', e?.message);

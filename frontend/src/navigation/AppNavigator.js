@@ -32,8 +32,10 @@ import SpeechDemoScreen from '../screens/SpeechDemoScreen';
 import AssessmentScreen from '../screens/AssessmentScreen';
 import CheckinScreen from '../screens/CheckinScreen';
 import VocalTrainingSessionScreen from '../screens/vocaltraining/VocalTrainingSessionScreen';
+import BaselineSessionScreen from '../screens/vocaltraining/BaselineSessionScreen';
 import StreakCelebrationScreen from '../screens/StreakCelebrationScreen';
 import StreakCommitmentScreen from '../screens/StreakCommitmentScreen';
+import BaselineResultsScreen from '../screens/BaselineResultsScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 
 const Stack = createStackNavigator();
@@ -56,13 +58,14 @@ export default function AppNavigator() {
       {/*
        * Single flat stack — always starts at Splash.
        * Navigation flow (new users):
-       *   Splash → SignUp → SetupPermissions → SetupAboutYou → Home
+       *   Splash → SignUp → SetupPermissions → SetupAboutYou → Home → (node 0 tap) →
+       *   BaselineSession → StreakCelebration → BaselineResults → Home
        * Navigation flow (returning users):
-       *   Splash → SignIn → Opening → Home
-       * Navigation flow (returning, onboarding incomplete):
-       *   Splash → SignIn → SetupPermissions (restarts onboarding)
+       *   Splash → Opening → Home
+       * Navigation flow (regular session):
+       *   Home → VocalTrainingSession → StreakCelebration → StreakCommitment → Home
        *
-       * Voice cloning happens during the baseline Assessment (first session).
+       * Voice cloning happens inside BaselineSession via VoiceSetupExercise (node 0).
        * SetupVoice is registered but not in the active flow.
        * WhatIsEloqua / HowItWorks / VoiceCloningExplainer are backup screens for
        * a future "About Eloqua" Settings entry point.
@@ -100,9 +103,11 @@ export default function AppNavigator() {
         <Stack.Screen name="Checkin" component={CheckinScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
         <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
+        <Stack.Screen name="BaselineSession" component={BaselineSessionScreen} />
         <Stack.Screen name="VocalTrainingSession" component={VocalTrainingSessionScreen} />
         <Stack.Screen name="StreakCelebration" component={StreakCelebrationScreen} />
         <Stack.Screen name="StreakCommitment" component={StreakCommitmentScreen} />
+        <Stack.Screen name="BaselineResults" component={BaselineResultsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
     </ErrorBoundary>

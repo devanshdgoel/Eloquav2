@@ -179,14 +179,15 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const largeText = useLargeText();
   const fs = (base) => largeText ? Math.round(base * 1.25) : base;
 
-  const [phase,          setPhase]          = useState(S.IDLE);
-  const [liveTranscript, setLiveTranscript] = useState('');
-  const [pendingCount,   setPendingCount]   = useState(0);
-  const [result,         setResult]         = useState(null);
-  const [isPlaying,      setIsPlaying]      = useState(false);
-  const [errorMsg,       setErrorMsg]       = useState('');
+  const [phase,           setPhase]          = useState(S.IDLE);
+  const [liveTranscript,  setLiveTranscript] = useState('');
+  const [pendingCount,    setPendingCount]   = useState(0);
+  const [result,          setResult]         = useState(null);
+  const [isPlaying,       setIsPlaying]      = useState(false);
+  const [isLoadingAudio,  setIsLoadingAudio] = useState(false);
+  const [errorMsg,        setErrorMsg]       = useState('');
   // First-play motivational message — shown the very first time enhanced audio plays.
-  const [firstPlayMsg,   setFirstPlayMsg]   = useState(null);
+  const [firstPlayMsg,    setFirstPlayMsg]   = useState(null);
   const FIRST_PLAY_KEY = 'eloqua_speech_first_play';
 
   // Screen-time tracking.
@@ -206,9 +207,21 @@ export default function SpeechEnhancementScreen({ navigation }) {
       .catch(() => {});
   }, []);
 
+  // Track whether the component is still mounted so async audio-load callbacks
+  // don't fire after the user has navigated away (root cause of the delayed-play bug).
+  const isMountedRef = useRef(true);
+
   // Chunk bookkeeping — plain refs to avoid re-render storms
   const recordingRef      = useRef(null);
   const soundRef          = useRef(null);
+  // Holds an Audio.Sound that was pre-loaded in the background as soon as results
+  // arrived. By the time the user taps Play (typically 3–10 s later), the file is
+  // already downloaded and ready — eliminates the per-tap network wait.
+  const preloadedSoundRef = useRef(null);
+  // Incremented each time a new recording session starts. preloadAudio captures
+  // the generation at call time and discards its result if the counter has advanced,
+  // preventing a stale preload from an old session from leaking into a new one.
+  const sessionGenerationRef = useRef(0);
   const playbackLockRef   = useRef(false); // prevents concurrent sound creation from rapid taps
   const chunkTimerRef     = useRef(null);
   const chunkIndexRef     = useRef(0);
@@ -227,7 +240,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   useEffect(() => {
     return () => {
+      // Mark as unmounted FIRST — checked by playEnhanced's async continuation
+      // to prevent the sound from playing after the user has navigated away.
+      isMountedRef.current = false;
       soundRef.current?.unloadAsync();
+      preloadedSoundRef.current?.unloadAsync();
       clearTimeout(chunkTimerRef.current);
       recordingRef.current?.stopAndUnloadAsync().catch(() => {});
     };
@@ -300,7 +317,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
       if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
       const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), 15000);
+      // 28 s gives the Render free-tier server time to wake from a cold start
+      // (typically 15–20 s) before we abort. The previous 15 s timed out before
+      // the server could respond, causing all chunks to fail simultaneously.
+      const tid  = setTimeout(() => ctrl.abort(), 28000);
       const res  = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
         method: 'POST',
         body: form,
@@ -309,8 +329,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
       if (!res.ok) {
         if (attempt === 0) {
-          // One retry after a short pause — covers transient server/network blips.
-          await new Promise(r => setTimeout(r, 1500));
+          // Wait longer on retry — gives a cold-starting server more time to be ready.
+          await new Promise(r => setTimeout(r, 4000));
           return transcribeChunk(uri, index, previousRawText, previousEnhancedText, 1);
         }
         console.error(`[Speech] chunk ${index} → HTTP ${res.status} (after retry)`);
@@ -332,7 +352,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       }
     } catch (e) {
       if (attempt === 0) {
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 4000));
         return transcribeChunk(uri, index, previousRawText, previousEnhancedText, 1);
       }
       console.error(`[Speech] chunk ${index} error:`, e?.message);
@@ -388,6 +408,19 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   async function startRecording() {
     try {
+      // Await cleanup of any preloaded sound from the previous session BEFORE
+      // changing the audio mode. On iOS, Sound.unloadAsync() deactivates the audio
+      // session when it's the last active sound object. If unloadAsync runs AFTER
+      // setAudioModeAsync({ allowsRecordingIOS: true }), it can silently deactivate
+      // the session mid-setup and cause the new recording to capture only silence.
+      if (preloadedSoundRef.current) {
+        await preloadedSoundRef.current.unloadAsync().catch(() => {});
+        preloadedSoundRef.current = null;
+      }
+      // Advance the session generation so any still-running preloadAudio from the
+      // previous session discards its result rather than overwriting the cleared ref.
+      sessionGenerationRef.current += 1;
+
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Microphone Required', 'Please enable microphone access in your device settings.');
@@ -516,6 +549,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
         duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
       });
 
+      // Begin downloading the TTS audio file immediately so it's cached by the
+      // time the user taps Play (typically 3–10 s later on the results screen).
+      if (data.audio_url) preloadAudio(data.audio_url);
+
       // Fire-and-forget: non-blocking voice analysis for progress tracking.
       // Does NOT affect the current session's results.
       analyzeVoiceAsync(rawText, recordingDurationRef.current);
@@ -554,35 +591,91 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Playback ─────────────────────────────────────────────────────────────────
 
+  // Pre-load the TTS audio file as soon as results arrive so the file is already
+  // in memory by the time the user taps Play. Any error is swallowed — playEnhanced
+  // will fall back to on-demand loading if the pre-load didn't succeed in time.
+  async function preloadAudio(audioUrl) {
+    if (!audioUrl || !isMountedRef.current) return;
+    // Capture the generation at the time of the call. If the user starts a new
+    // recording session before this download finishes, the generation advances and
+    // we discard the now-stale sound rather than clobbering the new session.
+    const generation = sessionGenerationRef.current;
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `${API_BASE_URL}${audioUrl}` },
+        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true }
+      );
+      // Discard if: component unmounted, playback already started (on-demand path
+      // ran first), OR a new recording session began while we were downloading.
+      if (!isMountedRef.current || soundRef.current || sessionGenerationRef.current !== generation) {
+        sound.unloadAsync().catch(() => {});
+        return;
+      }
+      preloadedSoundRef.current = sound;
+    } catch (e) {
+      console.warn('[Speech] Audio preload failed:', e?.message);
+    }
+  }
+
   async function playEnhanced() {
     if (!result?.audio_url || playbackLockRef.current) return;
     playbackLockRef.current = true;
+
     try {
-      if (soundRef.current) { await soundRef.current.stopAsync().catch(() => {}); await soundRef.current.unloadAsync(); soundRef.current = null; }
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: `${API_BASE_URL}${result.audio_url}` },
-        { shouldPlay: true, rate: 0.85, shouldCorrectPitch: true }
-      );
+      if (soundRef.current) {
+        await soundRef.current.stopAsync().catch(() => {});
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+
+      let sound;
+      if (preloadedSoundRef.current) {
+        // Happy path: audio was pre-loaded while the user read the transcript —
+        // no network wait, playback is instant.
+        sound = preloadedSoundRef.current;
+        preloadedSoundRef.current = null;
+      } else {
+        // Fallback: preload didn't finish in time (slow network, very fast tap).
+        // Download now and show a spinner so the user knows we're working.
+        setIsLoadingAudio(true);
+        const loaded = await Audio.Sound.createAsync(
+          { uri: `${API_BASE_URL}${result.audio_url}` },
+          { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true }
+        );
+        sound = loaded.sound;
+
+        // The user navigated away while downloading — discard and bail.
+        if (!isMountedRef.current) {
+          sound.unloadAsync().catch(() => {});
+          return;
+        }
+      }
+
       soundRef.current = sound;
+      setIsLoadingAudio(false);
       setIsPlaying(true);
+
       sound.setOnPlaybackStatusUpdate(s => {
         if (s.didJustFinish || !s.isLoaded) {
-          setIsPlaying(false);
+          if (isMountedRef.current) setIsPlaying(false);
           sound.unloadAsync().catch(() => {});
           if (soundRef.current === sound) soundRef.current = null;
         }
       });
 
+      await sound.playAsync();
+
       // First-time play: show motivational message for 4 s.
       const alreadyPlayed = await AsyncStorage.getItem(FIRST_PLAY_KEY).catch(() => 'yes');
-      if (!alreadyPlayed) {
+      if (!alreadyPlayed && isMountedRef.current) {
         await AsyncStorage.setItem(FIRST_PLAY_KEY, 'true').catch(() => {});
         setFirstPlayMsg("That's you — clearer, stronger.\nThis is what we're working toward.");
-        setTimeout(() => setFirstPlayMsg(null), 4000);
+        setTimeout(() => { if (isMountedRef.current) setFirstPlayMsg(null); }, 4000);
       }
     } catch {
-      Alert.alert('Playback Error', 'Could not play the enhanced audio.');
+      if (isMountedRef.current) Alert.alert('Playback Error', 'Could not play the enhanced audio.');
     } finally {
+      if (isMountedRef.current) setIsLoadingAudio(false);
       playbackLockRef.current = false;
     }
   }
@@ -600,6 +693,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const reset = useCallback(() => {
     soundRef.current?.unloadAsync();
     soundRef.current = null;
+    preloadedSoundRef.current?.unloadAsync();
+    preloadedSoundRef.current = null;
     setIsPlaying(false);
     setResult(null);
     setErrorMsg('');
@@ -686,10 +781,16 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {/* ── ENHANCING ─────────────────────────────────────────────────────── */}
       {phase === S.ENHANCING && (
         <View style={styles.enhancingArea}>
-          <ActivityIndicator size="large" color="rgba(255,255,255,0.85)" />
-          <Text style={[styles.enhancingText, { fontSize: fs(20) }]}>Polishing your words…</Text>
+          {/* Centered loading card — prominent so users know the app is working */}
+          <View style={styles.enhancingCard}>
+            <ActivityIndicator size="large" color={ORANGE} />
+            <Text style={[styles.enhancingText, { fontSize: fs(22) }]}>Polishing your words…</Text>
+            <Text style={[styles.enhancingSubText, { fontSize: fs(15) }]}>
+              Enhancing with AI — just a moment
+            </Text>
+          </View>
 
-          {/* Keep the raw transcript visible while the AI works */}
+          {/* Dimmed transcript stays visible so users can see what was captured */}
           {liveTranscript ? (
             <View style={[styles.liveCard, styles.liveCardDim]}>
               <ScrollView
@@ -726,14 +827,20 @@ export default function SpeechEnhancementScreen({ navigation }) {
           </View>
 
           <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnPlay, !result.audio_url && styles.actionBtnDisabled]}
+            style={[styles.actionBtn, styles.actionBtnPlay, (!result.audio_url || isLoadingAudio) && styles.actionBtnDisabled]}
             onPress={isPlaying ? stopPlayback : playEnhanced}
-            activeOpacity={result.audio_url ? 0.85 : 1}
-            disabled={!result.audio_url}
+            activeOpacity={result.audio_url && !isLoadingAudio ? 0.85 : 1}
+            disabled={!result.audio_url || isLoadingAudio}
             accessibilityRole="button"
-            accessibilityLabel={isPlaying ? 'Stop audio' : 'Play enhanced audio'}
+            accessibilityLabel={isLoadingAudio ? 'Loading audio' : isPlaying ? 'Stop audio' : 'Play enhanced audio'}
           >
-            <Text style={[styles.actionLabel, { color: result.audio_url ? '#1A1A1A' : 'rgba(255,255,255,0.50)' }]}>{isPlaying ? 'Stop' : 'Play'}</Text>
+            {isLoadingAudio ? (
+              <ActivityIndicator size="small" color="#1A1A1A" />
+            ) : (
+              <Text style={[styles.actionLabel, { color: result.audio_url ? '#1A1A1A' : 'rgba(255,255,255,0.50)' }]}>
+                {isPlaying ? 'Stop' : 'Play'}
+              </Text>
+            )}
             <Text style={styles.actionIcon}>🔊</Text>
           </TouchableOpacity>
 
@@ -885,15 +992,35 @@ const styles = StyleSheet.create({
   enhancingArea: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: Math.round(20 * SC),
     paddingBottom: 24,
-    gap: 14 * SC,
+    gap: Math.round(20 * SC),
+  },
+  // Frosted card around the spinner + text so it reads clearly over any background
+  enhancingCard: {
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    paddingVertical: 36,
+    paddingHorizontal: 32,
+    gap: 18,
   },
   enhancingText: {
-    fontSize: 20,
+    fontSize: 22,
     color: WHITE,
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  enhancingSubText: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 
   // ── ERROR ──

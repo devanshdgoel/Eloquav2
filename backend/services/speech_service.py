@@ -36,9 +36,16 @@ def transcribe_audio(audio_path: str, prompt: str = "") -> tuple:
         "file": open(audio_path, "rb"),
         "model": (None, "whisper-1"),
         "response_format": (None, "verbose_json"),
+        # Locking to English prevents Whisper's language auto-detect from
+        # misidentifying dysarthric speech as a different language — a real
+        # failure mode for slurred or low-volume utterances.
+        "language": (None, "en"),
     }
 
     if prompt:
+        # Pass the last 800 chars of previous transcript as context.
+        # Whisper uses this as an "initial prompt" to carry vocabulary and
+        # style across chunk boundaries, reducing word-boundary errors.
         files["prompt"] = (None, prompt[-800:])
 
     try:

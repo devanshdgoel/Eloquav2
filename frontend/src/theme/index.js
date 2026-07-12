@@ -24,7 +24,7 @@ const _p = {
   teal400: '#68B39F',   // mint teal (speech / onboarding mid)
   teal300: '#9FCFBD',   // light mint
   teal200: '#C3DECE',   // pale mint (accent labels on dark)
-  teal100: '#E0ECDE',   // lightest mint (form screens, splash)
+  teal100: '#E0ECDE',   // lightest mint (splash, light accents)
 
   // Forest green (exercise score zone — top half of exercise screens)
   forest:  '#1E3828',
@@ -49,7 +49,7 @@ export const colors = {
   bgDeep:        _p.teal950,                     // deepest dark (gradient end)
   bgSession:     _p.teal800,                     // assessment / check-in
   bgForest:      _p.forest,                      // exercise score zone top
-  bgLight:       _p.teal100,                     // onboarding forms / splash
+  bgLight:       _p.teal100,                     // splash / light accent backgrounds
 
   // ── Surfaces ─────────────────────────────────────────────────────────────────
   surface:       _p.teal700,                     // card on dark (#2D6974)
@@ -85,7 +85,7 @@ export const colors = {
     darkApp:      [_p.teal500, _p.teal900, _p.teal950],
     // Auth screens: SignUp, SignIn, SetupPermissions
     auth:         [_p.teal600, _p.teal900],
-    // Onboarding form screens: SetupAboutYou
+    // Light mint gradient — available for future screens (no longer used in active flow)
     lightForm:    [_p.teal100, _p.teal300],
     // Speech Enhancement + VocalTraining header
     speech:       [_p.teal100, _p.teal400],

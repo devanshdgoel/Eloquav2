@@ -53,8 +53,8 @@ export default function SetupAboutYouScreen({ navigation }) {
   const canProceed = name.trim().length > 0;
 
   return (
-    <LinearGradient colors={['#E0ECDE', '#9FCFBD']} style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <LinearGradient colors={['#326F77', '#1C4047']} style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
       {/* Back button — absolute so it stays visible above the scroll */}
       <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
@@ -160,15 +160,15 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(28,64,71,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1.5,
-    borderColor: 'rgba(28,64,71,0.20)',
+    borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
   backArrow: {
-    color: '#1C4047',
+    color: '#FFFFFF',
     fontSize: 20,
     fontWeight: '500',
   },
@@ -182,13 +182,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 40,
     fontWeight: '700',
-    color: '#1C4047',
+    color: '#FFFFFF',
     letterSpacing: 1,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 18,
-    color: 'rgba(28,64,71,0.65)',
+    color: 'rgba(255,255,255,0.60)',
     marginBottom: 36,
     lineHeight: 26,
     letterSpacing: 0.2,
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1C4047',
+    color: '#FFFFFF',
     marginBottom: 10,
     letterSpacing: 0.3,
   },
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   optional: {
     fontSize: 16,
     fontWeight: '400',
-    color: 'rgba(28,64,71,0.55)',
+    color: 'rgba(255,255,255,0.55)',
   },
   selectText: {
     fontSize: 18,

@@ -30,6 +30,8 @@ import {
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
+import { fetchWithAuth } from '../../../utils/authHeaders';
+import { API_BASE_URL } from '../../../config/env';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -555,6 +557,53 @@ const ds = StyleSheet.create({
   dotActive: { backgroundColor: WHITE, width: 10, height: 10, borderRadius: 5 },
 });
 
+// ── Word verification ─────────────────────────────────────────────────────────────
+// Sends the captured drill audio to Whisper and checks whether the user said
+// the expected phrase. Returns true (pass) on any API failure so that network
+// errors never block the user from completing a round.
+//
+// Threshold (40 %): intentionally lenient because:
+//   1. Hypokinetic Dysarthria causes Whisper to mishear or drop words.
+//   2. The primary therapeutic goal is VOLUME; word accuracy is secondary.
+//   3. False rejections (telling a patient they said wrong words when they didn't)
+//      are clinically harmful and demoralising.
+async function checkWordsMatch(uri, expectedPhrase) {
+  try {
+    const form = new FormData();
+    form.append('file',        { uri, type: 'audio/m4a', name: 'drill.m4a' });
+    form.append('chunk_index', '0');
+    form.append('model',       'whisper');
+
+    const ctrl = new AbortController();
+    // 5 s is enough for Whisper on a short drill clip; longer means the user waits
+    // awkwardly. On timeout we fall back to passing so the drill is never stuck.
+    const tid  = setTimeout(() => ctrl.abort(), 5000);
+    const res  = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
+      method: 'POST',
+      body:   form,
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(tid));
+
+    if (!res.ok) return true;
+
+    const data       = await res.json();
+    const spoken     = (data.raw_text || '').toLowerCase().trim();
+
+    // No transcription: Whisper heard nothing recognisable.
+    // Volume was sufficient so this is likely a dysarthria recognition failure — pass.
+    if (!spoken) return true;
+
+    // Fuzzy word match: strip punctuation, count how many expected words appear in
+    // the transcription. 40 % required so short function words can be dropped without
+    // causing a false rejection.
+    const expected   = expectedPhrase.toLowerCase().replace(/[,.'!?]/g, '').split(/\s+/);
+    const matchCount = expected.filter(w => spoken.includes(w)).length;
+    return (matchCount / expected.length) >= 0.40;
+  } catch {
+    return true; // timeout, network error, or auth failure → don't penalise
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────
 // Exercise screen (main game)
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -574,6 +623,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [doneCount, setDoneCount]   = useState(0);
   const [activeHoleId, setActiveHoleId] = useState(null);
   const [idleMsg, setIdleMsg]       = useState('');
+  // Shown during 'checking' (neutral) and 'wrongword' (orange-tinted) phases
+  const [wordCheckMsg, setWordCheckMsg] = useState('');
 
   const riseAnim    = useRef(new Animated.Value(0)).current;
   const scaleAnim   = useRef(new Animated.Value(1)).current;
@@ -753,15 +804,42 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (speakRef.current)     { clearTimeout(speakRef.current);     speakRef.current     = null; }
     timerAnim.stopAnimation();
 
-    // Stop the mic (no backend check — loud enough = whacked)
+    // Capture the audio URI before stopping — passed to Whisper for word verification.
+    // getURI() is reliable after stopAndUnloadAsync (same pattern as rotateChunk).
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    let audioUri = null;
     try {
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        recordingRef.current = null;
+      if (rec) {
+        await rec.stopAndUnloadAsync();
+        audioUri = rec.getURI();
       }
     } catch (_) {}
 
-    doWhack();
+    // Enter "checking" phase — jellyfish stays risen, user sees brief feedback.
+    setPhaseS('checking');
+    setWordCheckMsg('Checking…');
+
+    // Read the current phrase from the ref (not state) to get the live value.
+    const expectedPhrase = tierConfig.rounds[roundIdxRef.current]?.word ?? '';
+    const wordsOk = audioUri ? await checkWordsMatch(audioUri, expectedPhrase) : true;
+
+    setWordCheckMsg('');
+
+    if (wordsOk) {
+      doWhack();
+    } else {
+      // Wrong words: sink the jellyfish back and show a gentle prompt.
+      // LSVT LOUD carryover tasks specifically require accurate phrase production
+      // at high effort — prompting re-attempts trains the full skill, not just volume.
+      setPhaseS('wrongword');
+      setWordCheckMsg('Try reading the card aloud!');
+      Animated.timing(riseAnim, { toValue: 0, duration: SINK_MS, useNativeDriver: false }).start();
+      setTimeout(() => {
+        setWordCheckMsg('');
+        if (phaseRef.current !== 'done') startRound();
+      }, SINK_MS + 1200);
+    }
   }
 
   function doWhack() {
@@ -854,6 +932,16 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
             ? `Say "${round.word.toLowerCase()}" to whack a jellyfish`
             : 'Say it loud to whack a jellyfish'}
         </Text>
+
+        {/* Word-check feedback pill — neutral for 'checking', orange-tinted for 'wrongword' */}
+        {wordCheckMsg !== '' && (
+          <View style={[
+            ex.wordCheckPill,
+            phase === 'wrongword' && ex.wordCheckPillWrong,
+          ]}>
+            <Text style={ex.wordCheckText}>{wordCheckMsg}</Text>
+          </View>
+        )}
       </View>
 
       {/* ── Volume bar (right side) ── */}
@@ -938,6 +1026,26 @@ const ex = StyleSheet.create({
     textAlign: 'center', lineHeight: 32,
     paddingHorizontal: 28, paddingVertical: 18,
     borderRadius: 20, overflow: 'hidden',
+    letterSpacing: 0.3,
+  },
+  wordCheckPill: {
+    marginTop: 10,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.60)',
+    borderRadius: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+  },
+  wordCheckPillWrong: {
+    backgroundColor: 'rgba(255,169,64,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,169,64,0.55)',
+  },
+  wordCheckText: {
+    color: WHITE,
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
     letterSpacing: 0.3,
   },
 

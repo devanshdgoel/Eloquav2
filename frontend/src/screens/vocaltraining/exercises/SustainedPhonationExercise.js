@@ -21,14 +21,23 @@ const DEMO_KEY = '@eloqua_phonation_demo_seen';
 // ── Config ────────────────────────────────────────────────────────────────────
 const TOTAL_ROUNDS    = 3;
 const CALIBRATION_MS  = 1500;
-const MAX_THRESHOLD   = 0.60;
+// Raised from 0.60 to 0.82 so the calibrated threshold can actually exceed
+// ambient noise in genuinely noisy environments. Previously the 0.60 cap
+// was hit before the formula could set a threshold above the room's noise floor.
+const MAX_THRESHOLD   = 0.82;
 const SILENCE_END_MS  = 800;
 const MAX_PHONATE_MS  = 20000;
 const REST_MS         = 6500;
 
-// minVolume raised significantly (was 0.22–0.42) so that ambient sounds like
-// table tapping or light breathing can no longer trigger the scoring state.
-// The previous floor of 0.22 was low enough to fire on any gentle knock.
+// Require this many consecutive above-threshold meter readings before scoring
+// begins. At 80 ms per reading, 4 readings = ~320 ms of sustained sound.
+// This prevents a single loud ambient spike (door, tap, word in background)
+// from triggering the scoring state.
+const TRIGGER_READINGS = 4;
+
+// minVolume: the floor below which calibration cannot push the adaptive threshold.
+// Also the required volume in an anechoic room (no ambient noise detected).
+// Raised in a previous pass to reduce false triggers from light ambient sounds.
 const PHONATION_TIERS = [
   { targetSeconds: 4,  minVolume: 0.38 },
   { targetSeconds: 5,  minVolume: 0.42 },
@@ -317,6 +326,9 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
   const recordingRef      = useRef(null);
   const adaptiveThreshRef = useRef(tierConfig.minVolume);
   const ambientSamplesRef = useRef([]);
+  // Counts consecutive above-threshold meter readings in the 'ready' phase.
+  // Scoring only starts once this reaches TRIGGER_READINGS (~320 ms of sound).
+  const triggerCountRef   = useRef(0);
   const calibrateTimerRef = useRef(null);
   const silenceTimerRef   = useRef(null);
   const maxTimerRef       = useRef(null);
@@ -354,10 +366,13 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         if (samples.length > 0) {
           const sorted = [...samples].sort((a, b) => a - b);
           const p90 = sorted[Math.floor(sorted.length * 0.90)] ?? tierConfig.minVolume;
-          // More aggressive noise floor: multiplier 2.0 + offset 0.18 (was 1.6 + 0.12).
-          // In a quiet room p90 ≈ 0.02 → 0.06 + 0.18 = 0.24, still below the 0.38 tier floor.
-          // In a noisy room p90 ≈ 0.25 → 0.50 + 0.18 = 0.68, capped by MAX_THRESHOLD.
-          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 2.0 + 0.18));
+          // Formula: p90 × 2.5 + 0.14 gives a threshold well above ambient.
+          // Quiet room:  p90 ≈ 0.02 → 0.05 + 0.14 = 0.19 → floored at minVolume (e.g. 0.38)
+          // Noisy room:  p90 ≈ 0.25 → 0.625 + 0.14 = 0.765 → set at 0.765 (within cap 0.82)
+          // Louder room: p90 ≈ 0.35 → 0.875 + 0.14 = 1.015 → capped at MAX_THRESHOLD 0.82
+          // The higher multiplier (was 2.0) ensures the threshold sits comfortably above
+          // the noise floor even in lively environments like kitchens or coffee shops.
+          adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 2.5 + 0.14));
         }
         // Stop calibration recording — DO NOT change audio mode
         try { await recording.stopAndUnloadAsync(); } catch (_) {}
@@ -371,7 +386,8 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
 
   async function startNextRound() {
     if (phaseRef.current === 'done') return;
-    scoreRef.current = 0;
+    scoreRef.current    = 0;
+    triggerCountRef.current = 0; // reset sustained-trigger counter at the start of each round
     setSeconds(0);
     setRound(roundRef.current);
     setPhaseS('ready');
@@ -400,8 +416,19 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
     const vol = Math.min(1, Math.max(0, (db + 70) / 60));
     setBars(prev => [...prev.slice(1), Math.max(0.015, vol + Math.random() * 0.018)]);
 
-    if (phaseRef.current === 'ready' && vol >= adaptiveThreshRef.current) {
-      beginScoring();
+    if (phaseRef.current === 'ready') {
+      if (vol >= adaptiveThreshRef.current) {
+        // Count consecutive above-threshold readings before committing to scoring.
+        // A single spike (door slam, cough, word from another room) won't have
+        // TRIGGER_READINGS consecutive readings — genuine phonation will.
+        triggerCountRef.current += 1;
+        if (triggerCountRef.current >= TRIGGER_READINGS) {
+          beginScoring();
+        }
+      } else {
+        // Any dip resets the counter so spikes must be truly sustained.
+        triggerCountRef.current = 0;
+      }
     } else if (phaseRef.current === 'scoring') {
       if (vol < adaptiveThreshRef.current) {
         if (!silenceTimerRef.current) {
