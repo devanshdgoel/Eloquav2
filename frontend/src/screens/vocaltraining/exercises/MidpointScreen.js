@@ -13,6 +13,8 @@ import {
   Dimensions,
 } from 'react-native';
 import { StarIcon } from '../../../components/Icons';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 
 const { width: W } = Dimensions.get('window');
 
@@ -39,14 +41,26 @@ export default function MidpointScreen({ onComplete, onExit }) {
 
   const m = MESSAGES[0];
 
+  // Body text for the SpeakerButton — the motivational message shown on screen.
+  const midpointText = `${m.heading} ${m.sub} You're halfway through your session — keep going!`;
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* X button */}
-      <TouchableOpacity style={s.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit session">
-        <Text style={s.closeText}>✕</Text>
-      </TouchableOpacity>
+      {/* Header now rendered by shared ScreenHeader component.
+          backIcon is ✕ because this exits the session entirely.
+          The root is centered so the header must be positioned at the top. */}
+      <View style={s.headerWrap}>
+        <ScreenHeader
+          navigation={null}
+          title="Halfway There"
+          backIcon="✕"
+          backLabel="Exit session"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={midpointText} />}
+        />
+      </View>
 
       <Animated.View style={[s.content, { opacity, transform: [{ translateY: slideY }] }]}>
         {/* Star badge */}
@@ -77,14 +91,14 @@ const s = StyleSheet.create({
     flex: 1, backgroundColor: DARK_TEAL,
     alignItems: 'center', justifyContent: 'center',
   },
-  closeBtn: {
-    position: 'absolute', top: 52, left: 18,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    justifyContent: 'center', alignItems: 'center',
+  // Header now rendered by shared ScreenHeader component.
+  // Positioned at the top of the screen absolutely so it doesn't push
+  // the centered content out of the middle of the page.
+  headerWrap: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    zIndex: 10,
   },
-  closeText: { color: WHITE, fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 20 },
   content: {
     alignItems: 'center', paddingHorizontal: 40, gap: 20,
   },

@@ -9,6 +9,7 @@ import {
   Image,
   Animated,
 } from 'react-native';
+import TabBar from '../components/TabBar';
 import Svg, {
   Path,
   Circle,
@@ -114,20 +115,20 @@ function FlameIcon({ size = 22 }) {
 }
 
 function Chevron({ direction }) {
-  const d = direction === 'up' ? 'M 5 20 L 14 10 L 23 20' : 'M 5 10 L 14 20 L 23 10';
+  // Larger chevron (32px) with heavier stroke for prominence
+  const d = direction === 'up' ? 'M 4 22 L 16 10 L 28 22' : 'M 4 10 L 16 22 L 28 10';
   return (
-    <Svg width={28} height={28} viewBox="0 0 28 28">
-      <Path d={d} stroke={COLORS.orange} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    <Svg width={32} height={32} viewBox="0 0 32 32">
+      <Path d={d} stroke={COLORS.orange} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Svg>
   );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function HomeScreen({ navigation }) {
-  const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
+  const { top: safeTop } = useSafeAreaInsets();
   const largeText = useLargeText();
   const fs = (base) => largeText ? Math.round(base * 1.25) : base;
-  const tabBarH = 72 + safeBottom;
 
   const [viewportH, setViewportH] = useState(0);
   const viewportHRef = useRef(0);
@@ -237,6 +238,14 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={[styles.root, { paddingTop: safeTop }]}>
       <StatusBar barStyle="light-content" />
+      {/* App gradient — covers whole screen behind roadmap and cards */}
+      <LinearGradient
+        colors={['#37767A', '#1C4047', '#0A1618']}
+        start={{ x: 0.3, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
+      />
 
       {/* "Set up your voice profile" prompt — shown before the first session is complete */}
       {isFirstSession && !checkinDue && (
@@ -281,22 +290,30 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       )}
 
-      {/* ── Smart Speech card — floating feature card, not a map heading ──── */}
+      {/* ── Smart Speech card — distinctively styled to stand out from the map ── */}
       <TouchableOpacity
         style={styles.speechCard}
         onPress={() => navigation.navigate('SpeechEnhancement')}
-        activeOpacity={0.88}
+        activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel="Smart Speech — AI voice enhancement"
       >
+        {/* Orange-tinted icon container with prominent border */}
         <View style={styles.speechIconWrap}>
-          <MicAIIcon size={50} />
+          <MicAIIcon size={46} />
+          {/* AI label pill — visually signals this is an AI feature */}
+          <View style={styles.speechAiPill}>
+            <Text style={styles.speechAiText}>AI</Text>
+          </View>
         </View>
         <View style={styles.speechTextWrap}>
           <Text style={[styles.speechTitle, { fontSize: fs(20) }]}>Smart Speech</Text>
-          <Text style={[styles.speechSub, { fontSize: fs(16) }]}>Real-time AI voice enhancement</Text>
+          <Text style={[styles.speechSub, { fontSize: fs(15) }]}>Real-time AI voice enhancement</Text>
         </View>
-        <Text style={styles.speechArrow}>›</Text>
+        {/* Orange arrow clearly signals tappability */}
+        <View style={styles.speechChevron}>
+          <Text style={styles.speechArrow}>›</Text>
+        </View>
       </TouchableOpacity>
 
       {/* ── Progress load error banner ───────────────────────────────────── */}
@@ -517,30 +534,8 @@ export default function HomeScreen({ navigation }) {
         )}
       </View>
 
-      {/* ── Bottom tab bar ─────────────────────────────────────────────────── */}
-      <View style={[styles.tabBar, { height: tabBarH, paddingBottom: safeBottom }]}>
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => navigation.navigate('Settings')}
-          accessibilityRole="button"
-          accessibilityLabel="Settings"
-        >
-          <Image source={require('../../assets/images/GearIcon.png')} style={styles.tabIcon} resizeMode="contain" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.tabBtn} accessibilityRole="button" accessibilityLabel="Home">
-          <Image source={require('../../assets/images/HomeIcon.png')} style={styles.tabIconLarge} resizeMode="contain" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => navigation.navigate('Progress')}
-          accessibilityRole="button"
-          accessibilityLabel="Progress and rewards"
-        >
-          <Image source={require('../../assets/images/TrophyIcon.png')} style={styles.tabIcon} resizeMode="contain" />
-        </TouchableOpacity>
-      </View>
+      {/* ── Persistent tab bar ────────────────────────────────────────────── */}
+      <TabBar navigation={navigation} activeTab="home" />
     </View>
   );
 }
@@ -549,7 +544,8 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    // Gradient via LinearGradient absoluteFillObject — flat fallback matches gradient dark end
+    backgroundColor: '#0A1618',
   },
 
   // ── Progress error banner ─────────────────────────────────────────────────
@@ -666,33 +662,53 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
 
-  // ── Smart Speech floating card ────────────────────────────────────────────
+  // ── Smart Speech floating card — distinctively styled ────────────────────
+  // Orange border + shadow make this visually pop above the roadmap cards.
   speechCard: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
     marginBottom: 10,
     marginTop: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    backgroundColor: '#2D6974',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#152C30',
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(195,222,206,0.18)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 12,
-    gap: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,169,64,0.55)',
+    shadowColor: '#FFA940',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.30,
+    shadowRadius: 18,
+    elevation: 14,
+    gap: 14,
   },
+  // Orange-tinted icon background with AI badge
   speechIconWrap: {
     width: 64,
     height: 64,
     borderRadius: 18,
-    backgroundColor: 'rgba(195,222,206,0.14)',
+    backgroundColor: 'rgba(255,169,64,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,169,64,0.30)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Small "AI" badge in corner of icon
+  speechAiPill: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: COLORS.orange,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  speechAiText: {
+    color: '#1A1A1A',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
   speechTextWrap: {
     flex: 1,
@@ -700,21 +716,31 @@ const styles = StyleSheet.create({
   speechTitle: {
     color: COLORS.white,
     fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontWeight: '800',
+    letterSpacing: 0.2,
     marginBottom: 3,
   },
   speechSub: {
-    color: 'rgba(195,222,206,0.80)',
-    fontSize: 16,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 15,
     fontWeight: '400',
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
+  },
+  // Right-side chevron container
+  speechChevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,169,64,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   speechArrow: {
     color: COLORS.orange,
-    fontSize: 30,
-    fontWeight: '300',
-    lineHeight: 32,
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 28,
+    marginLeft: 2,
   },
 
   // ── Viewport ──────────────────────────────────────────────────────────────
@@ -770,38 +796,20 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     zIndex: 20,
   },
+  // Larger, orange-bordered arrows — clearly tappable and on-brand
   arrowBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(22,52,58,0.70)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(10,22,24,0.85)',
     borderWidth: 1.5,
-    borderColor: 'rgba(195,222,206,0.25)',
+    borderColor: 'rgba(255,169,64,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  // ── Tab bar ───────────────────────────────────────────────────────────────
-  tabBar: {
-    backgroundColor: COLORS.tabBg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  tabBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 12,
-  },
-  tabIcon: {
-    width: 30,
-    height: 30,
-    tintColor: COLORS.white,
-  },
-  tabIconLarge: {
-    width: 36,
-    height: 36,
-    tintColor: COLORS.white,
+    shadowColor: '#FFA940',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
   },
 });

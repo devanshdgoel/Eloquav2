@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerWithEmail } from '../../services/authService';
+import { colors } from '../../theme';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
 
 export default function SignUpScreen({ navigation }) {
@@ -69,7 +70,8 @@ export default function SignUpScreen({ navigation }) {
   }
 
   return (
-    <LinearGradient colors={['#326F77', '#1C4047']} style={styles.container}>
+    {/* Canonical app gradient — dark teal background for the auth screen. */}
+    <LinearGradient colors={colors.gradients.app} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
       {/* Back button */}

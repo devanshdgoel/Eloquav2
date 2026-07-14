@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Polyline, Line } from 'react-native-svg';
+import { colors } from '../theme';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,11 +33,9 @@ const { width: W } = Dimensions.get('window');
 const SC = W / 402;   // Figma frame scale
 
 const ORANGE = '#FFA940';
-const TEAL   = '#37767A';
-const DARK   = '#0A1618';
+// Background gradient is now sourced from colors.gradients.app (imported above).
 const WHITE  = '#FFFFFF';
 const MINT   = '#C3DECE';
-const TEAL_DIM = 'rgba(55,118,122,0.35)';
 
 // ── Flame SVG (same Figma path as CelebrationScreen) ─────────────────────────
 const FLAME_PATH =
@@ -262,9 +261,9 @@ export default function StreakCommitmentScreen({ navigation, route }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* Gradient background */}
+      {/* Gradient background — uses the canonical app gradient from the design system */}
       <LinearGradient
-        colors={['#37767A', '#1C4047', '#0A1618']}
+        colors={colors.gradients.app}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFillObject}

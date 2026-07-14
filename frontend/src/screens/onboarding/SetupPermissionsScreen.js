@@ -13,9 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { logScreenView } from '../../utils/analytics';
 import { MicIcon, SpeakerIcon } from '../../components/Icons';
+import { colors } from '../../theme';
 
-const TEAL_DARK = '#1C4047';
-const TEAL_MID  = '#2D6974';
+// Background gradient is now sourced from colors.gradients.app (imported above).
 const ORANGE    = '#FFA940';
 const WHITE     = '#FFFFFF';
 const DIM       = 'rgba(255,255,255,0.60)';
@@ -66,7 +66,8 @@ export default function SetupPermissionsScreen({ navigation }) {
   }
 
   return (
-    <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
+    {/* Canonical app gradient — dark teal background for this onboarding screen. */}
+    <LinearGradient colors={colors.gradients.app} style={s.root}>
       <StatusBar barStyle="light-content" />
 
       <View style={[s.inner, { paddingTop: top + 32, paddingBottom: bottom + 32 }]}>

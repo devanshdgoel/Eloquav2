@@ -11,15 +11,25 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { logScreenView } from '../../utils/analytics';
+import { colors } from '../../theme';
+import ScreenHeader from '../../components/ScreenHeader';
+import SpeakerButton from '../../components/SpeakerButton';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
 
-const TEAL_DARK  = '#1C4047';
-const TEAL_MID   = '#326F77';
+// Background gradient is now sourced from colors.gradients.app (imported above).
 const ORANGE     = '#FFA940';
 const WHITE      = '#FFFFFF';
 const DIM        = 'rgba(255,255,255,0.60)';
+
+// Main body text concatenated for the SpeakerButton so users can hear the
+// full content of this screen read aloud in one tap.
+const BODY_TEXT =
+  "Parkinson's changes how you speak. " +
+  "Voices can become quieter, faster, and harder to understand over time. " +
+  "Eloqua gives you a daily voice workout — just a few minutes — to keep your speech clear and strong. " +
+  "The exercises are based on LSVT LOUD therapy principles, adapted for everyday use on your phone.";
 
 export default function WhatIsEloquaScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
@@ -29,11 +39,21 @@ export default function WhatIsEloquaScreen({ navigation }) {
     return logExit;
   }, []);
 
+  // Canonical app gradient — dark teal background for this onboarding screen.
+  // ScreenHeader handles the top safe area inset internally, so paddingTop
+  // on the inner View is reduced from top+40 to just 8.
   return (
-    <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
+    <LinearGradient colors={colors.gradients.app} style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      <View style={[s.inner, { paddingTop: top + 40, paddingBottom: bottom + 32 }]}>
+      {/* Header now rendered by shared ScreenHeader component */}
+      <ScreenHeader
+        navigation={navigation}
+        title="About Eloqua"
+        rightAction={<SpeakerButton text={BODY_TEXT} />}
+      />
+
+      <View style={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}>
 
         <Image
           source={require('../../../assets/images/Dolphin2.png')}

@@ -27,6 +27,7 @@ import TailoredExercise   from './exercises/TailoredExercise';
 import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
 import { logSessionEvent, logScreenView } from '../../utils/analytics';
+import { colors } from '../../theme';
 
 const { width: W } = Dimensions.get('window');
 
@@ -70,9 +71,10 @@ const ENC_MSGS = [
 const PROGRESS_BAR_H = 8;
 
 // ── Session complete screen (fallback — shown only if StreakCelebration fails)
+// Uses the session gradient to stay consistent with the training session context.
 function SessionComplete({ navigation }) {
   return (
-    <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={completeStyles.root}>
+    <LinearGradient colors={colors.gradients.session} style={completeStyles.root}>
       <View style={completeStyles.content}>
         <Text style={completeStyles.title}>One session stronger.</Text>
         <Text style={completeStyles.subtitle}>
@@ -325,11 +327,13 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       {/* ── Exercise area ─────────────────────────────────────────────────── */}
       <View style={styles.exerciseArea}>
 
-        {/* Brief encouragement screen between exercises */}
+        {/* Brief encouragement screen between exercises.
+            Uses LinearGradient instead of a flat colour to stay consistent
+            with the session gradient used by all exercise screens. */}
         {transitioning ? (
-          <View style={styles.transitionScreen}>
+          <LinearGradient colors={colors.gradients.session} style={styles.transitionScreen}>
             <Text style={styles.transitionMsg}>{transitionMsg}</Text>
-          </View>
+          </LinearGradient>
         ) : (
           <>
             <ExerciseComponent
@@ -392,10 +396,9 @@ const styles = StyleSheet.create({
     paddingBottom: PROGRESS_BAR_H,
   },
 
-  // Between-exercise encouragement screen
+  // Between-exercise encouragement screen — background handled by LinearGradient
   transitionScreen: {
     flex: 1,
-    backgroundColor: '#1C4047',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,

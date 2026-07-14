@@ -77,6 +77,11 @@ async def save_assessment(
 @router.post("/complete-session")
 async def complete_session(
     assessment_type: str = Form("baseline"),  # "baseline" | "checkin"
+    # Client sends its local date (YYYY-MM-DD) so streak comparisons use the
+    # same timezone as the frontend's progressService.js (which uses toLocaleDateString).
+    # Without this, a user completing a session late at night in UTC+X could have
+    # their streak recorded on a different date than the frontend expects.
+    client_today: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -92,8 +97,16 @@ async def complete_session(
         ref = db.collection("user_progress").document(user_id)
         snap = ref.get()
 
-        today_str     = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        yesterday_str = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        # Use the client's local date if it looks valid (YYYY-MM-DD = 10 chars).
+        # Fall back to UTC server time only if the client didn't send a date.
+        if client_today and len(client_today) == 10:
+            today_str = client_today
+        else:
+            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        yesterday_str = (
+            datetime.strptime(today_str, "%Y-%m-%d") - timedelta(days=1)
+        ).strftime("%Y-%m-%d")
 
         if not snap.exists:
             data = {

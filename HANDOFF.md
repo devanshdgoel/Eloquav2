@@ -1074,3 +1074,118 @@ eas update --branch main --message "Session 7: accessibility + analytics + onboa
 ```
 
 Backend unchanged — no Render deploy needed.
+
+---
+
+## Session 8 — Exercise UX Polish: Instruction Standardisation & Loudness Drills Overhaul (2026-07-13)
+
+### Overview
+
+Two user requests addressed:
+1. Standardise all exercise instruction screens to a single consistent format.
+2. Overhaul Loudness Drills: punchier content, faster feedback, "too soft" prompting, green success flash.
+
+Additional quick wins: breathing bubble prominence improved, CantDoNow trigger made more visible.
+
+---
+
+### Standard Instruction Format (now applied to all exercises)
+
+All five exercise instruction/intro screens now share a single layout:
+
+```
+ScreenHeader (✕ exit + SpeakerButton TTS)
+↓
+Large exercise title (52–64 px, fontWeight 800, 2-line centred)
+↓
+3-step numbered card (orange badge circles, white text rows)
+↓
+Orange "Let's Go  →" CTA button (paddingV 20, borderRadius 28, shadow)
+```
+
+Previously: LoudnessDrills used a 3-slide animated demo; PitchGlides and DolphinVowels used slide carousels; FunctionalSpeech showed speech bubbles with no instructions. All replaced with the single-screen card.
+
+---
+
+### File-by-file changes
+
+#### `SustainedPhonationExercise.js`
+- INSTRUCTIONS updated from 4 steps to 3:
+  - Removed "Sit up straight" (irrelevant for seated/bedridden users)
+  - Removed "Watch the waveform bars" (redundant — the bars are self-evident)
+  - Added "Hold your phone at arm's length — or place it on a table in front of you." (clinically important for mic distance)
+
+#### `LoudnessDrillsExercise.js` — major overhaul
+- **Content:** `LOUDNESS_TIER_CONFIG` replaced with 5 tiers of progressively longer punchy content:
+  - Tier 1: single words ("GO", "LOUD", "NOW", "YES", "HEY")
+  - Tier 2: 2-word phrases ("Speak up!", "Say it!", etc.)
+  - Tiers 3–5: 3→4→5→6→7→8 word phrases
+- **Speed:** Whisper timeout 5000 ms → 2500 ms. Tier-1 single words skip Whisper entirely (volume-only check) for instant feedback.
+- **"Too soft" detection:** `SOFT_DETECT_VOL = 0.12` constant. If mic vol is audible but below threshold for 500 ms, shows orange "SAY IT LOUDER!" pill overlay above the word card.
+- **Green success flash:** `wordSuccess` state set true for 300 ms when a word is detected correctly before advancing — `WordCard` shows green border and glow (`#48D28C`) instead of orange.
+- **Demo screen:** Old 3-slide `DemoJellyfish` carousel replaced with single-screen card (DEMO_STEPS, `ScreenHeader`, card, "Let's Go →").
+- **`ds` StyleSheet** replaced with `card`, `row`, `badge`, `badgeNum`, `stepText`, `startBtn`, `startText` card layout styles.
+
+#### `BreathingExercise.js`
+- `BUBBLE_BASE` 240 → 280 (larger bubble)
+- `SCALE_SMALL` 0.34 → 0.30 (smaller at rest → more dramatic expansion)
+- Added teal glow ring (`Animated.View`) behind the bubble image; opacity interpolated from `bubbleScale` so the ring is invisible when inhaling and at max opacity at full expansion — provides a clear "breathe in" visual cue.
+
+#### `CantDoNow.js` — "Skip exercise for now" trigger
+- Changed from plain faded text to a visible ghost pill with border:
+  - `borderRadius: 22`, `borderWidth: 1`, `borderColor: rgba(255,255,255,0.22)`, `backgroundColor: rgba(255,255,255,0.06)`
+  - Text: `fontSize: 15`, `fontWeight: '500'`, `color: rgba(255,255,255,0.60)` — readable without competing with the exercise UI
+
+#### `DolphinVowelsExercise.js`
+- `DemoScreen` already uses the card format (`VOWEL_INSTR_STEPS`, `ScreenHeader`, `SpeakerButton`, "Let's Go →"). No changes needed.
+
+#### `PitchGlidesExercise.js`
+- `TutorialScreen` already uses the card format (`PITCH_INSTR_STEPS`, `ScreenHeader`, `SpeakerButton`, "Let's Go →"). No changes needed.
+
+#### `FunctionalSpeechExercise.js`
+- `IntroScreen` already uses the card format (`SPEECH_INSTR_STEPS`, `ScreenHeader`, `SpeakerButton`, "Let's Go →"). No changes needed.
+
+---
+
+### Still Pending
+
+Items carried forward from Session 7 (in priority order):
+
+#### Immediate — Before TestFlight
+1. **Deploy** — `cd frontend && eas update --branch main`
+2. **Firestore security rules** — Still open test mode. Lock down in Firebase console before any public launch.
+3. **ToS / Privacy Policy URLs** — `SignUpScreen.js` has dead text spans. Must link to hosted documents. App Store requires a privacy policy URL.
+4. **App Store ID** — Replace `id000000000` in `SettingsScreen.js` Rate App URL with the real App Store ID.
+5. **Render upgrade** — Free tier sleeps after 15 min. Upgrade to paid tier ($7/mo) before users experience cold starts.
+
+#### V1.5 — Before App Store Submission
+6. **HomeScreen first-visit tooltip** — "Tap the highlighted node to start" overlay, gated with AsyncStorage.
+7. **Speech Enhancement playback animation** — Wire `isPlaying` state to `Animated.loop` scale on the play icon.
+8. **Check-in personal sentence delta** — Show pre vs. post score on the patient's specific sentence in comparison phase.
+9. **Real-time exercise coaching trigger** — Reduce idle coaching from 6 s to 3 s for first session (anxious Parkinson's patients).
+10. **WhatIsEloquaScreen copy** — Replace "LSVT LOUD therapy principles" with plain-language equivalent.
+11. **Speech-to-text in CheckinScreen** — "Tap to speak" option to populate personal sentence TextInput (tremor accommodation).
+12. **SetupVoiceScreen confirmation animation** — "Got it! ✓" flash after each recorded sentence stops.
+13. **hapticFeedback / audioCues** — Wired in PrefsContext but not yet connected to `expo-haptics` or audio cue playback.
+
+#### V2.0 — Post-Pilot
+14. Caregiver dashboard (read-only web view of patient scores/streak)
+15. Speech therapist portal (SLP data access + difficulty override)
+16. DDK "pa-ta-ka" articulation assessment
+17. MPT surface in ProgressScreen (data already recorded from baseline; not yet shown)
+18. Voice fatigue detection across a session
+19. Medication timing correlation
+20. Offline mode for on-device exercises
+21. Tablet (iPad) layout fixes — see `additional-thoughts.md` for all 18 items
+
+---
+
+### Deploy Command
+
+```bash
+# From the frontend/ directory (IMPORTANT — not the repo root)
+cd frontend
+eas update --branch main --message "Session 8: exercise instruction standardisation + loudness drills overhaul"
+```
+
+Backend unchanged — no Render deploy needed.

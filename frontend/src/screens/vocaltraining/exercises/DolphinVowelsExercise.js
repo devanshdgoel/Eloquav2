@@ -31,6 +31,8 @@ import { Audio } from 'expo-av';
 import Svg, { Ellipse, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import CantDoNow from '../../../components/CantDoNow';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -140,41 +142,27 @@ const hb = StyleSheet.create({
   },
 });
 
-/** Amber "INSTRUCTIONS" pill — shown on title and demo slides. */
-function InstructionsBadge() {
-  return (
-    <View style={badge.pill}>
-      <Text style={badge.text}>INSTRUCTIONS</Text>
-    </View>
-  );
-}
-
-const badge = StyleSheet.create({
-  pill: {
-    backgroundColor: ORANGE, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 6,
-    alignSelf: 'center', marginTop: 12,
-  },
-  text: {
-    color: '#1A1A1A', fontSize: 16, fontWeight: '800', letterSpacing: 0.8,
-  },
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP_TITLE — Title screen
 // ══════════════════════════════════════════════════════════════════════════════
+const VOWELS_TITLE_TEXT =
+  "Dolphin Vowels. Say each vowel out loud — A, E, I, O, U. Hold each one loud and steady. Complete all five to finish.";
+
 function TitleScreen({ onNext, onExit }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: DARK_TEAL }}>
         <StatusBar barStyle="light-content" />
 
-        {/* Header */}
-        <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
-          <TouchableOpacity style={hb.ghost} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
-            <Text style={hb.ghostText}>✕</Text>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader
+          navigation={null}
+          title="Dolphin Vowels"
+          backIcon="✕"
+          backLabel="Exit exercise"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={VOWELS_TITLE_TEXT} />}
+        />
 
         {/* Title */}
         <Text style={ts.title}>Dolphin{'\n'}Vowels</Text>
@@ -237,110 +225,82 @@ const ts = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// STEP_DEMO — Instruction slides (3 slides)
+// STEP_DEMO — Instruction card (replaces old 3-slide demo)
 // ══════════════════════════════════════════════════════════════════════════════
-const SLIDES = [
-  {
-    heading: "Say each vowel\nloudly and clearly",
-    body: "A, E, I, O, U. Guide the\ndolphin through the hoops!",
-  },
-  {
-    heading: "Hold for 2\nseconds",
-    body: "Keep your voice loud and\nsteady. The dolphin moves!",
-  },
-  {
-    heading: "THINK\nLOUD",
-    body: "Big, full voice. Make your\ndolphin swim!",
-  },
+const VOWEL_INSTR_STEPS = [
+  { step: '1', text: 'Say each vowel out loud — A, E, I, O, U — one at a time.' },
+  { step: '2', text: 'Hold each vowel for 2 seconds, loud and steady. The dolphin swims through the hoop.' },
+  { step: '3', text: 'Complete all 5 vowels to finish. Think LOUD!' },
 ];
+const VOWEL_INSTR_TEXT =
+  "Dolphin Vowels. Say each vowel out loud — A, E, I, O, U. Hold each one loud and steady for two seconds. Complete all five to finish.";
 
 function DemoScreen({ onFinish, onExit }) {
-  const [slide, setSlide] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-
-  function go(next) {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
-      setSlide(next);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-    });
-  }
-
-  function next() { if (slide < SLIDES.length - 1) go(slide + 1); else onFinish(); }
-  function back() { if (slide > 0) go(slide - 1); else onExit(); }
-
-  const s = SLIDES[slide];
-
   return (
     <FadeIn>
-      <View style={{ flex: 1, backgroundColor: INSTRUCTION_BG }}>
+      <View style={{ flex: 1, backgroundColor: DARK_TEAL }}>
         <StatusBar barStyle="light-content" />
-
-        {/* Header */}
-        <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
-          <TouchableOpacity style={hb.ghost} onPress={back} accessibilityRole="button" accessibilityLabel="Go back">
-            <Text style={hb.ghostText}>←</Text>
-          </TouchableOpacity>
+        <ScreenHeader
+          navigation={null}
+          title="Dolphin Vowels"
+          backIcon="✕"
+          backLabel="Exit exercise"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={VOWEL_INSTR_TEXT} />}
+        />
+        <Text style={dm.bigTitle}>{'Dolphin\nVowels'}</Text>
+        <View style={dm.card}>
+          {VOWEL_INSTR_STEPS.map(({ step, text }) => (
+            <View key={step} style={dm.row}>
+              <View style={dm.badge}><Text style={dm.badgeNum}>{step}</Text></View>
+              <Text style={dm.stepText}>{text}</Text>
+            </View>
+          ))}
         </View>
-
-        <InstructionsBadge />
-
-        {/* Slide content */}
-        <Animated.View style={{
-          flex: 1, justifyContent: 'center', alignItems: 'center',
-          opacity: fadeAnim, paddingHorizontal: 36,
-        }}>
-          {/* Dolphin image on every slide */}
-          <Image
-            source={require('../../../../assets/images/Dolphin2.png')}
-            style={{ width: 110, height: 72, resizeMode: 'contain', marginBottom: 28 }}
-          />
-          <Text style={dm.heading}>{s.heading}</Text>
-          <Text style={dm.body}>{s.body}</Text>
-        </Animated.View>
-
-        {/* Footer: dots + next button */}
-        <View style={dm.footer}>
-          <View style={dm.dots}>
-            {SLIDES.map((_, i) => (
-              <View key={i} style={[dm.dot, i === slide && dm.dotActive]} />
-            ))}
-          </View>
-          <TouchableOpacity style={dm.nextBtn} onPress={next} activeOpacity={0.8}
-            accessibilityRole="button" accessibilityLabel={slide < SLIDES.length - 1 ? 'Next slide' : 'Start exercise'}>
-            <Text style={dm.nextText}>{slide < SLIDES.length - 1 ? '→' : '✓'}</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={dm.startBtn}
+          onPress={onFinish}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Begin exercise"
+        >
+          <Text style={dm.startText}>Let's Go  →</Text>
+        </TouchableOpacity>
       </View>
     </FadeIn>
   );
 }
 
 const dm = StyleSheet.create({
-  heading: {
-    color: WHITE, fontSize: 34, fontWeight: '800',
-    textAlign: 'center', lineHeight: 44, letterSpacing: 0.4,
+  bigTitle: {
+    color: WHITE, fontSize: 52, fontWeight: '800',
+    textAlign: 'center', letterSpacing: 2.0, lineHeight: 62,
+    marginTop: 8, marginBottom: 28,
   },
-  body: {
-    color: 'rgba(255,255,255,0.70)', fontSize: 18,
-    textAlign: 'center', lineHeight: 28, marginTop: 16,
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
   },
-  footer: {
-    paddingHorizontal: 40, paddingBottom: 52,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  dots:      { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  dot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.26)' },
-  dotActive: { backgroundColor: WHITE, width: 24, borderRadius: 4 },
-  nextBtn: {
-    width: 64, height: 56, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
-    justifyContent: 'center', alignItems: 'center',
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
   },
-  nextText: {
-    color: WHITE, fontSize: 22,
-    includeFontPadding: false, lineHeight: 22, textAlign: 'center',
+  startBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
+  startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

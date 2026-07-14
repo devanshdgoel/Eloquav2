@@ -32,6 +32,8 @@ import { onSessionComplete } from '../services/notificationService';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
 import { getVoiceStatus } from '../services/voiceService';
 import { useLargeText } from '../context/PrefsContext';
+import ScreenHeader from '../components/ScreenHeader';
+import SpeakerButton from '../components/SpeakerButton';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -426,9 +428,9 @@ export default function AssessmentScreen({ navigation, route }) {
 
   function pickFocus(comp) {
     const opts = [
-      { key: 'voice_power', label: 'Voice Power',    tip: 'Your sessions will focus on speaking louder. Think: big, bold voice!' },
-      { key: 'expression',  label: 'Expression',      tip: 'Your sessions will focus on pitch variety — let your voice rise and fall naturally.' },
-      { key: 'fluency',     label: 'Fluency',         tip: 'Your sessions will focus on speech rhythm — a comfortable pace with fewer pauses.' },
+      { key: 'voice_power', label: 'Voice Power',   tip: 'Your sessions will focus on speaking louder. Think: big, bold voice!' },
+      { key: 'expression',  label: 'Pitch Variety', tip: 'Your sessions will focus on pitch variety — let your voice rise and fall naturally.' },
+      { key: 'fluency',     label: 'Speech Rhythm', tip: 'Your sessions will focus on speech rhythm — a comfortable pace with fewer pauses.' },
     ].filter(o => comp[o.key] != null)
      .sort((a, b) => comp[a.key] - comp[b.key]);
 
@@ -486,6 +488,9 @@ export default function AssessmentScreen({ navigation, route }) {
       try {
         const sessionForm = new FormData();
         sessionForm.append('assessment_type', type);
+        // Send local date so the backend streak logic uses the same timezone
+        // as the frontend's progressService.js (toLocaleDateString 'en-CA').
+        sessionForm.append('client_today', new Date().toLocaleDateString('en-CA'));
         const sessionRes = await fetchWithAuth(`${API_BASE_URL}/api/complete-session`, {
           method: 'POST', body: sessionForm,
         });
@@ -514,26 +519,41 @@ export default function AssessmentScreen({ navigation, route }) {
       return;
     }
 
-    if (isBaseline) logFunnelEvent('assessment_baseline_completed');
-    navigation.replace('Home');
+    if (isBaseline) {
+      logFunnelEvent('assessment_baseline_completed');
+      // Route through the streak celebration screen, then to BaselineResults,
+      // so new users get the full "day 1" celebration moment before seeing scores.
+      navigation.replace('StreakCelebration', {
+        fromBaseline: true,
+        streakDays: 1,
+        userName: auth.currentUser?.displayName ?? '',
+        focusKey:   focus?.key   ?? null,
+        focusLabel: focus?.label ?? null,
+        focusTip:   focus?.tip   ?? null,
+        voicePowerScore: composite.voice_power,
+        expressionScore: composite.expression,
+        fluencyScore:    composite.fluency,
+      });
+    } else {
+      navigation.replace('Home');
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <LinearGradient colors={['#243E44', '#0D1E21']} style={[s.root, { paddingTop: top }]}>
+    // ScreenHeader now handles the top safe area inset internally, so we no
+    // longer need paddingTop: top on the root gradient container.
+    <LinearGradient colors={['#243E44', '#0D1E21']} style={s.root}>
       <StatusBar barStyle="light-content" />
 
       {/* ── INTRO ───────────────────────────────────────────────────────── */}
       {phase === 'intro' && (
         <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
-          <TouchableOpacity
-            style={s.backBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Text style={s.backBtnText}>←</Text>
-          </TouchableOpacity>
+          {/* Header now rendered by shared ScreenHeader component */}
+          <ScreenHeader
+            navigation={navigation}
+            title={type === 'baseline' ? 'Voice Assessment' : 'Progress Check'}
+          />
           <Text style={s.eyebrow}>{isBaseline ? 'VOICE ASSESSMENT' : 'PROGRESS CHECK-IN'}</Text>
           <Text style={s.heroTitle}>{isBaseline ? "Let's hear\nyour voice" : "How's your\nvoice today?"}</Text>
           <Text style={[s.bodyText, { fontSize: fs(18) }]}>
@@ -566,11 +586,17 @@ export default function AssessmentScreen({ navigation, route }) {
       {(phase === 'active' || phase === 'processing') && (
         <View style={[s.page, { flex: 1, paddingBottom: bottom + 32 }]}>
 
-          {/* Exit — shown during active only (not while analysing) */}
+          {/* Header now rendered by shared ScreenHeader component.
+              During active phase: shows an X exit button with an Alert confirming exit.
+              During processing phase: no header is rendered (analysis is running).
+              The SpeakerButton reads the current task instruction aloud. */}
           {phase === 'active' && (
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => {
+            <ScreenHeader
+              navigation={navigation}
+              title={type === 'baseline' ? 'Voice Assessment' : 'Progress Check'}
+              backIcon="✕"
+              backLabel="Exit assessment"
+              onBack={() => {
                 Alert.alert(
                   'Leave assessment?',
                   'Your recordings so far will be lost.',
@@ -580,11 +606,12 @@ export default function AssessmentScreen({ navigation, route }) {
                   ]
                 );
               }}
-              accessibilityRole="button"
-              accessibilityLabel="Exit assessment"
-            >
-              <Text style={s.backBtnText}>✕</Text>
-            </TouchableOpacity>
+              rightAction={
+                <SpeakerButton
+                  text={task.instruction + (task.hint ? '. ' + task.hint : '')}
+                />
+              }
+            />
           )}
 
           {/* Step dots */}
@@ -784,22 +811,7 @@ const s = StyleSheet.create({
     gap: 16,
   },
 
-  backBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.20)',
-    borderRadius: 28,
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backBtnText: {
-    color: WHITE,
-    fontSize: 20,
-    fontWeight: '500',
-  },
+  // Header now rendered by shared ScreenHeader component
 
   eyebrow: {
     color: ORANGE,

@@ -31,6 +31,8 @@ import {
   applyNotificationPrefs,
 } from '../services/notificationService';
 import { logScreenView } from '../utils/analytics';
+import TabBar from '../components/TabBar';
+import ScreenHeader from '../components/ScreenHeader';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -673,23 +675,12 @@ export default function SettingsScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* ── Header ── */}
-      <View style={[s.header, { paddingTop: safeTop + 12 * SC }]}>
-        <TouchableOpacity
-          style={s.backBtn}
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Text style={s.backArrow}>←</Text>
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Settings</Text>
-        <View style={{ width: 44 * SC }} />
-      </View>
+      {/* Header — back button on top row, title below */}
+      <ScreenHeader navigation={navigation} title="Settings" />
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[s.content, { paddingBottom: safeBottom + 48 * SC }]}
+        contentContainerStyle={[s.content, { paddingBottom: 88 + 24 }]}
         showsVerticalScrollIndicator={false}
       >
 
@@ -966,6 +957,9 @@ export default function SettingsScreen({ navigation }) {
         onSelect={updateReminderTime}
         onClose={() => setTimePickerOpen(false)}
       />
+
+      {/* Persistent bottom tab bar — also shown on Home and Progress */}
+      <TabBar navigation={navigation} activeTab="settings" />
     </View>
   );
 }
@@ -974,35 +968,7 @@ export default function SettingsScreen({ navigation }) {
 const s = StyleSheet.create({
   root: { flex: 1 },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20 * SC,
-    paddingBottom: 12 * SC,
-  },
-  backBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backArrow: {
-    color: WHITE,
-    fontSize: 22,
-    fontWeight: '300',
-    includeFontPadding: false,
-  },
-  headerTitle: {
-    color: WHITE,
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+  // Header now rendered by shared ScreenHeader component
 
   content: {
     paddingHorizontal: 20 * SC,

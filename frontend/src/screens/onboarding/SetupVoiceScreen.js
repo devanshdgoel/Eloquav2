@@ -8,6 +8,14 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+
+// Silence detection constants — same pattern used in AssessmentScreen.
+// A sentence recording auto-stops after ~1.8s of silence post-speech.
+const BAR_INTERVAL_MS    = 80;
+const SPEAK_THRESHOLD    = 0.25;   // dBFS-normalised volume: above = speaking
+const SILENCE_THRESHOLD  = 0.18;   // below = silence
+const MIN_SPEAK_FRAMES   = 3;      // frames above threshold before "user has spoken"
+const SILENCE_FRAMES     = Math.round(1800 / BAR_INTERVAL_MS); // ~22 frames = 1.8 s
 import { LinearGradient } from 'expo-linear-gradient';
 import { MicIcon, StopIcon } from '../../components/Icons';
 import { Audio } from 'expo-av';
@@ -28,12 +36,22 @@ export default function SetupVoiceScreen({ navigation }) {
   const [recordings, setRecordings]       = useState([null, null, null]);
   const [isRecording, setIsRecording]     = useState(false);
   const [isCloningVoice, setIsCloningVoice] = useState(false);
-  const recordingRef = useRef(null);
+  const recordingRef     = useRef(null);
+  // Silence detection refs
+  const meteringTimerRef = useRef(null);
+  const volumeRef        = useRef(0);
+  const hasSpokenRef     = useRef(false);
+  const speakFramesRef   = useRef(0);
+  const silenceCountRef  = useRef(0);
+  // Prevents stopRecording from firing twice if both timer and tap happen simultaneously
+  const stoppingRef      = useRef(false);
 
   useEffect(() => {
     const logExit = logScreenView('SetupVoice');
     return () => {
       logExit();
+      // Stop any in-progress recording when the screen unmounts (e.g. user navigates back).
+      clearInterval(meteringTimerRef.current);
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(() => {});
         recordingRef.current = null;
@@ -42,8 +60,12 @@ export default function SetupVoiceScreen({ navigation }) {
   }, []);
 
   function handleMicPress() {
+    // Tap-to-stop is always available as a manual override during recording.
     if (isRecording) {
-      stopRecording();
+      if (!stoppingRef.current) {
+        stoppingRef.current = true;
+        stopRecording();
+      }
     } else {
       startRecording();
     }
@@ -51,18 +73,65 @@ export default function SetupVoiceScreen({ navigation }) {
 
   async function startRecording() {
     try {
+      // Reset silence detection state for each new sentence.
+      hasSpokenRef.current   = false;
+      speakFramesRef.current = 0;
+      silenceCountRef.current = 0;
+      stoppingRef.current    = false;
+
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+
+      // Enable metering so we can read volume during recording for silence detection.
       const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
+        { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true },
+        (status) => {
+          // Convert dBFS (-160 … 0) to a normalised 0–1 volume value.
+          const db = status.metering ?? -160;
+          volumeRef.current = Math.min(1, Math.max(0, (db + 70) / 60));
+        },
+        BAR_INTERVAL_MS,
       );
       recordingRef.current = recording;
       setIsRecording(true);
+
+      // Poll volume at BAR_INTERVAL_MS to detect silence after speech has begun.
+      meteringTimerRef.current = setInterval(() => {
+        if (stoppingRef.current) return;
+        const vol = volumeRef.current;
+
+        if (!hasSpokenRef.current) {
+          // Wait for a run of loud frames before enabling silence detection —
+          // avoids triggering on the quiet moment right at tap.
+          if (vol > SPEAK_THRESHOLD) {
+            speakFramesRef.current += 1;
+            if (speakFramesRef.current >= MIN_SPEAK_FRAMES) hasSpokenRef.current = true;
+          } else {
+            speakFramesRef.current = 0;
+          }
+        } else {
+          // User has spoken — now watch for sustained silence to auto-stop.
+          if (vol < SILENCE_THRESHOLD) {
+            silenceCountRef.current += 1;
+            if (silenceCountRef.current >= SILENCE_FRAMES) {
+              stoppingRef.current = true;
+              stopRecording();
+            }
+          } else {
+            silenceCountRef.current = 0;
+          }
+        }
+      }, BAR_INTERVAL_MS);
+
     } catch {
       Alert.alert('Error', 'Could not start recording. Please check microphone permissions.');
     }
   }
 
   async function stopRecording() {
+    // Clear the metering interval regardless of how stop was triggered.
+    clearInterval(meteringTimerRef.current);
+    meteringTimerRef.current = null;
+
     if (!recordingRef.current) return;
     setIsRecording(false);
 
@@ -147,7 +216,7 @@ export default function SetupVoiceScreen({ navigation }) {
         </TouchableOpacity>
 
         <Text style={styles.title}>Voice Setup</Text>
-        <Text style={styles.subtitle}>Press the button and read this sentence aloud:</Text>
+        <Text style={styles.subtitle}>Tap the button, then read the sentence aloud. Recording stops automatically when you finish.</Text>
 
         <View style={styles.sentenceCard}>
           <Text style={styles.sentenceText}>"{SENTENCES[currentIndex]}"</Text>
@@ -170,7 +239,7 @@ export default function SetupVoiceScreen({ navigation }) {
         </TouchableOpacity>
 
         <Text style={styles.recordingStatus} accessibilityLiveRegion="polite">
-          {isRecording ? 'Recording…  tap to stop' : `Sentence ${currentIndex + 1} of ${SENTENCES.length}`}
+          {isRecording ? 'Recording… stops when you finish' : `Sentence ${currentIndex + 1} of ${SENTENCES.length}`}
         </Text>
 
         {/* One dot per sentence; the current sentence is highlighted white. */}

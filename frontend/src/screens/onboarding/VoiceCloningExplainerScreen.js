@@ -12,12 +12,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { logScreenView } from '../../utils/analytics';
 import { MicIcon, LockIcon, TrashIcon } from '../../components/Icons';
+import { colors } from '../../theme';
+import ScreenHeader from '../../components/ScreenHeader';
+import SpeakerButton from '../../components/SpeakerButton';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
 
-const TEAL_DARK  = '#1C4047';
-const TEAL_MID   = '#326F77';
+// Background gradient is now sourced from colors.gradients.app (imported above).
 const ORANGE     = '#FFA940';
 const MINT       = '#C3DECE';
 const WHITE      = '#FFFFFF';
@@ -43,6 +45,12 @@ const POINTS = [
   },
 ];
 
+// Main body text built from the POINTS array so the SpeakerButton can read
+// the full privacy/voice-cloning explanation aloud in a single tap.
+const POINTS_BODY_TEXT = POINTS.map(
+  p => `${p.title}. ${p.body}`
+).join(' ');
+
 export default function VoiceCloningExplainerScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
 
@@ -51,11 +59,21 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
     return logExit;
   }, []);
 
+  // Canonical app gradient — dark teal background for this onboarding screen.
+  // ScreenHeader handles the top safe area inset internally, so paddingTop
+  // on the inner View is reduced from top+32 to just 8.
   return (
-    <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
+    <LinearGradient colors={colors.gradients.app} style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      <View style={[s.inner, { paddingTop: top + 32, paddingBottom: bottom + 32 }]}>
+      {/* Header now rendered by shared ScreenHeader component */}
+      <ScreenHeader
+        navigation={navigation}
+        title="Your Voice Profile"
+        rightAction={<SpeakerButton text={POINTS_BODY_TEXT} />}
+      />
+
+      <View style={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}>
 
         <View style={s.header}>
           <Text style={s.eyebrow}>YOUR VOICE & PRIVACY</Text>

@@ -46,6 +46,7 @@ import {
 } from '../../services/difficultyService';
 import { getUserProfile } from '../../utils/storage';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
+import { colors } from '../../theme';
 
 import BreathingExercise  from './exercises/BreathingExercise';
 import SustainedPhonation from './exercises/SustainedPhonationExercise';
@@ -100,9 +101,10 @@ const EXERCISE_FOCUS = {
 
 // ── Fallback done screen ───────────────────────────────────────────────────────
 // Shown only if StreakCelebration navigation fails — gives users a path home.
+// Uses the session gradient to match the baseline session context.
 function SessionComplete({ navigation }) {
   return (
-    <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={fc.root}>
+    <LinearGradient colors={colors.gradients.session} style={fc.root}>
       <View style={fc.content}>
         <Text style={fc.title}>Your profile is ready.</Text>
         <Text style={fc.sub}>
@@ -247,17 +249,35 @@ export default function BaselineSessionScreen({ navigation }) {
       onSessionComplete().catch(() => {}); // reset re-engagement notification clock
       const profile = await getUserProfile();
 
-      // Pass raw scores through so BaselineResults can render a personalised
-      // two-axis profile without needing another Firestore read.
+      // Both phonation and loudness map to the voice_power dimension in the 3-axis
+      // system (difficultyService: phonation+loudness → voice_power). Average them
+      // for the display score, or use whichever is available.
+      const phon = scores.phonation != null ? scores.phonation : null;
+      const loud = scores.loudness  != null ? scores.loudness  : null;
+      let voicePowerScore = null;
+      if (phon != null && loud != null) {
+        voicePowerScore = Math.round((phon + loud) / 2);
+      } else {
+        voicePowerScore = phon ?? loud;
+      }
+
+      // BaselineSession only measures voice_power (phonation + loudness).
+      // Pitch Variety and Speech Rhythm are introduced in the full AssessmentScreen.
+      // Map old exercise focusKey to the new 3-axis key for BaselineResultsScreen.
+      const mappedFocusKey = (focusKey === 'phonation' || focusKey === 'loudness')
+        ? 'voice_power'
+        : focusKey;
+
       navigation.replace('StreakCelebration', {
-        streakDays:    result.streak_days,
-        userName:      profile?.name ?? '',
-        fromBaseline:  true,
-        focusKey:      focusKey,
-        focusLabel:    focus?.label ?? null,
-        focusTip:      focus?.tip   ?? null,
-        phonationScore: scores.phonation ?? null,
-        loudnessScore:  scores.loudness  ?? null,
+        streakDays:     result.streak_days,
+        userName:       profile?.name ?? '',
+        fromBaseline:   true,
+        focusKey:       mappedFocusKey,
+        focusLabel:     focus?.label ?? null,
+        focusTip:       focus?.tip   ?? null,
+        voicePowerScore,
+        expressionScore: null,
+        fluencyScore:    null,
       });
     } catch {
       // If completeSession fails, show the fallback screen.
@@ -323,10 +343,12 @@ export default function BaselineSessionScreen({ navigation }) {
     <View style={styles.root}>
       {/* ── Exercise area ─────────────────────────────────────────────────── */}
       <View style={styles.exerciseArea}>
+        {/* Between-exercise encouragement — LinearGradient keeps background consistent
+            with the session gradient used by the exercise components themselves. */}
         {transitioning ? (
-          <View style={styles.transitionScreen}>
+          <LinearGradient colors={colors.gradients.session} style={styles.transitionScreen}>
             <Text style={styles.transitionMsg}>{transitionMsg}</Text>
-          </View>
+          </LinearGradient>
         ) : (
           <ExerciseComponent
             onComplete={handleExerciseComplete}
@@ -370,9 +392,9 @@ const styles = StyleSheet.create({
     paddingBottom: PROGRESS_BAR_H,
   },
 
+  // Background handled by LinearGradient — no flat colour needed here.
   transitionScreen: {
     flex: 1,
-    backgroundColor: '#1C4047',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,

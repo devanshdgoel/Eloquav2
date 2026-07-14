@@ -30,6 +30,8 @@ import { WebView } from 'react-native-webview';
 import Svg, { Ellipse, Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -93,24 +95,6 @@ const VBAR_H    = fv(507);
 const DOLPH_W = fs(130);
 const DOLPH_H = fv(90);
 
-// ── Tutorial slides ───────────────────────────────────────────────────────────
-const SLIDES = [
-  {
-    dolphinX: W * (74  / FW),
-    dolphinY: H * (503 / FH),
-    instruction: '1.  A dolphin appears\nin the water',
-  },
-  {
-    dolphinX: W * (228 / FW),
-    dolphinY: H * (422 / FH),
-    instruction: "2.  Say ‘ahh’ continuously—your pitch moves the dolphin",
-  },
-  {
-    dolphinX: W * (280 / FW),
-    dolphinY: H * (396 / FH),
-    instruction: '3.  Glide your pitch\nlow → high to reach each hoop',
-  },
-];
 
 // ── WebView HTML: Web Audio API autocorrelation pitch detector ────────────────
 // Runs entirely in the WebView JS context. Posts { pitch, vol } every ~80 ms.
@@ -277,6 +261,13 @@ const bs = StyleSheet.create({
   questionText: { color: '#1A1A1A', fontSize: 24, fontWeight: '900', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
 });
 
+// Instruction text for the title screen SpeakerButton — explains what
+// Pitch Glides involves before the user starts the tutorial.
+const PITCH_GLIDES_INTRO_TEXT =
+  "Pitch Glides. Say 'ahh' continuously — your pitch moves the dolphin. " +
+  "Glide your voice from low to high to guide the dolphin through each hoop. " +
+  "Hold each pitch in the target zone to complete a hoop.";
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Title screen
 // ══════════════════════════════════════════════════════════════════════════════
@@ -285,11 +276,16 @@ function TitleScreen({ onNext, onExit, sessionFill = 0.25 }) {
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
         <StatusBar barStyle="light-content" />
-        <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 20 }}>
-          <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Exit exercise">
-            <Text style={bs.closeText}>✕</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Header now rendered by shared ScreenHeader component.
+            backIcon is ✕ because this exits the exercise entirely. */}
+        <ScreenHeader
+          navigation={null}
+          title="Pitch Glides"
+          backIcon="✕"
+          backLabel="Exit exercise"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={PITCH_GLIDES_INTRO_TEXT} />}
+        />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: fv(30) }}>
           <Text style={tts.title}>Pitch{'\n'}Glides</Text>
           <View style={{ marginTop: fv(24), alignItems: 'center' }}>
@@ -321,64 +317,82 @@ const tts = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tutorial screen
+// Tutorial screen — instruction card (replaces old 3-slide tutorial)
 // ══════════════════════════════════════════════════════════════════════════════
+const PITCH_INSTR_STEPS = [
+  { step: '1', text: 'Say "ahh" continuously — your pitch moves the dolphin.' },
+  { step: '2', text: 'Glide your voice from LOW to HIGH to guide the dolphin through each hoop.' },
+  { step: '3', text: 'Hold your pitch in the target zone to complete a hoop. Four done = finished!' },
+];
+const PITCH_INSTR_TEXT =
+  "Pitch Glides. Say ahh continuously. Your pitch controls the dolphin. Glide from low to high to guide it through each hoop. Hold your pitch in the target zone to complete a hoop.";
+
 function TutorialScreen({ onFinish, onExit }) {
-  const [slideIdx, setSlideIdx] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-
-  function go(next) {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => {
-      setSlideIdx(next);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 230, useNativeDriver: true }).start();
-    });
-  }
-  function goNext() { if (slideIdx < SLIDES.length - 1) go(slideIdx + 1); else onFinish(); }
-  function goBack()  { if (slideIdx > 0) go(slideIdx - 1); else onExit(); }
-
-  const sl = SLIDES[slideIdx];
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
         <StatusBar barStyle="light-content" />
-        <BottomWave />
-        <View style={StyleSheet.absoluteFill}><View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)' }} /></View>
-
-        <View style={{ position: 'absolute', top: fv(25), left: fs(23), zIndex: 30 }}>
-          <TouchableOpacity style={bs.back} onPress={goBack} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Go back"><Text style={bs.backText}>←</Text></TouchableOpacity>
+        <ScreenHeader
+          navigation={null}
+          title="Pitch Glides"
+          backIcon="✕"
+          backLabel="Exit exercise"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={PITCH_INSTR_TEXT} />}
+        />
+        <Text style={tus.bigTitle}>{'Pitch\nGlides'}</Text>
+        <View style={tus.card}>
+          {PITCH_INSTR_STEPS.map(({ step, text }) => (
+            <View key={step} style={tus.row}>
+              <View style={tus.badge}><Text style={tus.badgeNum}>{step}</Text></View>
+              <Text style={tus.stepText}>{text}</Text>
+            </View>
+          ))}
         </View>
-        <View style={{ position: 'absolute', top: fv(30), right: fs(23), zIndex: 30 }}>
-          <TouchableOpacity style={bs.question} onPress={goNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Next slide"><Text style={bs.questionText}>?</Text></TouchableOpacity>
-        </View>
-
-        <Text style={tus.ahhText}>{'"ahh"'}</Text>
-        <DualProgressBar done={slideIdx} total={SLIDES.length} />
-
-        <View style={{ position: 'absolute', left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2, zIndex: 12 }}>
-          <HoopEllipse state="dim" />
-        </View>
-        <View style={{ position: 'absolute', left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2, zIndex: 12 }}>
-          <HoopEllipse state="target" />
-        </View>
-
-        <Animated.View style={{ position: 'absolute', left: sl.dolphinX - DOLPH_W / 2, top: sl.dolphinY - DOLPH_H / 2, opacity: fadeAnim, zIndex: 15 }}>
-          <Image source={require('../../../../assets/images/Dolphin2.png')} style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }} />
-        </Animated.View>
-
-        <Animated.Text style={[tus.instruction, { opacity: fadeAnim }]}>{sl.instruction}</Animated.Text>
-
-        <TouchableOpacity style={{ position: 'absolute', bottom: fv(40), right: fs(40), zIndex: 30, ...tus.nextBtn }} onPress={goNext} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={slideIdx < SLIDES.length - 1 ? 'Next slide' : 'Start exercise'}>
-          <Text style={tus.nextText}>{slideIdx < SLIDES.length - 1 ? '→' : '✓'}</Text>
+        <TouchableOpacity
+          style={tus.startBtn}
+          onPress={onFinish}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Begin exercise"
+        >
+          <Text style={tus.startText}>Let's Go  →</Text>
         </TouchableOpacity>
       </View>
     </FadeIn>
   );
 }
+
 const tus = StyleSheet.create({
-  ahhText:    { position: 'absolute', top: fv(137), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 34, fontWeight: '800', letterSpacing: 1.7, textAlign: 'center' },
-  instruction:{ position: 'absolute', bottom: fv(100), left: fs(24), right: fs(24), zIndex: 20, color: WHITE, fontSize: 28, fontWeight: '800', letterSpacing: 1.0, textAlign: 'center', lineHeight: 40 },
-  nextBtn:    { width: Math.round(fs(64)), height: Math.round(fv(56)), borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)', justifyContent: 'center', alignItems: 'center' },
-  nextText:   { color: WHITE, fontSize: 22, includeFontPadding: false, lineHeight: 22, textAlign: 'center' },
+  bigTitle: {
+    color: WHITE, fontSize: 64, fontWeight: '800',
+    textAlign: 'center', letterSpacing: 3.0, lineHeight: 74,
+    marginTop: 4, marginBottom: 28,
+  },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  startBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

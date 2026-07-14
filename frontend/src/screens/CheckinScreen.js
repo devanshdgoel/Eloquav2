@@ -26,7 +26,10 @@ import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../ut
 import { completeSession } from '../services/progressService';
 import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, fetchProgressPlan, fetchCheckinNumber, DEFAULT_TIERS } from '../services/difficultyService';
 import { useLargeText } from '../context/PrefsContext';
+import { colors } from '../theme';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
+import ScreenHeader from '../components/ScreenHeader';
+import SpeakerButton from '../components/SpeakerButton';
 
 import BreathingExercise  from './vocaltraining/exercises/BreathingExercise';
 import SustainedPhonation from './vocaltraining/exercises/SustainedPhonationExercise';
@@ -369,8 +372,9 @@ export default function CheckinScreen({ navigation }) {
   // ── Render: loading ────────────────────────────────────────────────────────
 
   if (phase === 'loading') {
+    // Use the canonical session gradient while data loads.
     return (
-      <LinearGradient colors={['#243E44', '#0D1E21']} style={s.rootCentered}>
+      <LinearGradient colors={colors.gradients.session} style={s.rootCentered}>
         <ActivityIndicator color={ORANGE} size="large" />
       </LinearGradient>
     );
@@ -380,18 +384,17 @@ export default function CheckinScreen({ navigation }) {
 
   if (phase === 'setup') {
     return (
-      <LinearGradient colors={['#243E44', '#0D1E21']} style={[s.root, { paddingTop: top }]}>
+      // Canonical session gradient — consistent with all other Checkin phases.
+      // ScreenHeader now handles the top safe area inset internally.
+      <LinearGradient colors={colors.gradients.session} style={s.root}>
         <StatusBar barStyle="light-content" />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => navigation.goBack()}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Text style={s.backBtnText}>←</Text>
-            </TouchableOpacity>
+            {/* Header now rendered by shared ScreenHeader component */}
+            <ScreenHeader
+              navigation={navigation}
+              title="Progress Check-in"
+            />
             <Text style={s.eyebrow}>PROGRESS CHECK-IN</Text>
             <Text style={s.heroTitle}>Your personal{'\n'}sentence</Text>
             <Text style={s.body}>
@@ -465,22 +468,23 @@ export default function CheckinScreen({ navigation }) {
 
   if (phase === 'pre' || phase === 'post') {
     const isPre = phase === 'pre';
+    // Both pre and post recording phases use the canonical session gradient.
+    // The old forest-green (#1E3828) post variant is replaced for consistency.
+    // ScreenHeader now handles the top safe area inset internally.
     return (
       <LinearGradient
-        colors={isPre ? ['#243E44', '#0D1E21'] : ['#1E3828', '#0D1E21']}
-        style={[s.root, { paddingTop: top }]}
+        colors={colors.gradients.session}
+        style={s.root}
       >
         <StatusBar barStyle="light-content" />
         <View style={[s.page, { flex: 1, justifyContent: 'flex-start', paddingBottom: bottom + 24 }]}>
+          {/* Header now rendered by shared ScreenHeader component.
+              Hidden during active recording so the user can focus on the task. */}
           {recPhase !== 'recording' && (
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => navigation.goBack()}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Text style={s.backBtnText}>←</Text>
-            </TouchableOpacity>
+            <ScreenHeader
+              navigation={navigation}
+              title="Progress Check-in"
+            />
           )}
           <Text style={s.eyebrow}>{isPre ? 'PRE-CHECK' : 'POST-CHECK'}</Text>
           <Text style={s.heroTitle}>{isPre ? 'Before\nyour training' : 'After\nyour training'}</Text>
@@ -580,16 +584,21 @@ export default function CheckinScreen({ navigation }) {
     const anyUp   = Object.values(predictedTierChanges).some(d => d === 'up');
     const anyDown = Object.values(predictedTierChanges).some(d => d === 'down');
 
+    // Canonical session gradient — same as all other Checkin phases.
+    // The comparison phase has no back button — the user must finish or use
+    // the navigation gesture — so ScreenHeader is omitted here.
+    // ScreenHeader handles its own top inset so paddingTop: top is not needed.
+    const comparisonBodyText = improved
+      ? "Your scores went up after today's training. Every session is building something real."
+      : "Consistency is what counts. Your voice is being strengthened with every session.";
+
     return (
-      <LinearGradient colors={['#1E3828', '#0D1E21']} style={[s.root, { paddingTop: top }]}>
+      <LinearGradient colors={colors.gradients.session} style={s.root}>
         <StatusBar barStyle="light-content" />
         <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
           <Text style={s.eyebrow}>YOUR PROGRESS</Text>
           <Text style={s.heroTitle}>{improved ? 'You improved!' : 'Keep going!'}</Text>
-          <Text style={s.body}>
-            {improved
-              ? "Your scores went up after today's training. Every session is building something real."
-              : "Consistency is what counts. Your voice is being strengthened with every session."}
+          <Text style={s.body}>{comparisonBodyText}
           </Text>
 
           {/* Arc grids: before and after side-by-side */}
@@ -735,22 +744,7 @@ const s = StyleSheet.create({
   rootCentered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   page: { paddingHorizontal: 28, paddingTop: 28, width: '100%' },
 
-  backBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  backBtnText: {
-    color: WHITE,
-    fontSize: 20,
-    fontWeight: '500',
-  },
+  // Header now rendered by shared ScreenHeader component
 
   eyebrow: {
     color: 'rgba(255,255,255,0.60)',

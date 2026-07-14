@@ -14,6 +14,8 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Polygon } from 'react-native-svg';
 import CantDoNow from '../../../components/CantDoNow';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -36,8 +38,8 @@ const EXHALE_MS = EXHALE_S * 1000;
 const TOTAL_CYCLES = 3;
 
 // ── Bubble geometry ───────────────────────────────────────────────────────────
-const BUBBLE_BASE = 240;
-const SCALE_SMALL = 0.34;
+const BUBBLE_BASE = 280;
+const SCALE_SMALL = 0.30;
 const SCALE_LARGE = 1.0;
 
 // ── Shared gradient ───────────────────────────────────────────────────────────
@@ -123,16 +125,22 @@ const hb = StyleSheet.create({
 
 // ── Screen 0: Title ───────────────────────────────────────────────────────────
 function TitleScreen({ onNext, onExit, sessionFill = 0.14 }) {
+  const MOTIVATIONAL_TEXT = 'Breathing. Your voice starts with your breath.';
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: '#1C4047' }}>
         <StatusBar barStyle="light-content" />
 
-        <View style={ts.header}>
-          <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
-            <Text style={hb.closeText}>✕</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Header now rendered by shared ScreenHeader component.
+            onBack uses the exercise's own exit handler (✕ to leave the session). */}
+        <ScreenHeader
+          navigation={null}
+          title="Breathing"
+          backIcon="✕"
+          backLabel="Exit exercise"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={MOTIVATIONAL_TEXT} />}
+        />
 
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
           <Text style={ts.title} numberOfLines={1} adjustsFontSizeToFit>Breathing</Text>
@@ -159,10 +167,7 @@ function TitleScreen({ onNext, onExit, sessionFill = 0.14 }) {
 }
 
 const ts = StyleSheet.create({
-  header: {
-    paddingTop: 52, paddingHorizontal: 18,
-    flexDirection: 'row', alignItems: 'center',
-  },
+  // Header now rendered by shared ScreenHeader component
   title: {
     color: '#FFFFFF', fontSize: 56, fontWeight: '800',
     letterSpacing: 1.5, textAlign: 'center', marginBottom: 12,
@@ -190,6 +195,12 @@ const INSTRUCTIONS = [
   { step: '4', text: 'Breathe out through your mouth for 4 counts. Let your abdomen fall.' },
 ];
 
+// The instruction text concatenated for SpeakerButton so users can hear
+// all four steps read aloud before attempting the breathing exercise.
+const BREATHING_INSTRUCTIONS_TEXT = INSTRUCTIONS.map(
+  (instr) => `Step ${instr.step}: ${instr.text}`
+).join('. ');
+
 // ── Screen 1: Instructions ────────────────────────────────────────────────────
 function VideoScreen({ onNext, onExit }) {
   return (
@@ -201,15 +212,14 @@ function VideoScreen({ onNext, onExit }) {
       />
       <StatusBar barStyle="light-content" />
 
-      <View style={vs.header}>
-        <TouchableOpacity style={vs.iconBtn} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Go back">
-          <Text style={vs.iconBtnText}>←</Text>
-        </TouchableOpacity>
-        <View style={vs.pill}>
-          <Text style={vs.pillText}>INSTRUCTIONS</Text>
-        </View>
-        <View style={vs.iconBtn} />
-      </View>
+      {/* Header now rendered by shared ScreenHeader component.
+          onBack goes back to the title screen (not the full exit). */}
+      <ScreenHeader
+        navigation={null}
+        title="Breathing"
+        onBack={onExit}
+        rightAction={<SpeakerButton text={BREATHING_INSTRUCTIONS_TEXT} />}
+      />
 
       <Text style={vs.heading}>Diaphragmatic{'\n'}Breathing Technique</Text>
 
@@ -232,18 +242,7 @@ function VideoScreen({ onNext, onExit }) {
 }
 
 const vs = StyleSheet.create({
-  header: {
-    paddingTop: 52, paddingHorizontal: 20,
-    flexDirection: 'row', alignItems: 'center',
-    gap: 10,
-  },
-  iconBtn: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconBtnText: { color: '#FFFFFF', fontSize: 20, fontWeight: '500' },
+  // Header now rendered by shared ScreenHeader component
   pill: {
     flex: 1, backgroundColor: '#FFA940', borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
@@ -285,6 +284,12 @@ const vs = StyleSheet.create({
 // Shown instead of the regular Title + Instructions screens during the baseline
 // session. Single card: a short "let's get started" prompt before one breath cycle.
 
+// Text for the baseline intro screen SpeakerButton — the "settle in" prompt
+// before the first breathing cycle of the baseline assessment.
+const BASELINE_INTRO_TEXT =
+  "Before we start, settle in and take one slow, deep breath. " +
+  "Breathe in through your nose, and out through your mouth.";
+
 function BaselineIntroScreen({ onNext, onExit }) {
   return (
     <FadeIn>
@@ -295,11 +300,16 @@ function BaselineIntroScreen({ onNext, onExit }) {
       />
       <StatusBar barStyle="light-content" />
 
-      <View style={bi.header}>
-        <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit">
-          <Text style={hb.closeText}>✕</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Header now rendered by shared ScreenHeader component.
+          backIcon is ✕ because this exits the baseline session entirely. */}
+      <ScreenHeader
+        navigation={null}
+        title="Breathing"
+        backIcon="✕"
+        backLabel="Exit exercise"
+        onBack={onExit}
+        rightAction={<SpeakerButton text={BASELINE_INTRO_TEXT} />}
+      />
 
       <View style={bi.body}>
         <Text style={bi.title}>Let's begin.</Text>
@@ -328,10 +338,7 @@ function BaselineIntroScreen({ onNext, onExit }) {
 }
 
 const bi = StyleSheet.create({
-  header: {
-    paddingTop: 52, paddingHorizontal: 18,
-    flexDirection: 'row', alignItems: 'center',
-  },
+  // Header now rendered by shared ScreenHeader component
   body: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 36,
@@ -455,16 +462,27 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
         {label}
       </Animated.Text>
 
-      {/* Animated bubble */}
+      {/* Animated bubble — glow ring expands on inhale for clear visual feedback */}
       <View style={ds.bubbleArea}>
-        <Animated.View style={{ transform: [{ scale: bubbleScale }] }}>
-          <Image
-            source={require('../../../../assets/images/bubble2.png')}
-            style={{ width: BUBBLE_BASE, height: BUBBLE_BASE }}
-            resizeMode="contain"
-            accessible={false}
-          />
-        </Animated.View>
+        <View style={{ width: BUBBLE_BASE * 1.5, height: BUBBLE_BASE * 1.5, alignItems: 'center', justifyContent: 'center' }}>
+          {/* Glow ring: faint when small, prominent when fully expanded */}
+          <Animated.View style={{
+            position: 'absolute',
+            width: BUBBLE_BASE * 1.5, height: BUBBLE_BASE * 1.5,
+            borderRadius: BUBBLE_BASE * 0.75,
+            backgroundColor: 'rgba(80,190,200,0.45)',
+            opacity: bubbleScale.interpolate({ inputRange: [SCALE_SMALL, SCALE_LARGE], outputRange: [0.0, 0.28] }),
+            transform: [{ scale: bubbleScale }],
+          }} />
+          <Animated.View style={{ transform: [{ scale: bubbleScale }] }}>
+            <Image
+              source={require('../../../../assets/images/bubble2.png')}
+              style={{ width: BUBBLE_BASE, height: BUBBLE_BASE }}
+              resizeMode="contain"
+              accessible={false}
+            />
+          </Animated.View>
+        </View>
       </View>
 
       {/* Can't do now — above the cycle progress pills */}

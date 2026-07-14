@@ -10,12 +10,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { logScreenView } from '../../utils/analytics';
+import { colors } from '../../theme';
+import ScreenHeader from '../../components/ScreenHeader';
+import SpeakerButton from '../../components/SpeakerButton';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
 
-const TEAL_DARK  = '#1C4047';
-const TEAL_MID   = '#2D6974';
+// Background gradient is now sourced from colors.gradients.app (imported above).
 const ORANGE     = '#FFA940';
 const MINT       = '#C3DECE';
 const WHITE      = '#FFFFFF';
@@ -44,6 +46,12 @@ const STEPS = [
   },
 ];
 
+// Main body text built from the STEPS array so the SpeakerButton can read
+// the full content of this screen in a single tap.
+const STEPS_BODY_TEXT = STEPS.map(
+  step => `${step.title}: ${step.body}`
+).join('. ');
+
 export default function HowItWorksScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
 
@@ -52,11 +60,21 @@ export default function HowItWorksScreen({ navigation }) {
     return logExit;
   }, []);
 
+  // Canonical app gradient — dark teal background for this onboarding screen.
+  // ScreenHeader handles the top safe area inset internally, so paddingTop
+  // on the inner View is reduced from top+32 to just 8.
   return (
-    <LinearGradient colors={[TEAL_MID, TEAL_DARK]} style={s.root}>
+    <LinearGradient colors={colors.gradients.app} style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      <View style={[s.inner, { paddingTop: top + 32, paddingBottom: bottom + 32 }]}>
+      {/* Header now rendered by shared ScreenHeader component */}
+      <ScreenHeader
+        navigation={navigation}
+        title="How It Works"
+        rightAction={<SpeakerButton text={STEPS_BODY_TEXT} />}
+      />
+
+      <View style={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}>
 
         <View style={s.header}>
           <Text style={s.eyebrow}>HOW IT WORKS</Text>

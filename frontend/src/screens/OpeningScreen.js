@@ -24,6 +24,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUserProfile } from '../utils/storage';
+import { colors } from '../theme';
 
 const { width: W, height: H } = Dimensions.get('window');
 // Figma reference frame: 402 × 874
@@ -39,8 +40,8 @@ function getTheme() {
     greeting:  isMorning ? 'Morning,' : 'Evening',
     greetingSuffix: isMorning ? '' : '',   // comma is inline with name for morning
     gradientColors: isMorning
-      ? ['#68B39F', '#2D6974', '#1C4047']  // lighter teal — morning warmth
-      : ['#37767A', '#1C4047', '#0A1618'], // darkApp gradient — evening depth
+      ? ['#68B39F', '#2D6974', '#1C4047']  // lighter teal — morning warmth (intentional variant)
+      : colors.gradients.app,              // canonical app gradient — evening depth
     gradientAngle: 139,                    // ~139° from Figma
   };
 }
@@ -172,7 +173,8 @@ export default function OpeningScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#1C4047',
+    // bgDark provides the base colour behind the LinearGradient while it loads.
+    backgroundColor: colors.bgDark,
   },
   bubble: {
     position: 'absolute',

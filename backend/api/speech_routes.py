@@ -1,3 +1,4 @@
+import base64
 import logging
 from typing import Optional
 
@@ -8,6 +9,14 @@ from services.clarity_speech import clarity_transcript, clarity_transcript_chunk
 from services.enhancement_service import SpeechEnhancementError, generate_enhanced_speech
 from services.soniva_service import transcribe_soniva
 from services.speech_service import TranscriptionError, transcribe_audio
+from services.vocabulary_service import (
+    extract_key_terms,
+    format_vocabulary_hint,
+    get_user_vocabulary_cached,
+    get_user_examples,
+    store_user_example,
+    update_user_vocabulary,
+)
 from services.voice_cloning_service import get_user_voice_id, has_cloned_voice
 from services.voice_profile_service import DEFAULT_PROFILE, analyze_voice
 from utils.auth_dep import get_current_user
@@ -39,8 +48,6 @@ _HALLUCINATION_SUBSTRINGS = [
 ]
 
 # Chunks below this size are almost certainly silence — skip Whisper entirely.
-# Note: a 4-second AAC clip at typical quality is ~50–80 KB even for silence,
-# so this only catches near-empty (truly empty) files.
 _MIN_CHUNK_BYTES = 5_000
 
 # One-word responses that are plausible real utterances
@@ -56,27 +63,38 @@ def _is_hallucination(text: str, previous_enhanced_text: str = "") -> bool:
         return True
     lower = text.lower().strip()
 
-    # Substring check — catches "thank you for watching my video." and variants
     for phrase in _HALLUCINATION_SUBSTRINGS:
         if phrase in lower:
             return True
 
-    # Multiple dollar amounts = random price-list hallucination
     if lower.count("$") >= 3:
         return True
 
-    # Single word that isn't a plausible short utterance
     words = lower.rstrip(" .,!?").split()
     if len(words) == 1 and words[0] not in _VALID_SINGLE_WORDS:
         return True
 
-    # Repetition of the previous context — Whisper echoing back what it heard
     if previous_enhanced_text:
         prev_tail = previous_enhanced_text.lower()[-300:]
         if lower.rstrip(".,!? ") in prev_tail:
             return True
 
     return False
+
+
+def _build_whisper_prompt(vocab_words: list[str], previous_text: str) -> str:
+    """
+    Combine the user's stored vocabulary hint with the rolling transcript context
+    that keeps Whisper's output consistent across chunk boundaries.
+
+    The vocabulary hint goes first so Whisper loads these words into its decoder
+    state before seeing the actual context — maximising their influence on
+    ambiguous audio segments.
+    """
+    hint = format_vocabulary_hint(vocab_words)
+    if hint and previous_text:
+        return f"{hint}\n{previous_text}"
+    return hint or previous_text
 
 
 @router.post("/transcribe-chunk")
@@ -116,12 +134,19 @@ async def transcribe_chunk(
     await file.seek(0)
 
     audio_path = save_uploaded_audio(file)
+    user_id = current_user["uid"]
+
+    # Fetch user vocabulary (cached — at most one Firestore read per 5 min per user)
+    # and prepend it to the Whisper context prompt so the model recognises the user's
+    # specific terms (names, medication names, places) from their previous sessions.
+    vocab_words = get_user_vocabulary_cached(user_id)
+    whisper_prompt = _build_whisper_prompt(vocab_words, previous_text)
 
     try:
         if model == "soniva":
-            raw_text, _ = transcribe_soniva(str(audio_path), prompt=previous_text)
+            raw_text, _ = transcribe_soniva(str(audio_path), prompt=whisper_prompt)
         else:
-            raw_text, _ = transcribe_audio(str(audio_path), prompt=previous_text)
+            raw_text, _ = transcribe_audio(str(audio_path), prompt=whisper_prompt)
     except TranscriptionError as e:
         if e.error_type == "empty":
             return success_response({
@@ -139,6 +164,8 @@ async def transcribe_chunk(
             "chunk_index": chunk_index,
         })
 
+    # Per-chunk clarity: no few-shot examples here (called every 4 s — token cost adds up).
+    # Examples are used only in the final pass once the full transcript is assembled.
     enhanced_text = clarity_transcript_chunked(raw_text, previous_enhanced_text)
 
     return success_response({
@@ -155,11 +182,11 @@ async def enhance_text_route(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Final step of the chunked pipeline: generate ElevenLabs TTS audio.
+    Final step of the chunked pipeline: run the coherence pass and generate TTS audio.
 
     enhanced_transcript — the merged, already-GPT-enhanced text from per-chunk clarity.
-                          When provided, the full GPT clarity pass is skipped (it was
-                          already done per-chunk), saving latency and cost.
+                          When provided, only the final coherence pass is run (not a full
+                          clarity pass), saving latency and cost.
     raw_transcript      — always required; used as fallback and for the clarity_applied flag.
     """
     if not raw_transcript.strip():
@@ -167,12 +194,33 @@ async def enhance_text_route(
 
     user_id = current_user["uid"]
 
+    # Fetch this user's stored (raw → enhanced) example pairs for GPT few-shot.
+    # These teach GPT the specific artefact patterns in this person's speech —
+    # the more they use the app, the better the correction becomes.
+    user_examples = get_user_examples(user_id)
+
     if enhanced_transcript.strip():
         final_transcript = enhanced_transcript.strip()
         logger.info("Running final coherence pass on accumulated enhanced transcript")
-        final_transcript = clarity_final_pass(final_transcript)
+        final_transcript = clarity_final_pass(final_transcript, examples=user_examples)
     else:
-        final_transcript = clarity_transcript(raw_transcript)
+        final_transcript = clarity_transcript(raw_transcript, examples=user_examples)
+
+    # Background: extract vocabulary from the cleaned transcript and update user's
+    # stored word list for future Whisper seeding. Non-blocking — never delays the response.
+    try:
+        new_terms = extract_key_terms(final_transcript)
+        if new_terms:
+            update_user_vocabulary(user_id, new_terms)
+    except Exception as exc:
+        logger.warning("Vocabulary update failed (non-fatal): %s", exc)
+
+    # Background: store this (raw, enhanced) pair so future sessions can use it
+    # as a few-shot example for this user's specific speech patterns.
+    try:
+        store_user_example(user_id, raw_transcript, final_transcript)
+    except Exception as exc:
+        logger.warning("Example storage failed (non-fatal): %s", exc)
 
     using_cloned_voice = has_cloned_voice(user_id)
     if using_cloned_voice:
@@ -189,6 +237,7 @@ async def enhance_text_route(
     }
 
     audio_url = None
+    audio_b64 = None
     try:
         enhanced_path = generate_enhanced_speech(
             final_transcript,
@@ -196,13 +245,21 @@ async def enhance_text_route(
             voice_settings=voice_settings,
         )
         audio_url = f"/api/audio/{enhanced_path.name}"
+        # Encode the audio file as base64 so the frontend can write it directly
+        # to local storage — eliminates the second HTTP round-trip and makes
+        # playback instant regardless of server-to-device network latency.
+        with open(enhanced_path, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode("utf-8")
     except SpeechEnhancementError as e:
         logger.warning("enhance-text TTS failed: %s", e)
+    except Exception as e:
+        logger.warning("enhance-text audio_b64 encoding failed: %s", e)
 
     return success_response({
         "cleaned_transcript": final_transcript,
         "clarity_applied": final_transcript != raw_transcript,
         "audio_url": audio_url,
+        "audio_b64": audio_b64,
         "voice_profile": {"cloned": True} if using_cloned_voice else DEFAULT_PROFILE.to_dict(),
     })
 
@@ -237,11 +294,15 @@ async def process_audio(
     user_id = current_user["uid"]
     audio_path = save_uploaded_audio(file)
 
+    # Seed Whisper with this user's stored vocabulary for better recognition.
+    vocab_words  = get_user_vocabulary_cached(user_id)
+    whisper_prompt = format_vocabulary_hint(vocab_words)
+
     try:
         if model == "soniva":
-            raw_transcript, audio_duration_s = transcribe_soniva(str(audio_path))
+            raw_transcript, audio_duration_s = transcribe_soniva(str(audio_path), prompt=whisper_prompt)
         else:
-            raw_transcript, audio_duration_s = transcribe_audio(str(audio_path))
+            raw_transcript, audio_duration_s = transcribe_audio(str(audio_path), prompt=whisper_prompt)
     except TranscriptionError as e:
         if e.error_type == "empty":
             return error_response(e.message, error_type="empty")
@@ -249,7 +310,22 @@ async def process_audio(
             raise HTTPException(status_code=503, detail=e.message)
         raise HTTPException(status_code=500, detail=e.message)
 
-    cleaned_transcript = clarity_transcript(raw_transcript)
+    # Include user's few-shot examples in the clarity prompt.
+    user_examples    = get_user_examples(user_id)
+    cleaned_transcript = clarity_transcript(raw_transcript, examples=user_examples)
+
+    # Background vocabulary and example updates — non-blocking.
+    try:
+        new_terms = extract_key_terms(cleaned_transcript)
+        if new_terms:
+            update_user_vocabulary(user_id, new_terms)
+    except Exception as exc:
+        logger.warning("Vocabulary update failed (non-fatal): %s", exc)
+
+    try:
+        store_user_example(user_id, raw_transcript, cleaned_transcript)
+    except Exception as exc:
+        logger.warning("Example storage failed (non-fatal): %s", exc)
 
     if has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)

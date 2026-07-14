@@ -1,13 +1,64 @@
 /**
- * Eloqua Design System — v2
+ * Eloqua Design System — v3
  *
- * Single source of truth for every visual token.
- * No screen should define its own colours, radii, or opacity values.
+ * ════════════════════════════════════════════════════════════════
+ * STYLE GUIDE — read this before editing any screen
+ * ════════════════════════════════════════════════════════════════
  *
- * Vibe: warm confidence.
- *   Teal  = calm, clinical trust  (the journey, the path)
- *   Orange = human energy          (streaks, progress, action)
+ * BRAND VIBE: warm confidence.
+ *   Teal   = calm clinical trust (the journey, the path)
+ *   Orange = human energy (streaks, progress, CTA)
  *   Mint   = clarity, breathing room (labels, accents on dark)
+ *
+ * ── THE THREE GRADIENTS ─────────────────────────────────────────
+ * Every screen background must use exactly one of these three.
+ * Never use a flat colour as the full-screen background.
+ *
+ *  1. colors.gradients.app      (dark teal → near-black)
+ *     Use for: Home, Settings, Progress, SpeechEnhancement,
+ *              StreakCelebration, Opening, SpeechDemo, splash dark phase
+ *
+ *  2. colors.gradients.session  (deep teal → very dark)
+ *     Use for: Assessment, Checkin, VocalTrainingSession,
+ *              all exercise screens, BaselineSession
+ *
+ *  3. colors.gradients.form     (light mint → mid mint)
+ *     Use for: top halves of onboarding/auth screens that use
+ *              a split light/dark layout (SignUp, SignIn,
+ *              SetupAboutYou, SetupVoice, SetupPermissions)
+ *
+ * ── TYPOGRAPHY ──────────────────────────────────────────────────
+ * - All body text ≥ 16px (WCAG 2.1 minimum)
+ * - Only use font tokens from `type.*` (h1–h4, body, button, etc.)
+ * - Never hard-code fontWeight / fontSize / letterSpacing inline
+ * - Large Text support: `useFontSize(base)` from PrefsContext
+ *
+ * ── COLOURS ─────────────────────────────────────────────────────
+ * - Import from `colors.*` — never hard-code hex values in screens
+ * - One orange: colors.orange (#FFA940) — all CTAs, accents, streaks
+ * - Secondary text: colors.textSecondary (rgba white 0.60)
+ * - Faint text: colors.textFaint (rgba white 0.38) — hints only
+ * - Cards: colors.surfaceSubtle + colors.border
+ * - Destructive: colors.red (#E05252)
+ *
+ * ── SPACING ─────────────────────────────────────────────────────
+ * - Use space.* tokens (xs=4, sm=8, md=16, lg=24, xl=32, xxl=48)
+ * - Standard horizontal padding: space.md (16px)
+ * - Card internal padding: 18–20px
+ *
+ * ── COMPONENTS ──────────────────────────────────────────────────
+ * - Primary CTA: spread `ui.primaryBtn`, text uses type.button style
+ * - Ghost buttons (back/close): spread `ui.ghostBtn` (56×56, rounded)
+ * - Help buttons: spread `ui.orangeBtn` (56×56, orange)
+ * - Cards: spread `ui.card` (borderRadius 16, mint border at 18%)
+ * - Tab bar: <TabBar activeTab="home|settings|progress" navigation={nav} />
+ *
+ * ── ACCESSIBILITY ───────────────────────────────────────────────
+ * - All interactive elements: accessibilityRole + accessibilityLabel
+ * - No white text on orange backgrounds (use '#1A1A1A' instead)
+ * - Min tap target: 48×48px
+ *
+ * ════════════════════════════════════════════════════════════════
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,21 +131,27 @@ export const colors = {
   white:   _p.white,
 
   // ── Gradients (pass directly as `colors` prop to <LinearGradient>) ───────────
+  //
+  // ONLY THREE CANONICAL GRADIENTS — use these everywhere.
+  // See style guide at top of file for which screens use which.
   gradients: {
-    // Main app screens: Settings, Progress, Home header
-    darkApp:      [_p.teal500, _p.teal900, _p.teal950],
-    // Auth screens: SignUp, SignIn, SetupPermissions
-    auth:         [_p.teal600, _p.teal900],
-    // Light mint gradient — available for future screens (no longer used in active flow)
-    lightForm:    [_p.teal100, _p.teal300],
-    // Speech Enhancement + VocalTraining header
-    speech:       [_p.teal100, _p.teal400],
-    // Session screens: Assessment, Check-in
-    session:      [_p.teal800, '#0D1E21'],
-    // Exercise instruction slides
-    instruction:  ['#1C3242', '#0D1E2B'],
-    // Ready countdown (Sustained Phonation)
-    ready:        ['#1E3A4A', '#0D2530'],
+    // ① MAIN APP — Home, Settings, Progress, SpeechEnhancement, Opening, StreakCelebration
+    app:          [_p.teal500, _p.teal900, _p.teal950],  // '#37767A' → '#1C4047' → '#0A1618'
+
+    // ② SESSION   — Assessment, Checkin, VocalTrainingSession, all exercise screens
+    session:      [_p.teal800, _p.teal900, _p.teal950],  // '#243E44' → '#1C4047' → '#0A1618'
+
+    // ③ FORM      — top halves of split onboarding/auth screens (light section only)
+    form:         [_p.teal100, '#C5E0D4'],                // '#E0ECDE' → mint-teal
+
+    // ── Legacy aliases — kept for backward compatibility with existing screen imports.
+    // New code must use the canonical names above.
+    darkApp:      [_p.teal500, _p.teal900, _p.teal950],  // → use `app`
+    auth:         [_p.teal500, _p.teal900, _p.teal950],  // → use `app`
+    lightForm:    [_p.teal100, '#C5E0D4'],                // → use `form`
+    speech:       [_p.teal500, _p.teal900, _p.teal950],  // → use `app`
+    instruction:  [_p.teal800, _p.teal900, _p.teal950],  // → use `session`
+    ready:        [_p.teal800, _p.teal900, _p.teal950],  // → use `session`
   },
 
   // ── Splash screen palette — used by SplashScreen.js ─────────────────────────

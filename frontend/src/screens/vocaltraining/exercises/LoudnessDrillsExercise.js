@@ -32,6 +32,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
 import { fetchWithAuth } from '../../../utils/authHeaders';
 import { API_BASE_URL } from '../../../config/env';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -45,66 +47,65 @@ const MAX_THRESHOLD   = 0.70;
 
 // ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
 // minVolume: adaptive threshold floor (0–1 normalised dB)
-// timerMs:   countdown per round in ms (scales with phrase length)
-// rounds:    content array with progressively longer phrases
+// timerMs:   countdown per round in ms (scales with content length)
+// rounds:    content array — short/punchy at low tiers, longer phrases at high tiers
+//
+// Tier 1 uses single words deliberately — a single loud burst isolates pure vocal
+// effort with no articulatory demand. This is closest to LSVT LOUD's "UH" baseline.
 const LOUDNESS_TIER_CONFIG = [
-  // Tier 1: ~5-word phrases, 45% threshold
+  // Tier 1: single punchy words, 3 s timer, 45% threshold
   {
-    minVolume: 0.45, timerMs: 4000,
+    minVolume: 0.45, timerMs: 3000,
     rounds: [
-      { word: 'Say it louder',    tip: 'Big, loud voice!' },
-      { word: 'Hear me please',   tip: 'Project your voice!' },
-      { word: 'I can do this',    tip: 'Nice and loud!' },
-      { word: 'Loud and clear',   tip: "You've got this!" },
-      { word: 'Listen to me now', tip: 'Send it across the room!' },
+      { word: 'GO',   tip: 'Big voice!' },
+      { word: 'LOUD', tip: 'Project it!' },
+      { word: 'NOW',  tip: 'Yes!' },
+      { word: 'YES',  tip: 'Great!' },
+      { word: 'HEY',  tip: "That's it!" },
     ],
   },
-  // Tier 2: ~8-word phrases, 50% threshold
+  // Tier 2: short 2-word phrases, 3.5 s timer, 50% threshold
   {
-    minVolume: 0.50, timerMs: 5000,
+    minVolume: 0.50, timerMs: 3500,
     rounds: [
-      { word: 'Could you turn it up a little please',   tip: 'Nice and loud!' },
-      { word: 'I am speaking up as loud as I can',      tip: 'Big voice!' },
-      { word: 'My voice is getting stronger each day',  tip: "You've got this!" },
-      { word: 'Please listen I have something to say',  tip: 'Project!' },
-      { word: 'Everyone needs to be able to hear me',   tip: 'Excellent!' },
+      { word: 'Speak up!',   tip: 'Nice and loud!' },
+      { word: 'Say it!',     tip: 'Big voice!' },
+      { word: 'Loud voice!', tip: "You've got this!" },
+      { word: 'Come on!',    tip: 'Project!' },
+      { word: 'Big voice!',  tip: 'Excellent!' },
     ],
   },
-  // Tier 3: ~7-word phrases, 55% threshold.
-  // Phrases shortened from ~10 words (was 6000 ms timer) so users at this tier
-  // can complete the utterance within the window and feel successful.
+  // Tier 3: 3–4 word phrases, 4 s timer, 55% threshold
   {
-    minVolume: 0.55, timerMs: 5000,
+    minVolume: 0.55, timerMs: 4000,
     rounds: [
-      { word: 'Good morning, I hope you hear me',       tip: 'Keep projecting!' },
-      { word: 'I practise my voice every single day',   tip: 'Big voice!' },
-      { word: 'My speaking gets stronger each day',     tip: "You're doing great!" },
-      { word: 'Please listen, I have something to say', tip: 'Keep going!' },
-      { word: 'Every day I speak more clearly',         tip: 'Outstanding!' },
+      { word: 'Hear me now!',    tip: 'Keep projecting!' },
+      { word: 'Loud and clear!', tip: 'Big voice!' },
+      { word: 'Listen to me!',   tip: "You're doing great!" },
+      { word: 'Say it loud!',    tip: 'Keep going!' },
+      { word: 'I can do this!',  tip: 'Outstanding!' },
     ],
   },
-  // Tier 4: ~10-word sentences, 60% threshold.
-  // Shortened from ~15 words (was 7500 ms timer).
+  // Tier 4: 5–6 word phrases, 5 s timer, 60% threshold
   {
-    minVolume: 0.60, timerMs: 6000,
+    minVolume: 0.60, timerMs: 5000,
     rounds: [
-      { word: 'Good morning, I am speaking as clearly as I can',          tip: 'Amazing!' },
-      { word: 'Could you bring my coffee when it is ready please',        tip: 'Keep it up!' },
-      { word: 'Thank you for helping me practise my speech today',        tip: 'Excellent!' },
-      { word: 'Please ask reception to call me when the doctor is ready', tip: 'Big voice!' },
-      { word: 'I practise every day and notice a real difference',        tip: 'Wonderful!' },
+      { word: 'Please listen to me now',       tip: 'Amazing!' },
+      { word: 'I am speaking up today',        tip: 'Keep it up!' },
+      { word: 'My voice is getting stronger',  tip: 'Excellent!' },
+      { word: 'Loud and clear every time',     tip: 'Big voice!' },
+      { word: 'I want to be heard',            tip: 'Wonderful!' },
     ],
   },
-  // Tier 5: ~13-word sentences, 65% threshold.
-  // Shortened from ~20 words (was 9000 ms timer).
+  // Tier 5: 7–8 word phrases, 6 s timer, 65% threshold
   {
-    minVolume: 0.65, timerMs: 7500,
+    minVolume: 0.65, timerMs: 6000,
     rounds: [
-      { word: 'Good morning to all, I will speak loudly so everyone can hear',            tip: 'Incredible!' },
-      { word: 'I would like a hot drink and a snack, and some water too please',          tip: 'Keep projecting!' },
-      { word: 'Thank you for your help, these exercises are making a real difference',    tip: 'Outstanding!' },
-      { word: 'Could you help me find my appointment time, as I cannot be late today',   tip: 'Loud and clear!' },
-      { word: 'I do voice exercises every day and am noticing real improvement',          tip: 'Phenomenal!' },
+      { word: 'Good morning I hope you can hear me',      tip: 'Incredible!' },
+      { word: 'My voice is strong and getting stronger',  tip: 'Keep projecting!' },
+      { word: 'I practise my voice every single day',     tip: 'Outstanding!' },
+      { word: 'Please listen I have something to say',    tip: 'Loud and clear!' },
+      { word: 'Every day my speaking gets better',        tip: 'Phenomenal!' },
     ],
   },
 ];
@@ -113,6 +114,9 @@ const RISE_MS         = 700;   // jellyfish rising animation (ms)
 const WHACK_MS        = 480;   // jellyfish whack-fly animation (ms)
 const SINK_MS         = 500;   // jellyfish sinking animation (ms)
 const BETWEEN_MS      = 900;   // pause between rounds (ms)
+// Volume floor for "audible but too soft" detection — triggers the LOUDER! prompt.
+// Kept low so even very quiet speakers see feedback rather than silence.
+const SOFT_DETECT_VOL = 0.12;
 
 // ── Colours ─────────────────────────────────────────────────────────────────────
 const BG        = '#1C4047';
@@ -247,21 +251,25 @@ function Jellyfish({ hole, riseAnim, scaleAnim, opacityAnim }) {
   );
 }
 
-/** Pill card showing the word to say. 10px orange border + timer fill when active (matches LD3/LD5 Figma). */
-function WordCard({ word, timerAnim, isActive }) {
+/** Pill card showing the word to say. Border turns green when the user nails it. */
+function WordCard({ word, timerAnim, isActive, isSuccess }) {
   const CARD_W = W - 100;
   const wordCount = (word || '').split(' ').length;
   // Scale card height and font for longer phrases/sentences
   const CARD_H  = wordCount <= 3 ? 110 : wordCount <= 6 ? 130 : 150;
   const fontSize = wordCount <= 2 ? 52 : wordCount <= 4 ? 34 : wordCount <= 7 ? 24 : 18;
   const letterSp = wordCount <= 2 ? 3 : 0.5;
+  // Green border + glow on success, orange otherwise
+  const borderCol   = isSuccess ? '#48D28C' : ORANGE;
+  const shadowCol   = isSuccess ? '#48D28C' : ORANGE;
+  const shadowOpac  = isSuccess ? 0.80 : (isActive ? 0.55 : 0.20);
   return (
     <View style={{ alignSelf: 'center' }}>
       <View style={{
-        borderWidth: 10, borderColor: ORANGE,
+        borderWidth: 10, borderColor: borderCol,
         borderRadius: (CARD_H + 20) / 2,
-        shadowColor: ORANGE, shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: isActive ? 0.55 : 0.20, shadowRadius: 12, elevation: isActive ? 10 : 4,
+        shadowColor: shadowCol, shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: shadowOpac, shadowRadius: isSuccess ? 18 : 12, elevation: isActive ? 10 : 4,
       }}>
         <View style={{
           width: CARD_W, height: CARD_H, backgroundColor: WHITE,
@@ -308,253 +316,103 @@ function ProgressPills({ doneCount, totalRounds }) {
 
 const BG_IMAGE = require('../../../../assets/images/WhackAMoleBG.png');
 
-// ── Demo jellyfish (title screen — teal/mint variant) ────────────────────────────
-function DemoJellyfish({ size = 100 }) {
-  const r     = size / 2;
-  const domeH = size * 0.62;
-  const tentH = size * 0.52;
-  const TENTS = [-r*0.56, -r*0.26, r*0.02, r*0.30, r*0.56];
-  const TENT_H = [tentH, tentH*0.82, tentH*0.94, tentH*0.80, tentH];
+// ─────────────────────────────────────────────────────────────────────────────────
+// Demo (instruction) screen — single screen, same format as SustainedPhonation
+// ─────────────────────────────────────────────────────────────────────────────────
+
+const DEMO_STEPS = [
+  { step: '1', text: 'A word appears on screen.' },
+  { step: '2', text: 'Say it out LOUD before the timer runs out.' },
+  { step: '3', text: "Loud enough = jellyfish gone. Five done = complete!" },
+];
+
+// Read aloud by SpeakerButton before the user starts
+const LOUDNESS_INTRO_TEXT =
+  "Loudness Drills. A word appears — say it out LOUD before the timer runs out. " +
+  "Loud enough and the jellyfish flies off. Complete five to finish.";
+
+function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
   return (
-    <View style={{ width: size, alignItems: 'center' }}>
-      <View style={{
-        width: size, height: domeH,
-        backgroundColor: '#C0E4DC',
-        borderTopLeftRadius: r, borderTopRightRadius: r,
-        borderBottomLeftRadius: size*0.16, borderBottomRightRadius: size*0.16,
-        overflow: 'hidden',
-      }}>
-        <View style={{
-          position: 'absolute', width: size*0.36, height: size*0.20,
-          borderRadius: size*0.11, backgroundColor: 'rgba(255,255,255,0.48)',
-          top: size*0.07, left: size*0.10, transform: [{ rotate: '-18deg' }],
-        }} />
-        <View style={{
-          position: 'absolute', width: size*0.12, height: size*0.08,
-          borderRadius: size*0.06, backgroundColor: 'rgba(255,255,255,0.82)',
-          top: size*0.04, left: size*0.55,
-        }} />
+    <View style={{ flex: 1, backgroundColor: BG }}>
+      <StatusBar barStyle="light-content" />
+
+      <ScreenHeader
+        navigation={null}
+        title="Loudness Drills"
+        backIcon="✕"
+        backLabel="Exit exercise"
+        onBack={onExit}
+        rightAction={<SpeakerButton text={LOUDNESS_INTRO_TEXT} />}
+      />
+
+      <Text style={ds.bigTitle}>{'Loudness\nDrills'}</Text>
+
+      {/* 3-step instruction card */}
+      <View style={ds.card}>
+        {DEMO_STEPS.map(({ step, text }) => (
+          <View key={step} style={ds.row}>
+            <View style={ds.badge}>
+              <Text style={ds.badgeNum}>{step}</Text>
+            </View>
+            <Text style={ds.stepText}>{text}</Text>
+          </View>
+        ))}
       </View>
-      {TENTS.map((dx, i) => (
-        <View key={i} style={{
-          position: 'absolute', width: 4.5, height: TENT_H[i],
-          backgroundColor: 'rgba(140,200,190,0.85)',
-          borderBottomLeftRadius: 2, borderBottomRightRadius: 2,
-          top: domeH - 2, left: r + dx - 2.25,
-        }} />
-      ))}
+
+      <TouchableOpacity
+        style={ds.startBtn}
+        onPress={onFinish}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Begin exercise"
+      >
+        <Text style={ds.startText}>Let's Go  →</Text>
+      </TouchableOpacity>
+
+      {/* Session progress bar */}
+      <View style={ds.sessionBar}>
+        <View style={[ds.sessionBarFill, { width: `${sessionFill * 100}%` }]} />
+      </View>
     </View>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
-// Demo (instruction) screen
-// ─────────────────────────────────────────────────────────────────────────────────
-
-const DEMO_SLIDES = [
-  { type: 'title' },
-  { type: 'instr', num: '1', text: 'A jellyfish appears', wordActive: false, showJelly: false },
-  { type: 'instr', num: '2', text: 'Say the word before the timer runs out', wordActive: true, showJelly: false },
-  { type: 'instr', num: '3', text: 'Jellyfish rises', wordActive: true, showJelly: true },
-];
-
-function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
-  const [slide, setSlide] = useState(0);
-  const demoRiseAnim = useRef(new Animated.Value(0)).current;
-  const demoOpac     = useRef(new Animated.Value(1)).current;
-  const demoScale    = useRef(new Animated.Value(1)).current;
-  const s = DEMO_SLIDES[slide];
-  const CARD_W = W - 96;
-  const CARD_H = 110;
-  const demoHole = HOLES[0];
-
-  useEffect(() => {
-    const val = s.showJelly ? 0.65 : 0.08;
-    Animated.timing(demoRiseAnim, { toValue: val, duration: 480, useNativeDriver: false }).start();
-  }, [slide]);
-
-  function next() {
-    if (slide < DEMO_SLIDES.length - 1) setSlide(slide + 1);
-    else onFinish();
-  }
-  function back() {
-    if (slide > 0) setSlide(slide - 1);
-    else onExit();
-  }
-
-  const isTitle = s.type === 'title';
-
-  // ── Title slide: solid dark teal bg (matches LD1 Figma) ──────────────────
-  if (isTitle) {
-    return (
-      <View style={{ flex: 1, backgroundColor: BG }}>
-        <StatusBar barStyle="light-content" />
-
-        <View style={{ paddingTop: 56, paddingHorizontal: 20 }}>
-          <TouchableOpacity style={ds.backBtn} onPress={back} accessibilityRole="button" accessibilityLabel="Exit exercise">
-            <Text style={ds.arrowText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={ds.bigTitle}>{'Loudness\nDrills'}</Text>
-
-          {/* Jellyfish + hole illustration */}
-          <View style={{ alignItems: 'center', marginTop: 32 }}>
-            <View style={{
-              position: 'absolute', width: 180, height: 180,
-              borderRadius: 90, backgroundColor: 'rgba(68,147,160,0.12)',
-              top: -20, alignSelf: 'center',
-            }} />
-            <DemoJellyfish size={120} />
-            {/* Hole shadow / ellipse beneath */}
-            <View style={{
-              width: 140, height: 38, borderRadius: 70, marginTop: 4,
-              backgroundColor: 'rgba(0,0,0,0.55)',
-            }} />
-          </View>
-        </View>
-
-        {/* Arrow → to advance to instructions */}
-        <TouchableOpacity style={ds.forwardBtn} onPress={next} activeOpacity={0.82} accessibilityRole="button" accessibilityLabel="Continue">
-          <Text style={ds.arrowText}>→</Text>
-        </TouchableOpacity>
-
-        {/* Session progress bar — matches LD1 bottom bar */}
-        <View style={ds.sessionBar}>
-          <View style={[ds.sessionBarFill, { width: `${sessionFill * 100}%` }]} />
-        </View>
-      </View>
-    );
-  }
-
-  // ── Instruction slides: game BG + dark overlay (LD2/LD3/LD4) ─────────────
-  return (
-    <ImageBackground source={BG_IMAGE} style={{ flex: 1 }} resizeMode="cover">
-      {/* Dark overlay — 0.82 matches Figma */}
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.82)' }]} />
-      <StatusBar barStyle="light-content" />
-
-      {/* Jellyfish rising on slide 3 (LD4) */}
-      {s.showJelly && (
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          <Jellyfish
-            hole={demoHole}
-            riseAnim={demoRiseAnim}
-            scaleAnim={demoScale}
-            opacityAnim={demoOpac}
-          />
-        </View>
-      )}
-
-      {/* Word card — slides 2 & 3 (LD3, LD4) */}
-      {s.wordActive && (
-        <View style={{ position: 'absolute', top: 108, left: 0, right: 0, zIndex: 5 }}>
-          <View style={{ alignSelf: 'center', width: CARD_W }}>
-            <View style={{
-              borderWidth: 10, borderColor: ORANGE, borderRadius: (CARD_H + 20) / 2,
-            }}>
-              <View style={{
-                height: CARD_H, backgroundColor: WHITE,
-                borderRadius: CARD_H / 2,
-                justifyContent: 'center', alignItems: 'center',
-              }}>
-                <Text style={{ fontSize: 56, fontWeight: '800', color: WORD_COL, letterSpacing: 3 }}>
-                  UH
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Numbered instruction — centered in screen */}
-      <View style={{
-        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        justifyContent: 'center', alignItems: 'center',
-        paddingHorizontal: 36, zIndex: 5,
-      }}>
-        <Text style={ds.instrNum}>{s.num}.</Text>
-        <Text style={ds.instrText}>{s.text}</Text>
-      </View>
-
-      {/* Nav row */}
-      <View style={ds.navRow}>
-        <TouchableOpacity style={ds.navBtn} onPress={back} accessibilityRole="button" accessibilityLabel="Go back">
-          <Text style={ds.arrowText}>←</Text>
-        </TouchableOpacity>
-        <View style={ds.dots}>
-          {DEMO_SLIDES.filter(sl => sl.type === 'instr').map((_, i) => (
-            <View key={i} style={[ds.dot, (slide - 1) === i && ds.dotActive]} />
-          ))}
-        </View>
-        <TouchableOpacity style={[ds.navBtn, ds.navNext]} onPress={next} accessibilityRole="button" accessibilityLabel={slide === DEMO_SLIDES.length - 1 ? 'Begin exercise' : 'Next slide'}>
-          <Text style={ds.arrowText}>{slide === DEMO_SLIDES.length - 1 ? 'Go!' : '→'}</Text>
-        </TouchableOpacity>
-      </View>
-    </ImageBackground>
-  );
-}
-
 const ds = StyleSheet.create({
-  backBtn: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    justifyContent: 'center', alignItems: 'center',
-  },
   bigTitle: {
     fontSize: 56, fontWeight: '800', color: WHITE,
     textAlign: 'center', letterSpacing: 2.5, lineHeight: 66,
+    marginTop: 8, marginBottom: 32,
   },
-  forwardBtn: {
-    alignSelf: 'center',
-    width: 80, height: 64, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 60,
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
   },
-  // Session progress bar at the bottom of the title screen (matches LD1)
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  startBtn: {
+    alignSelf: 'center', marginTop: 36,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
   sessionBar: {
     position: 'absolute', bottom: 28, left: 47,
     width: W - 94, height: 12, borderRadius: 13,
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  sessionBarFill: {
-    height: '100%', borderRadius: 13,
-    backgroundColor: ORANGE,
-  },
-  instrNum: {
-    fontSize: 38, fontWeight: '800', color: WHITE,
-    letterSpacing: 1.8, marginBottom: 10,
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  instrText: {
-    fontSize: 28, fontWeight: '700', color: WHITE,
-    textAlign: 'center', letterSpacing: 1.2, lineHeight: 38,
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  navRow: {
-    position: 'absolute', bottom: 44, left: 0, right: 0,
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 32, zIndex: 10,
-  },
-  navBtn: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  navNext: { backgroundColor: '#2D6974', borderColor: '#2D6974' },
-  arrowText: { color: WHITE, fontSize: 20, fontWeight: '500', includeFontPadding: false, textAlign: 'center' },
-  dots: { flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center' },
-  dot:  { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.28)' },
-  dotActive: { backgroundColor: WHITE, width: 10, height: 10, borderRadius: 5 },
+  sessionBarFill: { height: '100%', borderRadius: 13, backgroundColor: ORANGE },
 });
 
 // ── Word verification ─────────────────────────────────────────────────────────────
@@ -575,9 +433,9 @@ async function checkWordsMatch(uri, expectedPhrase) {
     form.append('model',       'whisper');
 
     const ctrl = new AbortController();
-    // 5 s is enough for Whisper on a short drill clip; longer means the user waits
-    // awkwardly. On timeout we fall back to passing so the drill is never stuck.
-    const tid  = setTimeout(() => ctrl.abort(), 5000);
+    // 2.5 s timeout — short clips transcribe quickly; longer waits feel broken.
+    // On timeout we fall back to passing so the drill is never stuck.
+    const tid  = setTimeout(() => ctrl.abort(), 2500);
     const res  = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
       method: 'POST',
       body:   form,
@@ -625,6 +483,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [idleMsg, setIdleMsg]       = useState('');
   // Shown during 'checking' (neutral) and 'wrongword' (orange-tinted) phases
   const [wordCheckMsg, setWordCheckMsg] = useState('');
+  // Green flash on the WordCard when the user says the word correctly
+  const [wordSuccess, setWordSuccess] = useState(false);
+  // "LOUDER!" prompt shown when the user speaks but not loud enough
+  const [tooSoftMsg, setTooSoftMsg] = useState('');
 
   const riseAnim    = useRef(new Animated.Value(0)).current;
   const scaleAnim   = useRef(new Animated.Value(1)).current;
@@ -645,6 +507,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const calibrateTimerRef = useRef(null);
   const idleTimerRef      = useRef(null);
   const idleMsgIdxRef     = useRef(0);
+  // Fires when the user speaks but below threshold — shows "LOUDER!" prompt
+  const softTimerRef      = useRef(null);
 
   function setPhaseS(p) { phaseRef.current = p; setPhase(p); }
   function setRoundS(n) { roundIdxRef.current = n; setRoundIdx(n); }
@@ -772,6 +636,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     Animated.timing(volumeAnim, { toValue: vol, duration: 80, useNativeDriver: false }).start();
 
     if (vol >= adaptiveThreshRef.current) {
+      // Loud enough — clear any "too soft" warning and start the whack timer
+      if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
+      setTooSoftMsg('');
       if (!speakRef.current) {
         speakRef.current = setTimeout(() => {
           speakRef.current = null;
@@ -779,7 +646,26 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         }, MIN_SPEAK_MS);
       }
     } else {
+      // Not loud enough — cancel any pending whack timer
       if (speakRef.current) { clearTimeout(speakRef.current); speakRef.current = null; }
+
+      if (vol > SOFT_DETECT_VOL && phaseRef.current === 'waiting') {
+        // Audible voice but below threshold: schedule "LOUDER!" after 500 ms of soft sound.
+        // This gives the user a moment before we prompt them — avoids being jarring.
+        if (!softTimerRef.current) {
+          softTimerRef.current = setTimeout(() => {
+            softTimerRef.current = null;
+            if (phaseRef.current === 'waiting') {
+              setTooSoftMsg('LOUDER!');
+              // Auto-hide after 1.5 s so it doesn't linger if they go quiet
+              setTimeout(() => setTooSoftMsg(''), 1500);
+            }
+          }, 500);
+        }
+      } else {
+        // Silence — clear soft timer
+        if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
+      }
     }
   }
 
@@ -787,6 +673,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (speakRef.current)    { clearTimeout(speakRef.current);    speakRef.current    = null; }
     if (countdownRef.current){ clearTimeout(countdownRef.current); countdownRef.current= null; }
     if (idleTimerRef.current){ clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    if (softTimerRef.current){ clearTimeout(softTimerRef.current); softTimerRef.current = null; }
     timerAnim.stopAnimation();
     try {
       if (recordingRef.current) {
@@ -800,12 +687,15 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (phaseRef.current !== 'waiting') return;
     clearIdleTimer();
 
+    // Clear the "too soft" prompt — they spoke loud enough now
+    if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
+    setTooSoftMsg('');
+
     if (countdownRef.current) { clearTimeout(countdownRef.current); countdownRef.current = null; }
     if (speakRef.current)     { clearTimeout(speakRef.current);     speakRef.current     = null; }
     timerAnim.stopAnimation();
 
     // Capture the audio URI before stopping — passed to Whisper for word verification.
-    // getURI() is reliable after stopAndUnloadAsync (same pattern as rotateChunk).
     const rec = recordingRef.current;
     recordingRef.current = null;
     let audioUri = null;
@@ -822,16 +712,27 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
     // Read the current phrase from the ref (not state) to get the live value.
     const expectedPhrase = tierConfig.rounds[roundIdxRef.current]?.word ?? '';
-    const wordsOk = audioUri ? await checkWordsMatch(audioUri, expectedPhrase) : true;
+
+    // Skip Whisper for single-word content — volume alone is sufficient evidence.
+    // Single words are short enough that recognition errors are common (dysarthria)
+    // and re-attempts based on word accuracy would be demoralising.
+    const isSingleWord = expectedPhrase.trim().split(/\s+/).length <= 1;
+    const wordsOk = (isSingleWord || !audioUri) ? true : await checkWordsMatch(audioUri, expectedPhrase);
 
     setWordCheckMsg('');
 
     if (wordsOk) {
-      doWhack();
+      // Flash the WordCard green for 300 ms so the user sees clear positive feedback
+      // before the jellyfish animation starts.
+      setWordSuccess(true);
+      setTimeout(() => {
+        setWordSuccess(false);
+        doWhack();
+      }, 300);
     } else {
-      // Wrong words: sink the jellyfish back and show a gentle prompt.
-      // LSVT LOUD carryover tasks specifically require accurate phrase production
-      // at high effort — prompting re-attempts trains the full skill, not just volume.
+      // Wrong words: sink the jellyfish back and prompt a retry.
+      // LSVT LOUD carryover tasks require accurate phrase production at high effort
+      // — prompting re-attempts trains the full skill, not just volume.
       setPhaseS('wrongword');
       setWordCheckMsg('Try reading the card aloud!');
       Animated.timing(riseAnim, { toValue: 0, duration: SINK_MS, useNativeDriver: false }).start();
@@ -857,6 +758,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   async function handleMiss() {
     if (phaseRef.current !== 'waiting') return;
     missCountRef.current += 1;  // V2: count misses for score calculation
+    setTooSoftMsg('');
+    setWordSuccess(false);
     setPhaseS('sinking');
     await cleanup();
 
@@ -926,12 +829,20 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           word={round.word}
           timerAnim={timerAnim}
           isActive={isWaiting}
+          isSuccess={wordSuccess}
         />
         <Text style={ex.instrLine}>
           {round.word.split(' ').length <= 2
             ? `Say "${round.word.toLowerCase()}" to whack a jellyfish`
             : 'Say it loud to whack a jellyfish'}
         </Text>
+
+        {/* "LOUDER!" — shown when voice detected but below threshold */}
+        {tooSoftMsg !== '' && (
+          <View style={ex.tooSoftPill}>
+            <Text style={ex.tooSoftText}>{tooSoftMsg}</Text>
+          </View>
+        )}
 
         {/* Word-check feedback pill — neutral for 'checking', orange-tinted for 'wrongword' */}
         {wordCheckMsg !== '' && (
@@ -1027,6 +938,24 @@ const ex = StyleSheet.create({
     paddingHorizontal: 28, paddingVertical: 18,
     borderRadius: 20, overflow: 'hidden',
     letterSpacing: 0.3,
+  },
+  // "LOUDER!" pill — high-contrast amber so it pops against the game scene
+  tooSoftPill: {
+    marginTop: 10,
+    alignSelf: 'center',
+    backgroundColor: ORANGE,
+    borderRadius: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.60, shadowRadius: 10, elevation: 8,
+  },
+  tooSoftText: {
+    color: '#1A1A1A',
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 1.5,
   },
   wordCheckPill: {
     marginTop: 10,

@@ -29,6 +29,8 @@ import {
   MicIcon, FireIcon, LightningIcon, ChartIcon,
   MegaphoneIcon, MusicIcon, SpeakingIcon, TrophyIcon, StarIcon,
 } from '../components/Icons';
+import TabBar from '../components/TabBar';
+import ScreenHeader from '../components/ScreenHeader';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -313,7 +315,7 @@ const stat = StyleSheet.create({
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function ProgressScreen({ navigation }) {
-  const { top, bottom } = useSafeAreaInsets();
+  const { bottom } = useSafeAreaInsets();
 
   const [prog,     setProg]     = useState({ current_node: 0, streak_days: 0, sessions_completed: 0 });
   const [pdata,    setPdata]    = useState(null);
@@ -394,15 +396,8 @@ export default function ProgressScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: top + 12 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}
-          accessibilityRole="button" accessibilityLabel="Go back">
-          <Text style={styles.backText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Progress</Text>
-        <View style={{ width: 44 }} />
-      </View>
+      {/* Header — back button on top row, title below */}
+      <ScreenHeader navigation={navigation} title="Progress" />
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -426,7 +421,7 @@ export default function ProgressScreen({ navigation }) {
       ) : (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.content, { paddingBottom: bottom + 36 }]}
+          contentContainerStyle={[styles.content, { paddingBottom: 88 + 24 }]}
           showsVerticalScrollIndicator={false}
         >
           {/* ── Ring + level ── */}
@@ -520,6 +515,9 @@ export default function ProgressScreen({ navigation }) {
           </View>
         </ScrollView>
       )}
+
+      {/* Persistent bottom tab bar — also shown on Home and Settings */}
+      <TabBar navigation={navigation} activeTab="progress" />
     </View>
   );
 }
@@ -528,21 +526,7 @@ export default function ProgressScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20 * SC,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  backText:    { color: WHITE, fontSize: 22, fontWeight: '300' },
-  headerTitle: { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 0.5 },
+  // Header now rendered by shared ScreenHeader component
 
   content: {
     paddingHorizontal: 20 * SC,

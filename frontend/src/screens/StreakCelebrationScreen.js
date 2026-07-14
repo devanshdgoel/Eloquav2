@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
+import { colors } from '../theme';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,7 +39,7 @@ const FLAME_W = 220;
 const FLAME_H = FLAME_W * (55 / 50);
 
 const ORANGE  = '#FFA940';
-const TEAL    = '#1C4047';
+// Background gradient is now sourced from colors.gradients.app (imported above).
 const WHITE   = '#FFFFFF';
 const MINT    = '#C3DECE';
 
@@ -137,7 +138,7 @@ export default function StreakCelebrationScreen({ navigation, route }) {
   const {
     streakDays = 1, userName = '', fromBaseline = false,
     focusKey = null, focusLabel = null, focusTip = null,
-    phonationScore = null, loudnessScore = null,
+    voicePowerScore = null, expressionScore = null, fluencyScore = null,
   } = route?.params ?? {};
   const { bottom: safeBottom } = useSafeAreaInsets();
 
@@ -249,10 +250,10 @@ export default function StreakCelebrationScreen({ navigation, route }) {
   function handleContinue() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (fromBaseline) {
-      // Pass the full assessment profile through to the results screen.
+      // Pass all three assessment dimension scores through to the results screen.
       navigation.replace('BaselineResults', {
         focusKey, focusLabel, focusTip,
-        phonationScore, loudnessScore,
+        voicePowerScore, expressionScore, fluencyScore,
       });
     } else {
       navigation.replace('StreakCommitment', { streakDays, userName });
@@ -278,13 +279,13 @@ export default function StreakCelebrationScreen({ navigation, route }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* Deep dark base */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#070F10' }]} />
+      {/* Deep dark base — shown while the gradient fades in */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bgDeep }]} />
 
-      {/* Teal gradient fades in */}
+      {/* App gradient fades in — uses the canonical app gradient from the design system */}
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: bgOpacity }]}>
         <LinearGradient
-          colors={['#243E44', '#0D1E21']}
+          colors={colors.gradients.app}
           start={{ x: 0.3, y: 0 }}
           end={{ x: 0.7, y: 1 }}
           style={StyleSheet.absoluteFillObject}

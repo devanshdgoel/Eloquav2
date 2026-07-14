@@ -24,6 +24,8 @@ import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 import { MicIcon } from '../../../components/Icons';
 import { API_BASE_URL } from '../../../config/env';
 import { fetchWithAuth } from '../../../utils/authHeaders';
@@ -190,49 +192,41 @@ function MicBlob({ pulsing }) {
   );
 }
 
-// ── Intro screen (Figma Type 33) ───────────────────────────────────────────────
-function IntroScreen({ onStart, onExit, progress }) {
-  // progress = fraction 0–1 for the orange bar
-  const barW = 314 * SC;
-  const fillW = barW * progress;
+// ── Intro screen (card format with numbered steps) ─────────────────────────────
+const SPEECH_INSTR_STEPS = [
+  { step: '1', text: 'Listen to the word or phrase played for you.' },
+  { step: '2', text: 'Repeat it out loud — as clearly and loudly as you can.' },
+  { step: '3', text: 'Your voice is checked automatically. Speak confidently!' },
+];
+const SPEECH_INSTR_TEXT =
+  "Functional Speech. Listen to each word or phrase, then repeat it out loud as clearly and loudly as you can. Your voice is automatically checked.";
 
+function IntroScreen({ onStart, onExit, progress }) {
   return (
     <View style={styles.introRoot}>
       <StatusBar barStyle="light-content" />
-
-      {/* X exit */}
-      <View style={styles.introTopRow}>
-        <TouchableOpacity style={styles.introXBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
-          <Text style={styles.introXText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Centred content */}
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={styles.introTitle}>Functional{'\n'}Speech</Text>
-
-        {/* Speech bubbles */}
-        <View style={styles.bubblesWrap}>
-          <View style={styles.bubbleLarge}>
-            <Text style={styles.bubbleDots}>• • •</Text>
+      <ScreenHeader
+        navigation={null}
+        title="Functional Speech"
+        backIcon="✕"
+        backLabel="Exit exercise"
+        onBack={onExit}
+        rightAction={<SpeakerButton text={SPEECH_INSTR_TEXT} />}
+      />
+      <Text style={styles.introTitle}>{'Functional\nSpeech'}</Text>
+      <View style={styles.introCard}>
+        {SPEECH_INSTR_STEPS.map(({ step, text }) => (
+          <View key={step} style={styles.introRow}>
+            <View style={styles.introBadge}><Text style={styles.introBadgeNum}>{step}</Text></View>
+            <Text style={styles.introStepText}>{text}</Text>
           </View>
-          <View style={styles.bubbleSmall}>
-            <Text style={styles.bubbleDots}>• • •</Text>
-          </View>
-        </View>
+        ))}
       </View>
-
-      {/* Arrow button */}
-      <TouchableOpacity style={styles.introArrowBtn} onPress={onStart} accessibilityRole="button" accessibilityLabel="Begin exercise">
-        <Text style={styles.introArrowText}>→</Text>
+      <TouchableOpacity style={styles.introStartBtn} onPress={onStart} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
+        <Text style={styles.introStartText}>Let's Go  →</Text>
       </TouchableOpacity>
-
-      {/* Gap between arrow and progress bar */}
-      <View style={{ height: 60 }} />
-
-      {/* Bottom progress bar */}
       <View style={styles.introBarTrack}>
-        <View style={[styles.introBarFill, { width: fillW }]} />
+        <View style={[styles.introBarFill, { width: (314 * SC) * Math.max(0.02, progress) }]} />
       </View>
     </View>
   );
@@ -714,57 +708,37 @@ const styles = StyleSheet.create({
   // ── Intro ──────────────────────────────────────────────────────────────────
   introRoot: {
     flex: 1, backgroundColor: C.bg,
-    paddingHorizontal: 24 * SC,
-    alignItems: 'flex-start',
   },
-  introTopRow: {
-    paddingTop: 52 * SC, marginBottom: 40 * SC,
-  },
-  introXBtn: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  introXText: { color: C.white, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
-
   introTitle: {
-    color: C.white, fontSize: 56, fontWeight: '900',
-    letterSpacing: 2, lineHeight: 66, marginBottom: 36 * SC,
+    color: C.white, fontSize: 52, fontWeight: '800',
+    letterSpacing: 1.8, lineHeight: 62, textAlign: 'center',
+    marginTop: 8, marginBottom: 28,
+    paddingHorizontal: 24 * SC,
   },
-
-  bubblesWrap: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    gap: -12 * SC, marginBottom: 60 * SC,
+  introCard: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
   },
-  bubbleLarge: {
-    width: 107 * SC, height: 107 * SC, borderRadius: 18 * SC,
-    backgroundColor: C.tealMid,
-    justifyContent: 'center', alignItems: 'center',
-    // speech tail
-    marginRight: -12 * SC,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2, shadowRadius: 6, elevation: 4,
+  introRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  introBadge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: C.orange,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  bubbleSmall: {
-    width: 83 * SC, height: 83 * SC, borderRadius: 14 * SC,
-    backgroundColor: C.teal,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: -16 * SC,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2, shadowRadius: 6, elevation: 4,
+  introBadgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  introStepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
   },
-  bubbleDots: { color: C.white, fontSize: 18, letterSpacing: 3, fontWeight: '700' },
-
-  introArrowBtn: {
-    alignSelf: 'center',
-    width: 80, height: 64, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    justifyContent: 'center', alignItems: 'center',
+  introStartBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: C.orange, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: C.orange, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-  introArrowText: { color: C.white, fontSize: 26, fontWeight: '300' },
-
+  introStartText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
   introBarTrack: {
     position: 'absolute', bottom: 28 * SC,
     left: (W - 314 * SC) / 2,

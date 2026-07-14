@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Easing } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
@@ -70,7 +70,25 @@ export default function AppNavigator() {
        * WhatIsEloqua / HowItWorks / VoiceCloningExplainer are backup screens for
        * a future "About Eloqua" Settings entry point.
        */}
-      <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Splash">
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          // Slightly slower, calm transitions across the whole app.
+          // 420 ms open / 370 ms close with a gentle poly-ease.
+          transitionSpec: {
+            open: {
+              animation: 'timing',
+              config: { duration: 420, easing: Easing.out(Easing.poly(4)) },
+            },
+            close: {
+              animation: 'timing',
+              config: { duration: 370, easing: Easing.in(Easing.poly(4)) },
+            },
+          },
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+        }}
+        initialRouteName="Splash"
+      >
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="SignIn" component={SignInScreen} />
@@ -82,10 +100,16 @@ export default function AppNavigator() {
         <Stack.Screen name="SetupVoice" component={SetupVoiceScreen} />
         <Stack.Screen name="Opening" component={OpeningScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
+        {/*
+         * Settings slides in from the LEFT (it's conceptually to the left of Home).
+         * Progress slides in from the RIGHT (it's conceptually to the right of Home).
+         * Together these create a horizontal tab-like layout without a tab navigator.
+         */}
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
           options={{
+            gestureEnabled: false,
             cardStyleInterpolator: ({ current, layouts }) => ({
               cardStyle: {
                 transform: [{
@@ -98,7 +122,23 @@ export default function AppNavigator() {
             }),
           }}
         />
-        <Stack.Screen name="Progress" component={ProgressScreen} />
+        <Stack.Screen
+          name="Progress"
+          component={ProgressScreen}
+          options={{
+            gestureEnabled: false,
+            cardStyleInterpolator: ({ current, layouts }) => ({
+              cardStyle: {
+                transform: [{
+                  translateX: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [layouts.screen.width, 0],
+                  }),
+                }],
+              },
+            }),
+          }}
+        />
         <Stack.Screen name="Assessment" component={AssessmentScreen} />
         <Stack.Screen name="Checkin" component={CheckinScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />

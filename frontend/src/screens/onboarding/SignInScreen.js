@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { loginWithEmail, resetPassword } from '../../services/authService';
+import { colors } from '../../theme';
 import { isOnboardingComplete } from '../../utils/storage';
 import { logScreenView } from '../../utils/analytics';
 
@@ -80,7 +81,8 @@ export default function SignInScreen({ navigation }) {
   }
 
   return (
-    <LinearGradient colors={['#326F77', '#1C4047']} style={styles.container}>
+    {/* Canonical app gradient — dark teal background for the auth screen. */}
+    <LinearGradient colors={colors.gradients.app} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
       <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">

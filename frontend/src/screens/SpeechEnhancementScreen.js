@@ -15,13 +15,18 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import { SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../config/env';
 import { fetchWithAuth } from '../utils/authHeaders';
+import { colors } from '../theme';
 import { logUsageEvent, logScreenView } from '../utils/analytics';
 import { useLargeText } from '../context/PrefsContext';
 import { MicIcon, ClipboardIcon } from '../components/Icons';
+import ScreenHeader from '../components/ScreenHeader';
+import SpeakerButton from '../components/SpeakerButton';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -178,6 +183,7 @@ function PendingDots() {
 export default function SpeechEnhancementScreen({ navigation }) {
   const largeText = useLargeText();
   const fs = (base) => largeText ? Math.round(base * 1.25) : base;
+  const { top: safeTop } = useSafeAreaInsets();
 
   const [phase,           setPhase]          = useState(S.IDLE);
   const [liveTranscript,  setLiveTranscript] = useState('');
@@ -549,9 +555,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
         duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
       });
 
-      // Begin downloading the TTS audio file immediately so it's cached by the
-      // time the user taps Play (typically 3–10 s later on the results screen).
-      if (data.audio_url) preloadAudio(data.audio_url);
+      // Start preloading audio immediately.
+      // If audio_b64 is present (backend returned bytes inline), this writes to
+      // local storage and loads — no network wait, playback is instant.
+      // If only audio_url is present (older backend path), downloads in background.
+      if (data.audio_url || data.audio_b64) preloadAudio(data.audio_url, data.audio_b64);
 
       // Fire-and-forget: non-blocking voice analysis for progress tracking.
       // Does NOT affect the current session's results.
@@ -591,22 +599,37 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Playback ─────────────────────────────────────────────────────────────────
 
-  // Pre-load the TTS audio file as soon as results arrive so the file is already
-  // in memory by the time the user taps Play. Any error is swallowed — playEnhanced
-  // will fall back to on-demand loading if the pre-load didn't succeed in time.
-  async function preloadAudio(audioUrl) {
-    if (!audioUrl || !isMountedRef.current) return;
-    // Capture the generation at the time of the call. If the user starts a new
-    // recording session before this download finishes, the generation advances and
-    // we discard the now-stale sound rather than clobbering the new session.
+  // Pre-load the TTS audio as soon as results arrive so playback is instant.
+  //
+  // Primary path (audio_b64 present): the backend returned audio bytes inline
+  // with the JSON response — write to a local cache file and load Sound from
+  // there. No second network request; playback is ready in < 100 ms.
+  //
+  // Fallback path (audio_b64 absent): download from the audio_url. Still starts
+  // in the background so there's time to finish before the user taps Play.
+  async function preloadAudio(audioUrl, audio_b64 = null) {
+    if (!isMountedRef.current) return;
     const generation = sessionGenerationRef.current;
     try {
+      let uri;
+      if (audio_b64) {
+        // Write base64 bytes to device storage — fast local I/O, no network wait.
+        const localPath = `${FileSystem.cacheDirectory}eloqua_enhanced_${generation}.m4a`;
+        await FileSystem.writeAsStringAsync(localPath, audio_b64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        uri = localPath;
+      } else if (audioUrl) {
+        uri = `${API_BASE_URL}${audioUrl}`;
+      } else {
+        return;
+      }
+
       const { sound } = await Audio.Sound.createAsync(
-        { uri: `${API_BASE_URL}${audioUrl}` },
+        { uri },
         { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true }
       );
-      // Discard if: component unmounted, playback already started (on-demand path
-      // ran first), OR a new recording session began while we were downloading.
+      // Discard if: component unmounted, playback already started, or new session began.
       if (!isMountedRef.current || soundRef.current || sessionGenerationRef.current !== generation) {
         sound.unloadAsync().catch(() => {});
         return;
@@ -712,26 +735,29 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={['#37767A', '#1C4047', '#0A1618']}
+      colors={colors.gradients.app}
       start={{ x: 0.07, y: 0 }}
       end={{ x: 0.93, y: 1 }}
       style={styles.root}
     >
       <StatusBar barStyle="light-content" />
 
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => {
+      {/* Header — back button on top row, title below */}
+      <ScreenHeader
+        navigation={navigation}
+        title="Smart Speech"
+        backIcon={phase === S.RECORDING ? '✕' : '←'}
+        backLabel={phase === S.RECORDING ? 'Cancel recording' : 'Go back'}
+        onBack={() => {
           if (phase === S.RECORDING) stoppingRef.current = true;
           navigation.goBack();
         }}
-        accessibilityRole="button"
-        accessibilityLabel={phase === S.RECORDING ? 'Cancel recording' : 'Go back'}
-      >
-        <Text style={styles.backArrow}>{phase === S.RECORDING ? '✕' : '←'}</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Speech{'\n'}Enhancement</Text>
+        rightAction={
+          phase === S.RESULTS && result
+            ? <SpeakerButton text={result.cleaned_transcript || result.raw_transcript} />
+            : undefined
+        }
+      />
 
       {/* ── IDLE ──────────────────────────────────────────────────────────── */}
       {phase === S.IDLE && (
@@ -826,6 +852,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </ScrollView>
           </View>
 
+          {/* Audio loading row — shown while the fallback download runs */}
+          {isLoadingAudio && (
+            <View style={styles.audioLoadingRow}>
+              <ActivityIndicator size="small" color={ORANGE} />
+              <Text style={styles.audioLoadingText}>Preparing audio…</Text>
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnPlay, (!result.audio_url || isLoadingAudio) && styles.actionBtnDisabled]}
             onPress={isPlaying ? stopPlayback : playEnhanced}
@@ -834,13 +868,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel={isLoadingAudio ? 'Loading audio' : isPlaying ? 'Stop audio' : 'Play enhanced audio'}
           >
-            {isLoadingAudio ? (
-              <ActivityIndicator size="small" color="#1A1A1A" />
-            ) : (
-              <Text style={[styles.actionLabel, { color: result.audio_url ? '#1A1A1A' : 'rgba(255,255,255,0.50)' }]}>
-                {isPlaying ? 'Stop' : 'Play'}
-              </Text>
-            )}
+            <Text style={[styles.actionLabel, { color: result.audio_url && !isLoadingAudio ? '#1A1A1A' : 'rgba(255,255,255,0.40)' }]}>
+              {isPlaying ? 'Stop' : 'Play'}
+            </Text>
             <Text style={styles.actionIcon}>🔊</Text>
           </TouchableOpacity>
 
@@ -874,35 +904,18 @@ export default function SpeechEnhancementScreen({ navigation }) {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const TEAL   = '#1C4047';
+// Background gradient sourced from colors.gradients.app (imported above).
 const WHITE  = '#FFFFFF';
 const ORANGE = '#FFA940';
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  backBtn: {
-    position: 'absolute', top: 52, left: 20, zIndex: 10,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  backArrow: { color: WHITE, fontSize: 24, fontWeight: '500', includeFontPadding: false, textAlign: 'center', lineHeight: 24 },
-
-  title: {
-    marginTop: 116,
-    fontSize: 42,
-    fontWeight: '800',
-    color: WHITE,
-    textAlign: 'center',
-    letterSpacing: 2.25,
-    lineHeight: 56,
-  },
+  // Header now rendered by shared ScreenHeader component
 
   // ── IDLE ──
   idleArea: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60,
+    flex: 1, alignItems: 'center', justifyContent: 'center',
   },
 
   // ── RECORDING ──
@@ -1089,6 +1102,19 @@ const styles = StyleSheet.create({
   actionBtnDisabled: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     shadowOpacity: 0, elevation: 0,
+  },
+  audioLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  audioLoadingText: {
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   actionLabel: { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 1.8 },
   actionIcon:  { fontSize: 20 },

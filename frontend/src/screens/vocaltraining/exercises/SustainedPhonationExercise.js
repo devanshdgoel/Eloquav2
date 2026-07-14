@@ -12,6 +12,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CantDoNow from '../../../components/CantDoNow';
+import ScreenHeader from '../../../components/ScreenHeader';
+import SpeakerButton from '../../../components/SpeakerButton';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -140,22 +142,27 @@ const hb = StyleSheet.create({
 
 // ── Title screen ──────────────────────────────────────────────────────────────
 
+// Subtitle text for the SpeakerButton on the title screen — tells the user
+// what the exercise involves before they start.
+const TITLE_INSTRUCTION_TEXT =
+  "Sustained Sound. Hold a steady Aah as long as you can. Three rounds — your best score counts.";
+
 function TitleScreen({ onNext, onExit, sessionFill }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: BG }}>
         <StatusBar barStyle="light-content" />
 
-        <View style={ts.header}>
-          <TouchableOpacity
-            style={hb.ghostBtn}
-            onPress={onExit}
-            accessibilityRole="button"
-            accessibilityLabel="Exit exercise"
-          >
-            <Text style={hb.ghostText}>✕</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Header now rendered by shared ScreenHeader component.
+            backIcon is ✕ because this exits the exercise entirely. */}
+        <ScreenHeader
+          navigation={null}
+          title="Sustained Sound"
+          backIcon="✕"
+          backLabel="Exit exercise"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={TITLE_INSTRUCTION_TEXT} />}
+        />
 
         <View style={ts.body}>
           <Text style={ts.title}>{'Sustained\nSound'}</Text>
@@ -181,7 +188,7 @@ function TitleScreen({ onNext, onExit, sessionFill }) {
 }
 
 const ts = StyleSheet.create({
-  header: { paddingTop: 52, paddingHorizontal: 18, flexDirection: 'row' },
+  // Header now rendered by shared ScreenHeader component
   body: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 32,
@@ -207,11 +214,16 @@ const ts = StyleSheet.create({
 // ── Instructions screen ───────────────────────────────────────────────────────
 
 const INSTRUCTIONS = [
-  { step: '1', text: 'Sit up straight and take a slow, deep breath.' },
-  { step: '2', text: "Say \"Aah\" in a loud, steady voice — project across the room." },
-  { step: '3', text: 'Hold it as long as you can. Think LOUD. Don\'t stop.' },
-  { step: '4', text: 'Watch the waveform bars — keep them high to score!' },
+  { step: '1', text: 'Take a slow, deep breath in.' },
+  { step: '2', text: "Hold your phone at arm's length — or place it on a table in front of you." },
+  { step: '3', text: 'Say "Aah" as LOUD and steady as you can. Keep going until you run out of breath.' },
 ];
+
+// Instructions text concatenated for SpeakerButton so users can hear
+// all steps read aloud before beginning the exercise.
+const INSTRUCTIONS_TEXT = INSTRUCTIONS.map(
+  (instr) => `Step ${instr.step}: ${instr.text}`
+).join('. ');
 
 function InstructScreen({ onNext, onExit }) {
   return (
@@ -223,20 +235,14 @@ function InstructScreen({ onNext, onExit }) {
         />
         <StatusBar barStyle="light-content" />
 
-        <View style={ins.header}>
-          <TouchableOpacity
-            style={hb.ghostBtn}
-            onPress={onExit}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Text style={hb.ghostText}>←</Text>
-          </TouchableOpacity>
-          <View style={ins.pill}>
-            <Text style={ins.pillText}>INSTRUCTIONS</Text>
-          </View>
-          <View style={{ width: 56 }} />
-        </View>
+        {/* Header now rendered by shared ScreenHeader component.
+            onBack goes back to the title screen (not full exit). */}
+        <ScreenHeader
+          navigation={null}
+          title="Sustained Sound"
+          onBack={onExit}
+          rightAction={<SpeakerButton text={INSTRUCTIONS_TEXT} />}
+        />
 
         <Text style={ins.heading}>{'How to do\nSustained Sound'}</Text>
 
@@ -266,10 +272,7 @@ function InstructScreen({ onNext, onExit }) {
 }
 
 const ins = StyleSheet.create({
-  header: {
-    paddingTop: 52, paddingHorizontal: 20,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
+  // Header now rendered by shared ScreenHeader component
   pill: {
     flex: 1, backgroundColor: ORANGE, borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center',
