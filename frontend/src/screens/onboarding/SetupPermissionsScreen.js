@@ -66,7 +66,6 @@ export default function SetupPermissionsScreen({ navigation }) {
   }
 
   return (
-    {/* Canonical app gradient — dark teal background for this onboarding screen. */}
     <LinearGradient colors={colors.gradients.app} style={s.root}>
       <StatusBar barStyle="light-content" />
 

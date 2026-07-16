@@ -37,6 +37,7 @@ import StreakCelebrationScreen from '../screens/StreakCelebrationScreen';
 import StreakCommitmentScreen from '../screens/StreakCommitmentScreen';
 import BaselineResultsScreen from '../screens/BaselineResultsScreen';
 import ProgressScreen from '../screens/ProgressScreen';
+import DailyVoiceNoteScreen from '../screens/vocaltraining/DailyVoiceNoteScreen';
 
 const Stack = createStackNavigator();
 
@@ -148,6 +149,8 @@ export default function AppNavigator() {
         <Stack.Screen name="StreakCelebration" component={StreakCelebrationScreen} />
         <Stack.Screen name="StreakCommitment" component={StreakCommitmentScreen} />
         <Stack.Screen name="BaselineResults" component={BaselineResultsScreen} />
+        {/* Daily voice note — shown before every training and baseline session */}
+        <Stack.Screen name="DailyVoiceNote" component={DailyVoiceNoteScreen} />
       </Stack.Navigator>
     </NavigationContainer>
     </ErrorBoundary>

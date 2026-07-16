@@ -213,7 +213,7 @@ function IntroScreen({ onStart, onExit, progress }) {
         onBack={onExit}
         rightAction={<SpeakerButton text={SPEECH_INSTR_TEXT} />}
       />
-      <Text style={styles.introTitle}>{'Functional\nSpeech'}</Text>
+      <Text style={styles.introTitle}>Instructions</Text>
       <View style={styles.introCard}>
         {SPEECH_INSTR_STEPS.map(({ step, text }) => (
           <View key={step} style={styles.introRow}>

@@ -248,7 +248,7 @@ function DemoScreen({ onFinish, onExit }) {
           onBack={onExit}
           rightAction={<SpeakerButton text={VOWEL_INSTR_TEXT} />}
         />
-        <Text style={dm.bigTitle}>{'Dolphin\nVowels'}</Text>
+        <Text style={dm.bigTitle}>Instructions</Text>
         <View style={dm.card}>
           {VOWEL_INSTR_STEPS.map(({ step, text }) => (
             <View key={step} style={dm.row}>

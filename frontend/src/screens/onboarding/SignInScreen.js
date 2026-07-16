@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TouchableOpacity,
   TextInput,
@@ -24,10 +25,10 @@ export default function SignInScreen({ navigation }) {
     return logExit;
   }, []);
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
+  const [email,        setEmail]        = useState('');
+  const [password,     setPassword]     = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading,      setLoading]      = useState(false);
   const passwordRef = useRef(null);
 
   function handleForgotPassword() {
@@ -46,7 +47,6 @@ export default function SignInScreen({ navigation }) {
           onPress: async () => {
             try {
               await resetPassword(trimEmail);
-              setResetSent(true);
               Alert.alert('Email sent', 'Check your inbox for a password reset link.');
             } catch (error) {
               Alert.alert('Could not send email', error.message);
@@ -58,7 +58,7 @@ export default function SignInScreen({ navigation }) {
   }
 
   async function handleLogin() {
-    const trimEmail = email.trim();
+    const trimEmail    = email.trim();
     const trimPassword = password.trim();
     if (!trimEmail || !trimPassword) {
       Alert.alert('Missing fields', 'Please enter your email and password.');
@@ -81,18 +81,17 @@ export default function SignInScreen({ navigation }) {
   }
 
   return (
-    {/* Canonical app gradient — dark teal background for the auth screen. */}
     <LinearGradient colors={colors.gradients.app} style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back">
+      <TouchableOpacity
+        style={styles.backBtn}
+        onPress={() => navigation.goBack()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+      >
         <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
-
-      <View style={[styles.bubble, { width: 69, height: 69, top: 111, right: 52 }]} />
-      <View style={[styles.bubble, { width: 42, height: 42, top: 61, right: 16 }]} />
-      <View style={[styles.bubble, { width: 42, height: 42, top: 10, right: 31 }]} />
-      <View style={[styles.bubbleDot, { width: 16, height: 16, top: 52, right: 79 }]} />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -103,17 +102,32 @@ export default function SignInScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Sign In</Text>
+          {/* Brand header — logo + wordmark + tagline */}
+          <View style={styles.brand}>
+            <Image
+              source={require('../../resources/Dolphin2.png')}
+              style={styles.logoImg}
+              resizeMode="contain"
+              accessibilityLabel="Eloqua logo"
+            />
+            <Text style={styles.wordmark}>Eloqua</Text>
+            <Text style={styles.tagline}>Voice training for Parkinson's</Text>
+          </View>
 
+          <Text style={styles.heading}>Welcome back</Text>
+
+          {/* Email field */}
+          <Text style={styles.fieldLabel}>Email address</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="rgba(28,64,71,0.45)"
+              placeholder="you@example.com"
+              placeholderTextColor="rgba(28,64,71,0.40)"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
               returnKeyType="next"
               onSubmitEditing={() => passwordRef.current?.focus()}
               blurOnSubmit={false}
@@ -121,23 +135,45 @@ export default function SignInScreen({ navigation }) {
             />
           </View>
 
-          <View style={styles.inputCard}>
+          {/* Password field with show/hide toggle */}
+          <Text style={styles.fieldLabel}>Password</Text>
+          <View style={[styles.inputCard, styles.inputRow]}>
             <TextInput
               ref={passwordRef}
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="rgba(28,64,71,0.45)"
+              style={[styles.input, styles.inputFlex]}
+              placeholder="Enter your password"
+              placeholderTextColor="rgba(28,64,71,0.40)"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               returnKeyType="done"
               onSubmitEditing={handleLogin}
               accessibilityLabel="Password"
             />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(v => !v)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
+            </TouchableOpacity>
           </View>
 
+          {/* Forgot password — right-aligned, below password field */}
           <TouchableOpacity
-            style={[styles.arrowBtn, loading && styles.arrowBtnDisabled]}
+            style={styles.forgotLink}
+            onPress={handleForgotPassword}
+            accessibilityRole="button"
+            accessibilityLabel="Forgot password"
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          {/* Primary CTA */}
+          <TouchableOpacity
+            style={[styles.signInBtn, loading && styles.btnDisabled]}
             onPress={handleLogin}
             disabled={loading}
             activeOpacity={0.85}
@@ -146,46 +182,30 @@ export default function SignInScreen({ navigation }) {
           >
             {loading
               ? <ActivityIndicator color="#1C4047" size="small" />
-              : <Text style={styles.arrowText}>Sign In  →</Text>
+              : <Text style={styles.signInBtnText}>Sign In</Text>
             }
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.forgotLink} onPress={handleForgotPassword} accessibilityRole="button" accessibilityLabel="Forgot password">
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.orText}>or</Text>
-
-          <TouchableOpacity
-            style={styles.socialCard}
-            activeOpacity={0.85}
-            onPress={() => Alert.alert('Coming soon', 'Apple Sign-In will be available in a future update.')}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Apple"
-          >
-            <Text style={styles.appleIcon}>{'\uF8FF'}</Text>
-            <Text style={styles.socialText}>Continue with Apple</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.socialCard}
-            activeOpacity={0.85}
-            onPress={() => Alert.alert('Coming soon', 'Google Sign-In will be available in a future update.')}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Google"
-          >
-            <Text style={styles.googleIcon}>G</Text>
-            <Text style={styles.socialText}>Continue with Google</Text>
-          </TouchableOpacity>
-
+          {/* Create account link */}
+          <View style={styles.switchRow}>
+            <View style={styles.switchLine} />
+          </View>
           <TouchableOpacity
             style={styles.createLink}
             onPress={() => navigation.navigate('SignUp')}
             accessibilityRole="button"
             accessibilityLabel="Create a new account"
           >
-            <Text style={styles.createText}>Don't have an account? Create one</Text>
+            <Text style={styles.createText}>
+              New to Eloqua?{'  '}
+              <Text style={styles.createTextBold}>Create an account</Text>
+            </Text>
           </TouchableOpacity>
+
+          {/* Privacy assurance — important for medical/health context */}
+          <Text style={styles.privacyNote}>
+            Your voice data is encrypted and never shared.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -194,126 +214,153 @@ export default function SignInScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  flex: { flex: 1 },
+  flex:      { flex: 1 },
 
   backBtn: {
     position: 'absolute',
-    top: 52,
-    left: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    top: 52, left: 20,
+    width: 48, height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
-  backArrow: { color: '#FFFFFF', fontSize: 20, fontWeight: '500' },
-
-  bubble: {
-    position: 'absolute',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  bubbleDot: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
+  backArrow: { color: '#FFFFFF', fontSize: 20, fontWeight: '400' },
 
   scroll: {
-    paddingTop: 130,
-    paddingHorizontal: 35,
-    paddingBottom: 40,
+    paddingTop: 110,
+    paddingHorizontal: 28,
+    paddingBottom: 48,
+  },
+
+  // ── Brand header ─────────────────────────────────────────────────────────────
+  brand: {
     alignItems: 'center',
-  },
-
-  title: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 2,
-    textAlign: 'center',
     marginBottom: 36,
-    alignSelf: 'stretch',
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 0, height: 3 },
-    textShadowRadius: 4,
+    gap: 6,
+  },
+  logoImg: {
+    width: 52,
+    height: 52,
+    marginBottom: 4,
+  },
+  wordmark: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 1.0,
+  },
+  tagline: {
+    color: '#C3DECE',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+    opacity: 0.85,
   },
 
+  heading: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    marginBottom: 28,
+  },
+
+  // ── Input fields ─────────────────────────────────────────────────────────────
+  fieldLabel: {
+    color: '#C3DECE',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginLeft: 2,
+  },
   inputCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(28,64,71,0.10)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-    marginBottom: 14,
-    alignSelf: 'stretch',
+    borderColor: 'rgba(28,64,71,0.08)',
+    shadowColor: 'rgba(0,0,0,0.25)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 3,
+    marginBottom: 20,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   input: {
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    fontSize: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 17,
+    fontSize: 17,
     color: '#1C4047',
   },
+  inputFlex: { flex: 1 },
+  eyeBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 17,
+    justifyContent: 'center',
+  },
+  eyeText: {
+    color: '#2D6974',
+    fontSize: 15,
+    fontWeight: '600',
+  },
 
-  arrowBtn: {
+  forgotLink: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    marginTop: -10,
+    marginBottom: 28,
+  },
+  forgotText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+
+  // ── CTA button ───────────────────────────────────────────────────────────────
+  signInBtn: {
     backgroundColor: '#FFA940',
     borderRadius: 28,
     paddingVertical: 20,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#FFA940',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.40,
     shadowRadius: 12,
     elevation: 8,
-    marginTop: 8,
-    marginBottom: 28,
+    marginBottom: 32,
   },
-  arrowBtnDisabled: { opacity: 0.6 },
-  arrowText: { color: '#1A1A1A', fontSize: 18, fontWeight: '800' },
+  btnDisabled:   { opacity: 0.55 },
+  signInBtnText: { color: '#1A1A1A', fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
 
-  orText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    letterSpacing: 1,
-    marginBottom: 20,
-  },
-
-  socialCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(28,64,71,0.10)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
+  // ── Switch to sign-up ─────────────────────────────────────────────────────────
+  switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    alignSelf: 'stretch',
-    marginBottom: 14,
+    marginBottom: 20,
   },
-  appleIcon: { fontSize: 24, color: '#1C4047', fontWeight: '700', width: 28, textAlign: 'center' },
-  googleIcon: { fontSize: 22, color: '#4285F4', fontWeight: '700', width: 28, textAlign: 'center' },
-  socialText: { fontSize: 18, color: '#1C4047', letterSpacing: 0.3 },
+  switchLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  createLink:    { alignItems: 'center', paddingVertical: 4, marginBottom: 28 },
+  createText:    { color: 'rgba(255,255,255,0.60)', fontSize: 16 },
+  createTextBold:{ color: '#FFFFFF', fontWeight: '700' },
 
-  createLink: { marginTop: 24, paddingVertical: 8 },
-  createText: { color: 'rgba(255,255,255,0.60)', fontSize: 17 },
-
-  forgotLink: { alignSelf: 'flex-end', paddingVertical: 4, marginTop: -6 },
-  forgotText: { color: 'rgba(255,255,255,0.70)', fontSize: 16 },
+  // ── Privacy note ──────────────────────────────────────────────────────────────
+  privacyNote: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 13,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
 });

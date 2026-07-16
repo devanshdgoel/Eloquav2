@@ -152,16 +152,25 @@ export default function HomeScreen({ navigation }) {
 
   function handleNodePress(i) {
     const { sessions_completed: done, last_checkin_session: lastCI } = progress;
-    // Node 0 before any session has been completed → route to the baseline session.
-    // This is the special first session that builds the voice profile via exercises.
+
+    // Node 0 before any session has been completed → daily check-in then baseline session.
     if (i === 0 && done === 0) {
-      navigation.navigate('BaselineSession');
+      navigation.navigate('DailyVoiceNote', {
+        nextScreen: 'BaselineSession',
+        nextParams: {},
+      });
       return;
     }
+
+    // Check-in nodes go directly — the check-in itself has enough voice recording.
     if (i > 0 && i % LEVELS_EVERY === 0 && i === activeNode && done > lastCI) {
       navigation.navigate('Checkin', { nodeIndex: i });
     } else {
-      navigation.navigate('VocalTrainingSession', { nodeIndex: i });
+      // Regular training session — gate through the daily voice note first.
+      navigation.navigate('DailyVoiceNote', {
+        nextScreen: 'VocalTrainingSession',
+        nextParams: { nodeIndex: i },
+      });
     }
   }
 
@@ -251,7 +260,10 @@ export default function HomeScreen({ navigation }) {
       {isFirstSession && !checkinDue && (
         <TouchableOpacity
           style={styles.setupBanner}
-          onPress={() => navigation.navigate('BaselineSession')}
+          onPress={() => navigation.navigate('DailyVoiceNote', {
+            nextScreen: 'BaselineSession',
+            nextParams: {},
+          })}
           activeOpacity={0.88}
           accessibilityRole="button"
           accessibilityLabel="Set up your voice profile — tap to begin"

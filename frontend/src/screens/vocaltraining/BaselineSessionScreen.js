@@ -48,10 +48,12 @@ import { getUserProfile } from '../../utils/storage';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
 
-import BreathingExercise  from './exercises/BreathingExercise';
-import SustainedPhonation from './exercises/SustainedPhonationExercise';
-import LoudnessDrills     from './exercises/LoudnessDrillsExercise';
-import VoiceSetupExercise from './exercises/VoiceSetupExercise';
+import BreathingExercise      from './exercises/BreathingExercise';
+import SustainedPhonation     from './exercises/SustainedPhonationExercise';
+import LoudnessDrills         from './exercises/LoudnessDrillsExercise';
+import PitchGlideMiniExercise from './exercises/PitchGlideMiniExercise';
+import ReadingMiniExercise    from './exercises/ReadingMiniExercise';
+import VoiceSetupExercise     from './exercises/VoiceSetupExercise';
 
 // All scored exercises run at this tier during the baseline session.
 // Tier 2 is challenging enough to produce discriminating scores without
@@ -60,16 +62,22 @@ const BASELINE_TIER = 2;
 
 const PROGRESS_BAR_H = 8;
 
-// Two scored exercises (phonation + loudness) provide a two-axis clinical profile:
-//   Phonation → respiratory-phonatory efficiency (MPT proxy, per Zraick et al. 2012)
-//   Loudness  → vocal intensity / hypophonia severity (primary LSVT LOUD target,
-//               Ramig et al. 1995, 2001)
-// Both run at BASELINE_TIER = 2 to produce discriminating, non-trivial scores.
+// Four scored exercises give a complete three-axis clinical baseline:
+//   Phonation + Loudness → Voice Power (respiratory-phonatory efficiency + vocal intensity)
+//   PitchGlide           → Pitch Variety (expression score via backend offline analysis)
+//   Reading              → Speech Rhythm (fluency score via backend offline analysis)
+//
+// PitchGlideMiniExercise and ReadingMiniExercise use simple expo-av recording (no WebView),
+// so they work reliably in both Expo Go and TestFlight. This avoids the WebView mic issue
+// that affects the real-time PitchGlidesExercise during training sessions.
+//
 // Breathing (1 cycle) is a warm-up only. VoiceSetup records voice clone samples.
 const SESSION_EXERCISES = [
   { type: 'breathing',  label: 'Breathing' },
   { type: 'phonation',  label: 'Sustained Sound' },
   { type: 'loudness',   label: 'Voice Power' },
+  { type: 'pitchGlide', label: 'Pitch Range' },
+  { type: 'reading',    label: 'Reading Aloud' },
   { type: 'voiceSetup', label: 'Voice Profile' },
 ];
 
@@ -77,11 +85,14 @@ const EXERCISE_MAP = {
   breathing:  BreathingExercise,
   phonation:  SustainedPhonation,
   loudness:   LoudnessDrills,
+  pitchGlide: PitchGlideMiniExercise,
+  reading:    ReadingMiniExercise,
   voiceSetup: VoiceSetupExercise,
 };
 
-// Breathing and voiceSetup are not scored. Phonation and loudness each return 0–100.
-const SCORED_TYPES = new Set(['phonation', 'loudness']);
+// Breathing and voiceSetup are not scored.
+// Phonation and loudness → voice_power. pitchGlide → expression. reading → fluency.
+const SCORED_TYPES = new Set(['phonation', 'loudness', 'pitchGlide', 'reading']);
 
 // Encouragement shown after each scored exercise completes.
 const ENC_MSGS = ['Nicely done.', "That's the one.", 'Your voice carried that.', 'Well done.'];
@@ -231,13 +242,13 @@ export default function BaselineSessionScreen({ navigation }) {
     const focusKey = deriveFocusKey(scores);
     const focus    = focusKey ? EXERCISE_FOCUS[focusKey] : null;
 
-    // Both assessed exercises have real scores now — use them directly for tier placement.
-    // PitchGlides and speech have no baseline data → default to tier 2 (safe mid-point).
+    // Use real scores where available; fall back to tier-2 midpoint (50) only if a
+    // task was skipped or the backend returned null (e.g. network failure).
     const augmentedScores = {
-      phonation:   scores.phonation ?? null,
-      loudness:    scores.loudness  ?? null,
-      pitchGlides: 50,
-      speech:      50,
+      phonation:   scores.phonation   ?? null,
+      loudness:    scores.loudness    ?? null,
+      pitchGlides: scores.pitchGlide  ?? 50,
+      speech:      scores.reading     ?? 50,
     };
 
     // Write difficulty tiers and baseline_focus_key to Firestore.
@@ -261,13 +272,15 @@ export default function BaselineSessionScreen({ navigation }) {
         voicePowerScore = phon ?? loud;
       }
 
-      // BaselineSession only measures voice_power (phonation + loudness).
-      // Pitch Variety and Speech Rhythm are introduced in the full AssessmentScreen.
-      // Map old exercise focusKey to the new 3-axis key for BaselineResultsScreen.
+      // Map exercise focusKey to the 3-axis key expected by BaselineResultsScreen.
       const mappedFocusKey = (focusKey === 'phonation' || focusKey === 'loudness')
         ? 'voice_power'
         : focusKey;
 
+      // Pass real expression + fluency scores now that the baseline includes
+      // PitchGlideMiniExercise and ReadingMiniExercise. Both will be null only
+      // if those tasks were skipped or the backend failed — BaselineResultsScreen
+      // handles null gracefully by showing "Not assessed".
       navigation.replace('StreakCelebration', {
         streakDays:     result.streak_days,
         userName:       profile?.name ?? '',
@@ -276,8 +289,8 @@ export default function BaselineSessionScreen({ navigation }) {
         focusLabel:     focus?.label ?? null,
         focusTip:       focus?.tip   ?? null,
         voicePowerScore,
-        expressionScore: null,
-        fluencyScore:    null,
+        expressionScore: scores.pitchGlide ?? null,
+        fluencyScore:    scores.reading    ?? null,
       });
     } catch {
       // If completeSession fails, show the fallback screen.

@@ -244,7 +244,7 @@ function InstructScreen({ onNext, onExit }) {
           rightAction={<SpeakerButton text={INSTRUCTIONS_TEXT} />}
         />
 
-        <Text style={ins.heading}>{'How to do\nSustained Sound'}</Text>
+        <Text style={ins.heading}>Instructions</Text>
 
         <View style={ins.card}>
           {INSTRUCTIONS.map(({ step, text }) => (
@@ -566,6 +566,12 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           )}
         </View>
 
+        {/* Instruction message — prominent pill above the waveform so it reads
+            clearly while the user focuses on the centre of the screen */}
+        <View style={ex.msgPill}>
+          <Text style={ex.msg}>{msg}</Text>
+        </View>
+
         {/* 26-bar waveform visualization */}
         <View style={ex.barsWrap}>
           {bars.map((v, i) => (
@@ -581,9 +587,6 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
             />
           ))}
         </View>
-
-        {/* Instruction message */}
-        <Text style={ex.msg}>{msg}</Text>
 
         {/* Bottom: CantDoNow + pills */}
         <View style={ex.bottom}>
@@ -618,10 +621,16 @@ const ex = StyleSheet.create({
   bestLabel: {
     marginTop: 16, color: ORANGE, fontSize: 20, fontWeight: '700', letterSpacing: 0.5,
   },
+  msgPill: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.40)',
+    borderRadius: 22,
+    paddingHorizontal: 28, paddingVertical: 14,
+    marginHorizontal: 24, marginBottom: 18,
+  },
   msg: {
-    color: 'rgba(255,255,255,0.80)', fontSize: 20, fontWeight: '600',
-    textAlign: 'center', letterSpacing: 0.5, lineHeight: 28,
-    paddingHorizontal: 32, marginBottom: 20,
+    color: '#FFFFFF', fontSize: 26, fontWeight: '700',
+    textAlign: 'center', letterSpacing: 0.3, lineHeight: 34,
   },
   barsWrap: {
     flexDirection: 'row',

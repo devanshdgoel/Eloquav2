@@ -7,6 +7,7 @@ import {
   StatusBar,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 
 // Silence detection constants — same pattern used in AssessmentScreen.
@@ -18,6 +19,7 @@ const MIN_SPEAK_FRAMES   = 3;      // frames above threshold before "user has sp
 const SILENCE_FRAMES     = Math.round(1800 / BAR_INTERVAL_MS); // ~22 frames = 1.8 s
 import { LinearGradient } from 'expo-linear-gradient';
 import { MicIcon, StopIcon } from '../../components/Icons';
+import SpeakerButton from '../../components/SpeakerButton';
 import { Audio } from 'expo-av';
 import { auth } from '../../config/firebase';
 import { cloneVoice, getVoiceStatus } from '../../services/voiceService';
@@ -45,6 +47,23 @@ export default function SetupVoiceScreen({ navigation }) {
   const silenceCountRef  = useRef(0);
   // Prevents stopRecording from firing twice if both timer and tap happen simultaneously
   const stoppingRef      = useRef(false);
+  // Pulsing ring animation — expands and fades while recording to signal active mic
+  const pulseAnim        = useRef(new Animated.Value(1)).current;
+
+  // Start / stop the pulsing ring whenever recording state changes.
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.65, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.00, duration: 800, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.stopAnimation();
+      Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [isRecording]);
 
   useEffect(() => {
     const logExit = logScreenView('SetupVoice');
@@ -216,7 +235,13 @@ export default function SetupVoiceScreen({ navigation }) {
         </TouchableOpacity>
 
         <Text style={styles.title}>Voice Setup</Text>
-        <Text style={styles.subtitle}>Tap the button, then read the sentence aloud. Recording stops automatically when you finish.</Text>
+        <Text style={styles.subtitle}>Tap the mic button, then read the sentence aloud. Recording stops automatically when you finish.</Text>
+
+        {/* Row that labels the card and offers a read-aloud button for accessibility */}
+        <View style={styles.sentenceHeader}>
+          <Text style={styles.sentenceLabel}>Read this sentence:</Text>
+          <SpeakerButton text={SENTENCES[currentIndex]} size={44} />
+        </View>
 
         <View style={styles.sentenceCard}>
           <Text style={styles.sentenceText}>"{SENTENCES[currentIndex]}"</Text>
@@ -225,18 +250,28 @@ export default function SetupVoiceScreen({ navigation }) {
 
       {/* Bottom half — teal background with mic button and progress dots */}
       <LinearGradient colors={['#37767A', '#1C4047', '#0A1618']} style={styles.bottomHalf}>
-        <TouchableOpacity
-          style={[styles.micBtn, isRecording && styles.micBtnRecording]}
-          onPress={handleMicPress}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
-        >
-          {isRecording
-            ? <StopIcon size={28} color="#1A1A1A" />
-            : <MicIcon  size={28} color="#FFFFFF" />
-          }
-        </TouchableOpacity>
+        {/* Mic button with animated pulse ring — ring scales in/out while recording
+            to give a clear "mic is hot" signal, similar to Speech Enhancement */}
+        <View style={styles.micWrapper}>
+          <Animated.View
+            style={[
+              styles.micPulse,
+              { transform: [{ scale: pulseAnim }], opacity: isRecording ? 1 : 0 },
+            ]}
+          />
+          <TouchableOpacity
+            style={[styles.micBtn, isRecording && styles.micBtnRecording]}
+            onPress={handleMicPress}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+          >
+            {isRecording
+              ? <StopIcon size={28} color="#1A1A1A" />
+              : <MicIcon  size={28} color="#FFFFFF" />
+            }
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.recordingStatus} accessibilityLiveRegion="polite">
           {isRecording ? 'Recording… stops when you finish' : `Sentence ${currentIndex + 1} of ${SENTENCES.length}`}
@@ -289,10 +324,23 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#1C4047',
-    marginBottom: 24,
-    lineHeight: 24,
+    marginBottom: 16,
+    lineHeight: 28,
+    letterSpacing: 0.3,
+  },
+
+  sentenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  sentenceLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1C4047',
     letterSpacing: 0.3,
   },
 
@@ -309,9 +357,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sentenceText: {
-    fontSize: 20,
+    fontSize: 22,
     color: '#1C4047',
-    lineHeight: 32,
+    lineHeight: 34,
     fontStyle: 'italic',
     textAlign: 'center',
     letterSpacing: 0.3,
@@ -324,6 +372,19 @@ const styles = StyleSheet.create({
     gap: 24,
   },
 
+  micWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The pulsing halo ring behind the mic button — same visual language as
+  // the waveform in SpeechEnhancementScreen to signal "mic is active".
+  micPulse: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: 'rgba(255,169,64,0.30)',
+  },
   micBtn: {
     width: 84,
     height: 84,

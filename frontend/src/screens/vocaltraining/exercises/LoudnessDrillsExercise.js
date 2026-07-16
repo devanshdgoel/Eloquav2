@@ -20,6 +20,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   Animated,
   Dimensions,
@@ -152,101 +153,66 @@ const HOLES = HOLE_DEFS.map(({ id, xF, yF, sz }) => ({
   rimH: B_RIM_H * sz,
 }));
 
-// Jellyfish dome base diameter
+// Jellyfish dome base diameter — controls the overall size of the jellyfish image.
 const JELLY_BASE = 92;
+
+// Preload the jellyfish image at module level so it's ready before the first round.
+const JELLY_IMAGE = require('../../../../assets/images/Jellyfish.png');
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Pink jellyfish — dome + tentacles + glow halo.
- * riseAnim 0→1 moves it from hidden inside the hole to fully risen.
- * riseAnim > 1 (whack) flies it off the top.
+ * Jellyfish image — rises from inside the hole using the Jellyfish.png asset.
+ *
+ * riseAnim 0→1: hidden inside hole → fully risen above rim.
+ * riseAnim > 1: whack fly-off (extrapolated translateY sends it off-screen).
+ * scaleAnim: starts at 0.08 each round and grows to 1 during the rise,
+ *   so the jellyfish appears to grow out of the hole rather than pop in at full size.
+ *   During the whack, scaleAnim is further animated (1.28 → 0.70) for a squeeze effect.
  */
 function Jellyfish({ hole, riseAnim, scaleAnim, opacityAnim }) {
   const { cx, cy, rimH, sz } = hole;
-  const size   = JELLY_BASE * sz;
-  const r      = size / 2;
-  const domeH  = size * 0.62;
-  const tentH  = size * 0.54;
 
-  // Hidden: dome fully inside cylinder.  Risen: tentacles clear of rim.
+  // Scale the image with the hole — smaller holes get smaller jellyfish.
+  const imgW = JELLY_BASE * sz * 1.8;
+  // Jellyfish images are typically taller than wide (dome + long tentacles).
+  const imgH = imgW * 1.6;
+
+  // Treat the upper 55 % of the image as the "dome / body" and the lower 45 % as tentacles.
+  // These fractions set the anchor point so the body base aligns with the hole rim,
+  // matching the positioning logic used by the drawn version.
+  const domeH = imgH * 0.55;
+  const tentH = imgH * 0.45;
+
+  // Hidden: body fully inside hole (domeH below rim-centre + rim thickness).
+  // Risen:  tentacles just clearing the rim top (pulled up slightly).
   const hiddenY = domeH + rimH;
-  const risenY  = -(tentH * 0.25);
+  const risenY  = -(tentH * 0.20);
 
   const translateY = riseAnim.interpolate({
     inputRange:  [0, 1],
     outputRange: [hiddenY, risenY],
-    extrapolate: 'extend',  // allows > 1 for whack fly-off
+    extrapolate: 'extend',  // > 1 = whack fly-off continues upward
   });
-
-  const TENTACLES = [
-    { dx: -r * 0.58, h: tentH * 1.00, w: 4.5 * sz },
-    { dx: -r * 0.28, h: tentH * 0.82, w: 3.5 * sz },
-    { dx:  r * 0.02, h: tentH * 0.94, w: 4.5 * sz },
-    { dx:  r * 0.32, h: tentH * 0.78, w: 3.5 * sz },
-    { dx:  r * 0.58, h: tentH * 0.98, w: 4.5 * sz },
-  ];
 
   return (
     <Animated.View pointerEvents="none" style={{
       position: 'absolute',
-      left: cx - r,
-      top:  cy - rimH / 2 - domeH,  // anchor: dome-bottom at rim-centre
+      // Anchor: dome-bottom at rim-centre, horizontally centred on hole.
+      left: cx - imgW / 2,
+      top:  cy - rimH / 2 - domeH,
+      width:  imgW,
+      height: imgH,
       opacity: opacityAnim,
       transform: [{ translateY }, { scale: scaleAnim }],
     }}>
-      {/* Glow halo */}
-      <View style={{
-        position: 'absolute',
-        width: size * 1.65, height: size * 1.65,
-        borderRadius: size * 0.83,
-        backgroundColor: 'rgba(210,160,230,0.18)',
-        left: -size * 0.33, top: -size * 0.33,
-      }} />
-
-      {/* Tentacles (rendered behind dome) */}
-      {TENTACLES.map((t, i) => (
-        <View key={i} style={{
-          position: 'absolute',
-          width: t.w, height: t.h,
-          backgroundColor: 'rgba(190,130,210,0.85)',
-          borderBottomLeftRadius:  t.w,
-          borderBottomRightRadius: t.w,
-          top:  domeH - 3,
-          left: r + t.dx - t.w / 2,
-        }} />
-      ))}
-
-      {/* Dome / bell */}
-      <View style={{
-        width: size, height: domeH,
-        backgroundColor: '#D4A8E0',
-        borderTopLeftRadius:     r,
-        borderTopRightRadius:    r,
-        borderBottomLeftRadius:  size * 0.18,
-        borderBottomRightRadius: size * 0.18,
-        overflow: 'hidden',
-      }}>
-        {/* Primary highlight arc */}
-        <View style={{
-          position: 'absolute',
-          width: size * 0.38, height: size * 0.22,
-          borderRadius: size * 0.12,
-          backgroundColor: 'rgba(255,255,255,0.52)',
-          top: size * 0.07, left: size * 0.10,
-          transform: [{ rotate: '-18deg' }],
-        }} />
-        {/* Specular dot */}
-        <View style={{
-          position: 'absolute',
-          width: size * 0.13, height: size * 0.09,
-          borderRadius: size * 0.06,
-          backgroundColor: 'rgba(255,255,255,0.85)',
-          top: size * 0.04, left: size * 0.54,
-        }} />
-      </View>
+      <Image
+        source={JELLY_IMAGE}
+        style={{ width: imgW, height: imgH }}
+        resizeMode="contain"
+      />
     </Animated.View>
   );
 }
@@ -272,13 +238,14 @@ function WordCard({ word, timerAnim, isActive, isSuccess }) {
         shadowOpacity: shadowOpac, shadowRadius: isSuccess ? 18 : 12, elevation: isActive ? 10 : 4,
       }}>
         <View style={{
-          width: CARD_W, height: CARD_H, backgroundColor: WHITE,
+          width: CARD_W, height: CARD_H,
+          backgroundColor: isSuccess ? '#48D28C' : WHITE,
           borderRadius: CARD_H / 2,
           justifyContent: 'center', alignItems: 'center',
           overflow: 'hidden',
           paddingHorizontal: 16,
         }}>
-          {isActive && (
+          {isActive && !isSuccess && (
             <Animated.View style={{
               position: 'absolute', left: 0, top: 0, bottom: 0,
               width: timerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, CARD_W] }),
@@ -286,7 +253,7 @@ function WordCard({ word, timerAnim, isActive, isSuccess }) {
             }} />
           )}
           <Text
-            style={{ fontSize, fontWeight: '800', color: WORD_COL, letterSpacing: letterSp, textAlign: 'center', lineHeight: fontSize * 1.3 }}
+            style={{ fontSize, fontWeight: '800', color: isSuccess ? '#FFFFFF' : WORD_COL, letterSpacing: letterSp, textAlign: 'center', lineHeight: fontSize * 1.3 }}
             adjustsFontSizeToFit
             minimumFontScale={0.5}
             numberOfLines={4}
@@ -345,7 +312,7 @@ function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
         rightAction={<SpeakerButton text={LOUDNESS_INTRO_TEXT} />}
       />
 
-      <Text style={ds.bigTitle}>{'Loudness\nDrills'}</Text>
+      <Text style={ds.bigTitle}>Instructions</Text>
 
       {/* 3-step instruction card */}
       <View style={ds.card}>
@@ -573,14 +540,17 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     pickHole();
 
     riseAnim.setValue(0);
-    scaleAnim.setValue(1);
+    // Start tiny — scaleAnim grows to 1 in sync with the rise so the jellyfish
+    // appears to swell out of the hole rather than appearing at full size.
+    scaleAnim.setValue(0.08);
     opacAnim.setValue(1);
     timerAnim.setValue(1);
 
     setPhaseS('rising');
-    Animated.timing(riseAnim, {
-      toValue: 1, duration: RISE_MS, useNativeDriver: false,
-    }).start(({ finished }) => {
+    Animated.parallel([
+      Animated.timing(riseAnim,  { toValue: 1, duration: RISE_MS, useNativeDriver: false }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: RISE_MS, useNativeDriver: false }),
+    ]).start(({ finished }) => {
       if (finished) beginWaiting();
     });
   }

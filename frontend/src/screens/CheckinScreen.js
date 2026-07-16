@@ -439,6 +439,7 @@ export default function CheckinScreen({ navigation }) {
         <View style={{ flex: 1 }}>
           <ExerciseComponent
             onComplete={handleMiniComplete}
+            onSkip={handleMiniComplete}
             onExit={() => navigation.goBack()}
             exerciseIndex={miniExIndex}
             totalExercises={MINI_EXERCISES.length}

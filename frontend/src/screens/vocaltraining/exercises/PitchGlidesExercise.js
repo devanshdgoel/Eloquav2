@@ -340,7 +340,7 @@ function TutorialScreen({ onFinish, onExit }) {
           onBack={onExit}
           rightAction={<SpeakerButton text={PITCH_INSTR_TEXT} />}
         />
-        <Text style={tus.bigTitle}>{'Pitch\nGlides'}</Text>
+        <Text style={tus.bigTitle}>Instructions</Text>
         <View style={tus.card}>
           {PITCH_INSTR_STEPS.map(({ step, text }) => (
             <View key={step} style={tus.row}>
