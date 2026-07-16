@@ -334,13 +334,13 @@ function TutorialScreen({ onFinish, onExit }) {
         <StatusBar barStyle="light-content" />
         <ScreenHeader
           navigation={null}
-          title="Pitch Glides"
+          title="Instructions"
           backIcon="✕"
           backLabel="Exit exercise"
           onBack={onExit}
           rightAction={<SpeakerButton text={PITCH_INSTR_TEXT} />}
         />
-        <Text style={tus.bigTitle}>Instructions</Text>
+        <Text style={tus.bigTitle} numberOfLines={1} adjustsFontSizeToFit>Pitch Glides</Text>
         <View style={tus.card}>
           {PITCH_INSTR_STEPS.map(({ step, text }) => (
             <View key={step} style={tus.row}>
@@ -365,9 +365,9 @@ function TutorialScreen({ onFinish, onExit }) {
 
 const tus = StyleSheet.create({
   bigTitle: {
-    color: WHITE, fontSize: 64, fontWeight: '800',
-    textAlign: 'center', letterSpacing: 3.0, lineHeight: 74,
-    marginTop: 4, marginBottom: 28,
+    color: WHITE, fontSize: 44, fontWeight: '800',
+    textAlign: 'center', letterSpacing: 1.0,
+    marginTop: 4, marginBottom: 28, paddingHorizontal: 24,
   },
   card: {
     marginHorizontal: 24, borderRadius: 20,

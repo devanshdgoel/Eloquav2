@@ -305,14 +305,14 @@ function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
 
       <ScreenHeader
         navigation={null}
-        title="Loudness Drills"
+        title="Instructions"
         backIcon="✕"
         backLabel="Exit exercise"
         onBack={onExit}
         rightAction={<SpeakerButton text={LOUDNESS_INTRO_TEXT} />}
       />
 
-      <Text style={ds.bigTitle}>Instructions</Text>
+      <Text style={ds.bigTitle} numberOfLines={1} adjustsFontSizeToFit>Loudness Drills</Text>
 
       {/* 3-step instruction card */}
       <View style={ds.card}>
@@ -346,9 +346,9 @@ function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
 
 const ds = StyleSheet.create({
   bigTitle: {
-    fontSize: 56, fontWeight: '800', color: WHITE,
-    textAlign: 'center', letterSpacing: 2.5, lineHeight: 66,
-    marginTop: 8, marginBottom: 32,
+    fontSize: 44, fontWeight: '800', color: WHITE,
+    textAlign: 'center', letterSpacing: 1.0,
+    marginTop: 8, marginBottom: 32, paddingHorizontal: 24,
   },
   card: {
     marginHorizontal: 24, borderRadius: 20,

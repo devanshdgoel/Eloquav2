@@ -27,7 +27,9 @@ const CALIBRATION_MS  = 1500;
 // ambient noise in genuinely noisy environments. Previously the 0.60 cap
 // was hit before the formula could set a threshold above the room's noise floor.
 const MAX_THRESHOLD   = 0.82;
-const SILENCE_END_MS  = 800;
+// Reduced from 800 ms — user reported bars staying green long after stopping.
+// 280 ms is fast enough to feel instant while still ignoring a brief breath or swallow.
+const SILENCE_END_MS  = 280;
 const MAX_PHONATE_MS  = 20000;
 const REST_MS         = 6500;
 
@@ -239,12 +241,12 @@ function InstructScreen({ onNext, onExit }) {
             onBack goes back to the title screen (not full exit). */}
         <ScreenHeader
           navigation={null}
-          title="Sustained Sound"
+          title="Instructions"
           onBack={onExit}
           rightAction={<SpeakerButton text={INSTRUCTIONS_TEXT} />}
         />
 
-        <Text style={ins.heading}>Instructions</Text>
+        <Text style={ins.heading} numberOfLines={1} adjustsFontSizeToFit>Sustained Sound</Text>
 
         <View style={ins.card}>
           {INSTRUCTIONS.map(({ step, text }) => (
@@ -279,9 +281,9 @@ const ins = StyleSheet.create({
   },
   pillText: { color: '#1A1A1A', fontSize: 16, fontWeight: '800', letterSpacing: 0.8 },
   heading: {
-    color: 'rgba(255,255,255,0.90)', fontSize: 20, fontWeight: '700',
-    textAlign: 'center', letterSpacing: 0.4, lineHeight: 28,
-    marginTop: 18, marginBottom: 24, paddingHorizontal: 24,
+    color: '#FFFFFF', fontSize: 44, fontWeight: '800',
+    textAlign: 'center', letterSpacing: 1.0,
+    marginTop: 12, marginBottom: 24, paddingHorizontal: 24,
   },
   card: {
     marginHorizontal: 24, borderRadius: 20,
@@ -321,6 +323,11 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
   const [bestScore,  setBestScore]  = useState(0);
   const [msg,        setMsg]        = useState('Listening to room…');
   const [bars,       setBars]       = useState(() => Array(BARS_COUNT).fill(0.015));
+  // isLoud: true only when the current volume is above the adaptive threshold during scoring.
+  // Decoupling bar colour from isScoring alone means bars go white the moment
+  // the user stops phonating, rather than waiting for SILENCE_END_MS to expire.
+  const [isLoud,     setIsLoud]     = useState(false);
+  const isLoudRef = useRef(false);
 
   const phaseRef          = useRef('calibrating');
   const roundRef          = useRef(0);
@@ -433,7 +440,13 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         triggerCountRef.current = 0;
       }
     } else if (phaseRef.current === 'scoring') {
-      if (vol < adaptiveThreshRef.current) {
+      const loud = vol >= adaptiveThreshRef.current;
+      // Only call setIsLoud when the value actually changes — avoids re-renders every 80 ms.
+      if (loud !== isLoudRef.current) {
+        isLoudRef.current = loud;
+        setIsLoud(loud);
+      }
+      if (!loud) {
         if (!silenceTimerRef.current) {
           silenceTimerRef.current = setTimeout(() => {
             silenceTimerRef.current = null;
@@ -459,6 +472,9 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
   async function finishRound() {
     if (phaseRef.current !== 'scoring') return;
     setPhaseS('resting');
+    // Clear the loud indicator immediately so bars turn white as soon as round ends.
+    isLoudRef.current = false;
+    setIsLoud(false);
 
     if (scoreTimerRef.current)   { clearInterval(scoreTimerRef.current);  scoreTimerRef.current  = null; }
     if (maxTimerRef.current)     { clearTimeout(maxTimerRef.current);      maxTimerRef.current    = null; }
@@ -523,6 +539,8 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
   }
 
   const isScoring = phase === 'scoring';
+  // Green only when actively phonating above threshold — not just because phase=scoring.
+  const barsGreen = isScoring && isLoud;
 
   return (
     <FadeIn>
@@ -555,7 +573,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           <Text
             style={[
               ex.timerNum,
-              isScoring && { textShadowColor: 'rgba(72,210,140,0.40)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 24 },
+              barsGreen && { textShadowColor: 'rgba(72,210,140,0.40)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 24 },
             ]}
           >
             {phase === 'calibrating' ? '–' : seconds}
@@ -581,7 +599,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
                 ex.bar,
                 {
                   height: Math.max(3, Math.round(v * BAR_MAX_H)),
-                  backgroundColor: isScoring ? GREEN_BAR : WHITE_BAR,
+                  backgroundColor: barsGreen ? GREEN_BAR : WHITE_BAR,
                 },
               ]}
             />

@@ -105,7 +105,7 @@ export default function SignInScreen({ navigation }) {
           {/* Brand header — logo + wordmark + tagline */}
           <View style={styles.brand}>
             <Image
-              source={require('../../resources/Dolphin2.png')}
+              source={require('../../../assets/images/Dolphin2.png')}
               style={styles.logoImg}
               resizeMode="contain"
               accessibilityLabel="Eloqua logo"

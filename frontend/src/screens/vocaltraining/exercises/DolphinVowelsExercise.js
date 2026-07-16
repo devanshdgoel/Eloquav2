@@ -28,6 +28,7 @@ import {
   Image,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Ellipse, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import CantDoNow from '../../../components/CantDoNow';
@@ -89,6 +90,9 @@ const DOLPHIN_OUTPUT_X    = [
   dolphinTargetX(4),
   DOLPHIN_EXIT_X,
 ];
+
+// AsyncStorage key — once written, the intro is skipped on all future sessions.
+const DEMO_KEY = '@eloqua_dolphin_vowels_demo_seen';
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const DARK_TEAL      = '#1C4047';
@@ -242,13 +246,13 @@ function DemoScreen({ onFinish, onExit }) {
         <StatusBar barStyle="light-content" />
         <ScreenHeader
           navigation={null}
-          title="Dolphin Vowels"
+          title="Instructions"
           backIcon="✕"
           backLabel="Exit exercise"
           onBack={onExit}
           rightAction={<SpeakerButton text={VOWEL_INSTR_TEXT} />}
         />
-        <Text style={dm.bigTitle}>Instructions</Text>
+        <Text style={dm.bigTitle} numberOfLines={1} adjustsFontSizeToFit>Dolphin Vowels</Text>
         <View style={dm.card}>
           {VOWEL_INSTR_STEPS.map(({ step, text }) => (
             <View key={step} style={dm.row}>
@@ -273,9 +277,9 @@ function DemoScreen({ onFinish, onExit }) {
 
 const dm = StyleSheet.create({
   bigTitle: {
-    color: WHITE, fontSize: 52, fontWeight: '800',
-    textAlign: 'center', letterSpacing: 2.0, lineHeight: 62,
-    marginTop: 8, marginBottom: 28,
+    color: WHITE, fontSize: 44, fontWeight: '800',
+    textAlign: 'center', letterSpacing: 1.0,
+    marginTop: 8, marginBottom: 28, paddingHorizontal: 24,
   },
   card: {
     marginHorizontal: 24, borderRadius: 20,
@@ -836,7 +840,16 @@ const ex = StyleSheet.create({
 // Root — step router
 // ══════════════════════════════════════════════════════════════════════════════
 export default function DolphinVowelsExercise({ onComplete, onExit }) {
-  const [step, setStep] = useState(STEP_TITLE);
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
+  const [step, setStep] = useState(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DEMO_KEY)
+      .then(val => setStep(val ? STEP_EXERCISE : STEP_TITLE))
+      .catch(() => setStep(STEP_TITLE));
+  }, []);
+
+  if (step === null) return null;
 
   if (step === STEP_TITLE) {
     return (
@@ -849,7 +862,11 @@ export default function DolphinVowelsExercise({ onComplete, onExit }) {
   if (step === STEP_DEMO) {
     return (
       <DemoScreen
-        onFinish={() => setStep(STEP_EXERCISE)}
+        onFinish={() => {
+          // Mark demo seen so future sessions skip straight to the exercise.
+          AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
+          setStep(STEP_EXERCISE);
+        }}
         onExit={() => setStep(STEP_TITLE)}
       />
     );

@@ -207,13 +207,13 @@ function IntroScreen({ onStart, onExit, progress }) {
       <StatusBar barStyle="light-content" />
       <ScreenHeader
         navigation={null}
-        title="Functional Speech"
+        title="Instructions"
         backIcon="✕"
         backLabel="Exit exercise"
         onBack={onExit}
         rightAction={<SpeakerButton text={SPEECH_INSTR_TEXT} />}
       />
-      <Text style={styles.introTitle}>Instructions</Text>
+      <Text style={styles.introTitle} numberOfLines={1} adjustsFontSizeToFit>Functional Speech</Text>
       <View style={styles.introCard}>
         {SPEECH_INSTR_STEPS.map(({ step, text }) => (
           <View key={step} style={styles.introRow}>
@@ -710,8 +710,8 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: C.bg,
   },
   introTitle: {
-    color: C.white, fontSize: 52, fontWeight: '800',
-    letterSpacing: 1.8, lineHeight: 62, textAlign: 'center',
+    color: C.white, fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
     marginTop: 8, marginBottom: 28,
     paddingHorizontal: 24 * SC,
   },
