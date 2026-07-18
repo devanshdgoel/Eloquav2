@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Polygon } from 'react-native-svg';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
@@ -369,8 +370,11 @@ const bi = StyleSheet.create({
 
 // maxCycles defaults to TOTAL_CYCLES (3). Baseline passes 1 to keep it short.
 function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTAL_CYCLES }) {
+  const { top: safeTop } = useSafeAreaInsets();
   const [cycleIndex, setCycleIndex] = useState(0);
   const [doneCount,  setDoneCount]  = useState(0);
+  // showHelpOverlay: true when ? is pressed — exercise paused, overlay shown
+  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
   const bubbleScale  = useRef(new Animated.Value(SCALE_SMALL)).current;
   const labelOpacity = useRef(new Animated.Value(0)).current;
@@ -425,6 +429,22 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
     }, INHALE_MS + HOLD_MS + EXHALE_MS + 350);
   }
 
+  // Pause the breathing drill and show inline instructions.
+  // Clears all pending breath timers so the bubble stops mid-cycle.
+  function showHelp() {
+    taskRefs.current.forEach(clearTimeout);
+    taskRefs.current = [];
+    bubbleScale.stopAnimation();
+    Animated.timing(labelOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    setShowHelpOverlay(true);
+  }
+
+  // Dismiss overlay and restart from the current cycle index.
+  function closeHelp() {
+    setShowHelpOverlay(false);
+    runCycle(cycleIndex);
+  }
+
   useEffect(() => {
     const t = setTimeout(() => runCycle(0), 500);
     return () => {
@@ -443,12 +463,12 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
       <StatusBar barStyle="light-content" />
 
       {/* Header: close (X) and help (?) */}
-      <View style={ds.header}>
+      <View style={[ds.header, { paddingTop: safeTop + 14 }]}>
         <TouchableOpacity style={hb.closeBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={hb.closeText}>✕</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        <TouchableOpacity style={hb.helpBtn} onPress={onShowVideo} accessibilityRole="button" accessibilityLabel="Show instructions">
+        <TouchableOpacity style={hb.helpBtn} onPress={showHelp} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={hb.helpText}>?</Text>
         </TouchableOpacity>
       </View>
@@ -490,6 +510,31 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
         <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 20 }} />
         <CyclePills current={cycleIndex} done={doneCount} total={maxCycles} />
       </View>
+
+      {/* Help overlay — shown when ? is pressed; cycleIndex is preserved */}
+      {showHelpOverlay && (
+        <View style={brHelp.overlay}>
+          <View style={[brHelp.header, { paddingTop: safeTop + 14 }]}>
+            <TouchableOpacity style={brHelp.closeBtn} onPress={closeHelp} accessibilityRole="button" accessibilityLabel="Close instructions">
+              <Text style={brHelp.closeText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={brHelp.headerTitle}>Instructions</Text>
+            <View style={{ width: 56 }} />
+          </View>
+          <Text style={brHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Breathing</Text>
+          <View style={brHelp.card}>
+            {INSTRUCTIONS.map(({ step, text }) => (
+              <View key={step} style={brHelp.row}>
+                <View style={brHelp.badge}><Text style={brHelp.badgeNum}>{step}</Text></View>
+                <Text style={brHelp.stepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={brHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
+            <Text style={brHelp.continueText}>Continue Exercise  →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </FadeIn>
   );
 }
@@ -497,7 +542,7 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
 const ds = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 52, paddingHorizontal: 18,
+    paddingHorizontal: 18,
   },
   phaseLabel: {
     fontSize: 36,
@@ -520,6 +565,59 @@ const ds = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 44,
   },
+});
+
+// Help overlay styles
+const brHelp = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#1C4047',
+    zIndex: 200,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, marginBottom: 0,
+  },
+  closeBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  closeText: { color: '#FFFFFF', fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  headerTitle: {
+    flex: 1, color: '#FFFFFF', fontSize: 17, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.3, opacity: 0.75,
+  },
+  exTitle: {
+    color: '#FFFFFF', fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
+    marginTop: 8, marginBottom: 28, paddingHorizontal: 24,
+  },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFA940',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  continueBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: '#FFA940', borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  continueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ── Root ──────────────────────────────────────────────────────────────────────

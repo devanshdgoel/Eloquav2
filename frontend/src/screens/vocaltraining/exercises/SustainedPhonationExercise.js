@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
@@ -314,6 +315,7 @@ const ins = StyleSheet.create({
 // ── Exercise screen ───────────────────────────────────────────────────────────
 
 function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }) {
+  const { top: safeTop } = useSafeAreaInsets();
   const tierConfig = PHONATION_TIERS[Math.max(0, Math.min(4, tier - 1))];
 
   const [phase,      setPhase]      = useState('calibrating');
@@ -328,6 +330,8 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
   // the user stops phonating, rather than waiting for SILENCE_END_MS to expire.
   const [isLoud,     setIsLoud]     = useState(false);
   const isLoudRef = useRef(false);
+  // showHelpOverlay: true when ? is pressed — exercise is paused, overlay shown
+  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
   const phaseRef          = useRef('calibrating');
   const roundRef          = useRef(0);
@@ -521,6 +525,30 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
     }, REST_MS);
   }
 
+  // Pause exercise and show inline instructions overlay.
+  // Stops all active timers and mic so the user can review instructions without losing round progress.
+  function showHelp() {
+    if (calibrateTimerRef.current) { clearTimeout(calibrateTimerRef.current); calibrateTimerRef.current = null; }
+    if (scoreTimerRef.current)     { clearInterval(scoreTimerRef.current);     scoreTimerRef.current     = null; }
+    if (silenceTimerRef.current)   { clearTimeout(silenceTimerRef.current);    silenceTimerRef.current   = null; }
+    if (maxTimerRef.current)       { clearTimeout(maxTimerRef.current);         maxTimerRef.current       = null; }
+    if (restTimerRef.current)      { clearTimeout(restTimerRef.current);        restTimerRef.current      = null; }
+    if (msgTimer1Ref.current)      { clearTimeout(msgTimer1Ref.current);        msgTimer1Ref.current      = null; }
+    if (msgTimer2Ref.current)      { clearTimeout(msgTimer2Ref.current);        msgTimer2Ref.current      = null; }
+    isLoudRef.current = false;
+    setIsLoud(false);
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (rec) rec.stopAndUnloadAsync().catch(() => {});
+    setShowHelpOverlay(true);
+  }
+
+  // Dismiss overlay and restart from the current round (roundRef.current preserved).
+  function closeHelp() {
+    setShowHelpOverlay(false);
+    startNextRound();
+  }
+
   async function cleanupAll() {
     if (calibrateTimerRef.current) { clearTimeout(calibrateTimerRef.current); calibrateTimerRef.current = null; }
     if (silenceTimerRef.current)   { clearTimeout(silenceTimerRef.current);   silenceTimerRef.current   = null; }
@@ -548,7 +576,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         <StatusBar barStyle="light-content" />
 
         {/* Header */}
-        <View style={ex.header}>
+        <View style={[ex.header, { paddingTop: safeTop + 14 }]}>
           <TouchableOpacity
             style={hb.ghostBtn}
             onPress={onExit}
@@ -560,7 +588,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           <Text style={ex.roundLabel}>Round {round + 1} / {TOTAL_ROUNDS}</Text>
           <TouchableOpacity
             style={hb.orangeBtn}
-            onPress={onShowInstructions}
+            onPress={showHelp}
             accessibilityRole="button"
             accessibilityLabel="Show instructions"
           >
@@ -612,6 +640,31 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           <View style={{ height: 16 }} />
           <RoundPills current={round} done={doneRounds} />
         </View>
+
+        {/* Help overlay — shown when ? is pressed; exercise is paused */}
+        {showHelpOverlay && (
+          <View style={exHelp.overlay}>
+            <View style={[exHelp.header, { paddingTop: safeTop + 14 }]}>
+              <TouchableOpacity style={exHelp.closeBtn} onPress={closeHelp} accessibilityRole="button" accessibilityLabel="Close instructions">
+                <Text style={exHelp.closeText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={exHelp.headerTitle}>Instructions</Text>
+              <View style={{ width: 56 }} />
+            </View>
+            <Text style={exHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Sustained Sound</Text>
+            <View style={exHelp.card}>
+              {INSTRUCTIONS.map(({ step, text }) => (
+                <View key={step} style={exHelp.row}>
+                  <View style={exHelp.badge}><Text style={exHelp.badgeNum}>{step}</Text></View>
+                  <Text style={exHelp.stepText}>{text}</Text>
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={exHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
+              <Text style={exHelp.continueText}>Continue Exercise  →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </LinearGradient>
     </FadeIn>
   );
@@ -619,7 +672,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
 
 const ex = StyleSheet.create({
   header: {
-    paddingTop: 52, paddingHorizontal: 18,
+    paddingHorizontal: 18,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   roundLabel: {
@@ -664,6 +717,59 @@ const ex = StyleSheet.create({
     borderRadius: Math.ceil(BAR_W / 2),
   },
   bottom: { alignItems: 'center', paddingBottom: 44 },
+});
+
+// Help overlay styles — shared pattern across all exercise screens
+const exHelp = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: BG,
+    zIndex: 200,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, marginBottom: 0,
+  },
+  closeBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  closeText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  headerTitle: {
+    flex: 1, color: WHITE, fontSize: 17, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.3, opacity: 0.75,
+  },
+  exTitle: {
+    color: WHITE, fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
+    marginTop: 8, marginBottom: 28, paddingHorizontal: 24,
+  },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  continueBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  continueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ── Root export ───────────────────────────────────────────────────────────────

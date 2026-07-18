@@ -23,6 +23,7 @@ import {
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
@@ -154,16 +155,19 @@ function buildItemsForTier(tier) {
   }
 }
 
-// ── Organic blob shape (drawn with overlapping ellipses like the Figma) ────────
+// Simple pulsing circle mic indicator — bobs between large and small when recording.
+// Replaces the previous organic blob shape which looked visually distracting.
 function MicBlob({ pulsing }) {
   const pulse = useRef(new Animated.Value(1)).current;
+  const BASE  = 140 * SC;
+  const BTN_SZ = 72 * SC;
 
   useEffect(() => {
     if (pulsing) {
       const loop = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulse, { toValue: 1.1, duration: 700, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 1.0, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 1.22, duration: 750, useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 0.88, duration: 750, useNativeDriver: true }),
         ])
       );
       loop.start();
@@ -173,19 +177,12 @@ function MicBlob({ pulsing }) {
     }
   }, [pulsing]);
 
-  const blobW = 200 * SC;
-  const blobH = 180 * SC;
-  const btnSz = 72 * SC;
-
   return (
-    <Animated.View style={[styles.blobOuter, { transform: [{ scale: pulse }] }]}>
-      {/* Organic blob made from irregular overlapping ellipses */}
-      <View style={[styles.blobEllipseA, { width: blobW, height: blobH }]} />
-      <View style={[styles.blobEllipseB, { width: blobW * 0.7, height: blobH * 0.55 }]} />
-      <View style={[styles.blobEllipseC, { width: blobW * 0.55, height: blobH * 0.4 }]} />
-
-      {/* Orange mic button */}
-      <View style={[styles.micBtn, { width: btnSz, height: btnSz, borderRadius: btnSz / 2 }]}>
+    <Animated.View style={[
+      styles.micCircle,
+      { width: BASE, height: BASE, borderRadius: BASE / 2, transform: [{ scale: pulse }] },
+    ]}>
+      <View style={[styles.micBtn, { width: BTN_SZ, height: BTN_SZ, borderRadius: BTN_SZ / 2 }]}>
         <MicIcon size={32} color={C.white} />
       </View>
     </Animated.View>
@@ -234,12 +231,15 @@ function IntroScreen({ onStart, onExit, progress }) {
 
 // ── Main exercise screen ───────────────────────────────────────────────────────
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const { top: safeTop } = useSafeAreaInsets();
   const items   = useRef(buildItemsForTier(tier)).current;
   const TOTAL   = items.length; // 5
 
   const [displayIdx, setDisplayIdx]     = useState(0);
   const [phase, setPhase]               = useState('hear'); // 'hear' | 'speak' | 'wrong' | 'success'
   const [drawerVisible, setDrawerVisible] = useState(false);
+  // Controls the in-screen help overlay — shown when ? is pressed, keeps exercise alive
+  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
   const phaseRef          = useRef('hear');
   const itemIdxRef        = useRef(0);
@@ -518,6 +518,26 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     });
   }
 
+  // Pause exercise and show inline instructions overlay.
+  // Stops all timers and TTS so the user can read at their own pace.
+  function showHelp() {
+    if (calibrateTimerRef.current) { clearTimeout(calibrateTimerRef.current); calibrateTimerRef.current = null; }
+    clearTimeout(hearTimerRef.current);   hearTimerRef.current  = null;
+    clearTimeout(maxTimerRef.current);    maxTimerRef.current   = null;
+    clearTimeout(holdTimerRef.current);   holdTimerRef.current  = null;
+    clearIdleTimer();
+    try { Speech.stop(); } catch (_) {}
+    stopRecording();
+    setShowHelpOverlay(true);
+  }
+
+  // Dismiss overlay and restart the current item from the hear phase.
+  // round/item index is preserved — we don't restart from item 1.
+  function closeHelp() {
+    setShowHelpOverlay(false);
+    loadItem(itemIdxRef.current);
+  }
+
   // ── Ambient calibration then start ────────────────────────────────────────
   async function calibrateAmbient() {
     const ambientSamples = [];
@@ -580,12 +600,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <StatusBar barStyle="light-content" />
 
       {/* ── Top row ── */}
-      <View style={styles.exTopRow}>
+      <View style={[styles.exTopRow, { paddingTop: safeTop + 14 }]}>
         <TouchableOpacity style={styles.exXBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={styles.exXText}>✕</Text>
         </TouchableOpacity>
         <Text style={styles.exRepeatLabel}>Repeat</Text>
-        <TouchableOpacity style={styles.exHelpBtn} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
+        <TouchableOpacity style={styles.exHelpBtn} onPress={showHelp} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={styles.exHelpText}>?</Text>
         </TouchableOpacity>
       </View>
@@ -641,13 +661,13 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         </TouchableOpacity>
       )}
 
-      {/* ── Can't do now ── */}
-      <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 8 * SC }} />
-
-      {/* ── Bottom progress bar ── */}
+      {/* ── Bottom progress bar — sits above the CantDoNow button ── */}
       <View style={styles.barTrack}>
         <View style={[styles.barFill, { width: (314 * SC) * barFill }]} />
       </View>
+
+      {/* ── Can't do now ── */}
+      <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 8 * SC }} />
 
       {/* ── Wrong-answer drawer (Figma Type 37) ── */}
       {drawerVisible && (
@@ -672,6 +692,31 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         <Animated.View pointerEvents="none" style={[styles.idleOverlay, { opacity: idleOpacity }]}>
           <Text style={styles.idleText}>{idleMsg}</Text>
         </Animated.View>
+      )}
+
+      {/* ── Help overlay — shown when ? is pressed; exercise is paused ── */}
+      {showHelpOverlay && (
+        <View style={styles.helpOverlay}>
+          <View style={[styles.helpHeader, { paddingTop: safeTop + 14 }]}>
+            <TouchableOpacity style={styles.helpCloseBtn} onPress={closeHelp} accessibilityRole="button" accessibilityLabel="Close instructions">
+              <Text style={styles.helpCloseText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.helpHeaderTitle}>Instructions</Text>
+            <View style={{ width: 56 }} />
+          </View>
+          <Text style={styles.helpExTitle} numberOfLines={1} adjustsFontSizeToFit>Functional Speech</Text>
+          <View style={styles.helpCard}>
+            {SPEECH_INSTR_STEPS.map(({ step, text }) => (
+              <View key={step} style={styles.helpRow}>
+                <View style={styles.helpBadge}><Text style={styles.helpBadgeNum}>{step}</Text></View>
+                <Text style={styles.helpStepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={styles.helpContinueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
+            <Text style={styles.helpContinueText}>Continue Exercise  →</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -755,7 +800,7 @@ const styles = StyleSheet.create({
 
   exTopRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 52 * SC, paddingHorizontal: 18 * SC,
+    paddingHorizontal: 18 * SC,
     marginBottom: 10 * SC,
   },
   exXBtn: {
@@ -799,31 +844,11 @@ const styles = StyleSheet.create({
     flex: 1, justifyContent: 'center', alignItems: 'center',
   },
 
-  // Blob
-  blobOuter: {
-    width: 220 * SC, height: 200 * SC,
-    justifyContent: 'center', alignItems: 'center',
-    position: 'relative',
-  },
-  blobEllipseA: {
-    position: 'absolute',
+  // Simple pulsing circle — replaces the old organic blob
+  micCircle: {
     backgroundColor: C.tealBlob,
-    borderRadius: 999,
-    transform: [{ rotate: '-15deg' }],
-  },
-  blobEllipseB: {
-    position: 'absolute',
-    top: 20 * SC, left: 20 * SC,
-    backgroundColor: C.blobMid,
-    borderRadius: 999,
-    transform: [{ rotate: '20deg' }],
-  },
-  blobEllipseC: {
-    position: 'absolute',
-    bottom: 16 * SC, right: 16 * SC,
-    backgroundColor: C.tealBlob,
-    borderRadius: 999,
-    transform: [{ rotate: '-30deg' }],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   micBtn: {
     backgroundColor: C.orange,
@@ -891,4 +916,56 @@ const styles = StyleSheet.create({
     color: C.white, fontSize: 24, fontWeight: '800',
     textAlign: 'center', lineHeight: 34, letterSpacing: 0.3,
   },
+
+  // Help overlay — full-screen, shown over the exercise when ? is pressed
+  helpOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: C.bg,
+    zIndex: 200,
+  },
+  helpHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, marginBottom: 0,
+  },
+  helpCloseBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  helpCloseText: { color: C.white, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  helpHeaderTitle: {
+    flex: 1, color: C.white, fontSize: 17, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.3, opacity: 0.75,
+  },
+  helpExTitle: {
+    color: C.white, fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
+    marginTop: 8, marginBottom: 28,
+    paddingHorizontal: 24 * SC,
+  },
+  helpCard: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  helpRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  helpBadge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: C.orange,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  helpBadgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  helpStepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  helpContinueBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: C.orange, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: C.orange, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  helpContinueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });

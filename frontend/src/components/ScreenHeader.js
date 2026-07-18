@@ -43,7 +43,7 @@ export default function ScreenHeader({
   }
 
   return (
-    <View style={[styles.wrap, { paddingTop: top + 10 }]}>
+    <View style={[styles.wrap, { paddingTop: top + 20 }]}>
 
       {/* Row 1: back button on the left, optional action on the right */}
       <View style={styles.topRow}>

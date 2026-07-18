@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Ellipse, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import CantDoNow from '../../../components/CantDoNow';
@@ -321,6 +322,7 @@ const dm = StyleSheet.create({
  *   done         — all 5 vowels completed
  */
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
+  const { top: safeTop } = useSafeAreaInsets();
   // Which vowel (0-4) is current; -1 means not yet started
   const [vowelIndex, setVowelIndex] = useState(0);
   // How many vowels have been successfully completed
@@ -332,6 +334,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
   const [holdFrac,   setHoldFrac]   = useState(0);
   // Idle encouragement overlay visibility
   const [showIdle,   setShowIdle]   = useState(false);
+  // showHelpOverlay: true when ? is pressed — exercise paused, overlay shown
+  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
   // Refs — kept current across async callbacks & timers
   const phaseRef          = useRef('calibrating');
@@ -566,6 +570,26 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
     });
   }
 
+  // Pause exercise and show inline instructions — vowelIndex and doneCt preserved.
+  function showHelp() {
+    if (holdCheckRef.current) { clearInterval(holdCheckRef.current); holdCheckRef.current = null; }
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current);  idleTimerRef.current  = null; }
+    if (idleHideRef.current)  { clearTimeout(idleHideRef.current);   idleHideRef.current   = null; }
+    // Cancel hold progress so the user doesn't accidentally complete a vowel while reading
+    phaseRef.current = 'listening';
+    setPhase('listening');
+    setHoldFrac(0);
+    setShowHelpOverlay(true);
+  }
+
+  // Dismiss overlay and resume from current vowel.
+  function closeHelp() {
+    setShowHelpOverlay(false);
+    const v = VOWELS[vowelIndexRef.current];
+    setHintText(`Say  ${v}  clearly and loudly`);
+    resetIdleTimer();
+  }
+
   // ── Cleanup ──────────────────────────────────────────────────────────────────
   async function cleanupAll() {
     if (barTimerRef.current)       { clearInterval(barTimerRef.current);    barTimerRef.current    = null; }
@@ -588,13 +612,13 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
       <StatusBar barStyle="light-content" />
 
       {/* ── Header buttons ─────────────────────────────────────────────────── */}
-      <View style={{ position: 'absolute', top: 52, left: 20, zIndex: 20 }}>
+      <View style={{ position: 'absolute', top: safeTop + 14, left: 20, zIndex: 20 }}>
         <TouchableOpacity style={hb.ghost} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={hb.ghostText}>✕</Text>
         </TouchableOpacity>
       </View>
-      <View style={{ position: 'absolute', top: 52, right: 20, zIndex: 20 }}>
-        <TouchableOpacity style={hb.orange} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
+      <View style={{ position: 'absolute', top: safeTop + 14, right: 20, zIndex: 20 }}>
+        <TouchableOpacity style={hb.orange} onPress={showHelp} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={hb.orangeText}>?</Text>
         </TouchableOpacity>
       </View>
@@ -749,15 +773,15 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
         borderRadius: 1,
       }} />
 
-      {/* ── Dual-colour progress bar at very bottom ────────────────────────── */}
-      <View style={ex.barTrack}>
-        <View style={[ex.barDone,   { width: `${(doneCt / VOWELS.length) * 100}%` }]} />
-        <View style={[ex.barRemain, { width: `${((VOWELS.length - doneCt) / VOWELS.length) * 100}%` }]} />
-      </View>
-
       {/* ── Can't do now ──────────────────────────────────────────────────── */}
       <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 15 }}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} />
+      </View>
+
+      {/* ── Dual-colour progress bar — sits above CantDoNow ──────────────── */}
+      <View style={ex.barTrack}>
+        <View style={[ex.barDone,   { width: `${(doneCt / VOWELS.length) * 100}%` }]} />
+        <View style={[ex.barRemain, { width: `${((VOWELS.length - doneCt) / VOWELS.length) * 100}%` }]} />
       </View>
 
       {/* ── Idle encouragement overlay ─────────────────────────────────────── */}
@@ -768,6 +792,31 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
         >
           <Text style={ex.idleText}>{'Take your time.\nYou\'ve got this!'}</Text>
         </Animated.View>
+      )}
+
+      {/* Help overlay — shown when ? is pressed; vowelIndex is preserved */}
+      {showHelpOverlay && (
+        <View style={dvHelp.overlay}>
+          <View style={[dvHelp.header, { paddingTop: safeTop + 14 }]}>
+            <TouchableOpacity style={dvHelp.closeBtn} onPress={closeHelp} accessibilityRole="button" accessibilityLabel="Close instructions">
+              <Text style={dvHelp.closeText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={dvHelp.headerTitle}>Instructions</Text>
+            <View style={{ width: 56 }} />
+          </View>
+          <Text style={dvHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Dolphin Vowels</Text>
+          <View style={dvHelp.card}>
+            {VOWEL_INSTR_STEPS.map(({ step, text }) => (
+              <View key={step} style={dvHelp.row}>
+                <View style={dvHelp.badge}><Text style={dvHelp.badgeNum}>{step}</Text></View>
+                <Text style={dvHelp.stepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={dvHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
+            <Text style={dvHelp.continueText}>Continue Exercise  →</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -806,7 +855,8 @@ const ex = StyleSheet.create({
     textAlign: 'center', lineHeight: 72,
   },
   barTrack: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
+    // Sits just above the CantDoNow button (which is ~68px from bottom at bottom:20)
+    position: 'absolute', bottom: 76, left: 0, right: 0,
     height: 8, flexDirection: 'row',
   },
   barDone: {
@@ -834,6 +884,59 @@ const ex = StyleSheet.create({
     color: WHITE, fontSize: 28, fontWeight: '700',
     textAlign: 'center', lineHeight: 40,
   },
+});
+
+// Help overlay styles
+const dvHelp = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: DARK_TEAL,
+    zIndex: 200,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, marginBottom: 0,
+  },
+  closeBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  closeText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  headerTitle: {
+    flex: 1, color: WHITE, fontSize: 17, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.3, opacity: 0.75,
+  },
+  exTitle: {
+    color: WHITE, fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
+    marginTop: 8, marginBottom: 28, paddingHorizontal: 24,
+  },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  continueBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  continueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

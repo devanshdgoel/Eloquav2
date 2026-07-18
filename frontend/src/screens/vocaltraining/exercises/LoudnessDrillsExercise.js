@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import { fetchWithAuth } from '../../../utils/authHeaders';
 import { API_BASE_URL } from '../../../config/env';
@@ -441,6 +442,7 @@ const IDLE_PROMPT_MESSAGES = [
 ];
 
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const { top: safeTop } = useSafeAreaInsets();
   const tierConfig = LOUDNESS_TIER_CONFIG[Math.max(0, Math.min(4, tier - 1))];
   const TOTAL_ROUNDS = tierConfig.rounds.length;
   const [phase, setPhase]           = useState('idle');
@@ -454,6 +456,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [wordSuccess, setWordSuccess] = useState(false);
   // "LOUDER!" prompt shown when the user speaks but not loud enough
   const [tooSoftMsg, setTooSoftMsg] = useState('');
+  // showHelpOverlay: true when ? is pressed — exercise paused, overlay shown
+  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
   const riseAnim    = useRef(new Animated.Value(0)).current;
   const scaleAnim   = useRef(new Animated.Value(1)).current;
@@ -653,6 +657,21 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     } catch (_) {}
   }
 
+  // Pause exercise and show inline instructions — exercise is NOT unmounted.
+  function showHelp() {
+    cleanup(); // clears timers + stops recording (async, fire-and-forget)
+    setTooSoftMsg('');
+    setWordSuccess(false);
+    setWordCheckMsg('');
+    setShowHelpOverlay(true);
+  }
+
+  // Dismiss overlay and restart the current round (roundIdxRef preserved).
+  function closeHelp() {
+    setShowHelpOverlay(false);
+    if (phaseRef.current !== 'done') startRound();
+  }
+
   async function handleWhack() {
     if (phaseRef.current !== 'waiting') return;
     clearIdleTimer();
@@ -783,12 +802,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       </View>
 
       {/* ── Header row: X | counter | ? ── */}
-      <View style={ex.headerRow}>
+      <View style={[ex.headerRow, { top: safeTop + 14 }]}>
         <TouchableOpacity style={ex.xBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={ex.xText}>✕</Text>
         </TouchableOpacity>
         <Text style={ex.counter}>{doneCount + 1}/{TOTAL_ROUNDS}</Text>
-        <TouchableOpacity style={ex.helpBtn} onPress={onShowDemo} accessibilityRole="button" accessibilityLabel="Show instructions">
+        <TouchableOpacity style={ex.helpBtn} onPress={showHelp} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={ex.helpText}>?</Text>
         </TouchableOpacity>
       </View>
@@ -844,13 +863,38 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 35 }}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} />
       </View>
+
+      {/* Help overlay — shown when ? is pressed; exercise is paused */}
+      {showHelpOverlay && (
+        <View style={exHelp.overlay}>
+          <View style={[exHelp.header, { paddingTop: safeTop + 14 }]}>
+            <TouchableOpacity style={exHelp.closeBtn} onPress={closeHelp} accessibilityRole="button" accessibilityLabel="Close instructions">
+              <Text style={exHelp.closeText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={exHelp.headerTitle}>Instructions</Text>
+            <View style={{ width: 56 }} />
+          </View>
+          <Text style={exHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Loudness Drills</Text>
+          <View style={exHelp.card}>
+            {DEMO_STEPS.map(({ step, text }) => (
+              <View key={step} style={exHelp.row}>
+                <View style={exHelp.badge}><Text style={exHelp.badgeNum}>{step}</Text></View>
+                <Text style={exHelp.stepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={exHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
+            <Text style={exHelp.continueText}>Continue Exercise  →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </ImageBackground>
   );
 }
 
 const ex = StyleSheet.create({
   headerRow: {
-    position: 'absolute', top: 52, left: 16, right: 16, zIndex: 20,
+    position: 'absolute', left: 16, right: 16, zIndex: 20,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   xBtn: {
@@ -947,7 +991,59 @@ const ex = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.3,
   },
+});
 
+// Help overlay styles
+const exHelp = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: BG,
+    zIndex: 200,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, marginBottom: 0,
+  },
+  closeBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  closeText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  headerTitle: {
+    flex: 1, color: WHITE, fontSize: 17, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.3, opacity: 0.75,
+  },
+  exTitle: {
+    color: WHITE, fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
+    marginTop: 8, marginBottom: 28, paddingHorizontal: 24,
+  },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  continueBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  continueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────

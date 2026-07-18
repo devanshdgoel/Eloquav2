@@ -1,13 +1,3 @@
-/**
- * SettingsScreen — simplified pilot version.
- *
- * Kept intentionally minimal for users with cognitive difficulties.
- * Only the settings that matter most for daily practice are shown.
- * Full settings (voice clone, transcription model, notifications,
- * accessibility options) are preserved in SettingsScreen_full.js
- * and can be restored later.
- */
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -25,12 +15,13 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { usePrefsRefresh } from '../context/PrefsContext';
 import { getUserProfile } from '../utils/storage';
+import { getVoiceStatus, deleteClonedVoice } from '../services/voiceService';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { API_BASE_URL } from '../config/env';
 import {
@@ -62,13 +53,13 @@ const RED       = '#E05252';
 
 const PREFS_KEY = 'eloqua_preferences';
 
-// All fields kept so that stored prefs aren't wiped if we restore SettingsScreen_full.js.
 const DEFAULT_PREFS = {
   enhancedVoice: true,
   hapticFeedback: true,
   largeText: false,
   audioCues: true,
-  transcriptionModel: 'whisper',
+  transcriptionModel: 'whisper',  // 'whisper' | 'soniva'
+  // notifications
   dailyReminder: false,
   reminderHour: 10,
   reminderMinute: 0,
@@ -103,8 +94,8 @@ function Toggle({ value, onValueChange, disabled = false, accessibilityLabel }) 
     }).start();
   }, [value]);
 
-  const trackBg      = anim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(255,255,255,0.12)', ORANGE] });
-  const thumbX       = anim.interpolate({ inputRange: [0, 1], outputRange: [3, 23] });
+  const trackBg   = anim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(255,255,255,0.12)', ORANGE] });
+  const thumbX    = anim.interpolate({ inputRange: [0, 1], outputRange: [3, 23] });
   const thumbOpacity = disabled ? 0.4 : 1;
 
   return (
@@ -158,7 +149,7 @@ const sec = StyleSheet.create({
   wrap:  { gap: 8 * SC },
   label: {
     color: MINT,
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
     paddingHorizontal: 4 * SC,
@@ -173,7 +164,7 @@ const sec = StyleSheet.create({
   },
 });
 
-// ── Row ───────────────────────────────────────────────────────────────────────
+// ── Row types ─────────────────────────────────────────────────────────────────
 function Row({ label, sublabel, right, onPress, isLast = false, tintLabel }) {
   const Wrap = onPress ? TouchableOpacity : View;
   return (
@@ -206,18 +197,17 @@ const row = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20 * SC,
-    // Taller rows — easier to tap for users with tremor
-    paddingVertical: 20 * SC,
-    minHeight: 68 * SC,
+    paddingVertical: 16 * SC,
+    minHeight: 60 * SC,
     gap: 12 * SC,
   },
   divider: {
     borderBottomWidth: 1,
     borderBottomColor: DIVIDER,
   },
-  left:     { flex: 1, gap: 3 },
-  label:    { color: WHITE, fontSize: 17, fontWeight: '500', letterSpacing: 0.1 },
-  sublabel: { color: DIM,   fontSize: 15, letterSpacing: 0.1 },
+  left:  { flex: 1, gap: 2 },
+  label: { color: WHITE, fontSize: 16, fontWeight: '500', letterSpacing: 0.1 },
+  sublabel: { color: DIM, fontSize: 16, letterSpacing: 0.1 },
 });
 
 // ── Value badge ───────────────────────────────────────────────────────────────
@@ -237,38 +227,11 @@ const vt = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: 'rgba(0,0,0,0.18)',
   },
-  text: { fontSize: 15, fontWeight: '700', letterSpacing: 0.4 },
-});
-
-// ── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ name, size = 64 }) {
-  const initials = (name || 'U')
-    .split(' ')
-    .map(w => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
-  return (
-    <View style={[av.circle, { width: size * SC, height: size * SC, borderRadius: (size * SC) / 2 }]}>
-      <Text style={[av.text, { fontSize: size * 0.38 }]}>{initials}</Text>
-    </View>
-  );
-}
-
-const av = StyleSheet.create({
-  circle: {
-    backgroundColor: TEAL,
-    borderWidth: 2.5,
-    borderColor: MINT + '55',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: { color: WHITE, fontWeight: '800', letterSpacing: 1, includeFontPadding: false },
+  text: { fontSize: 16, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ── Time picker modal ─────────────────────────────────────────────────────────
-// Generates half-hour slots from 6 AM to 10 PM for the daily reminder.
+// Generates times every 30 min from 6:00 AM to 10:00 PM.
 const TIME_OPTIONS = (() => {
   const opts = [];
   for (let h = 6; h <= 22; h++) {
@@ -284,7 +247,12 @@ function TimePickerModal({ visible, currentHour, currentMinute, onSelect, onClos
   const selected = TIME_OPTIONS.findIndex(t => t.hour === currentHour && t.minute === currentMinute);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
       <TouchableOpacity style={tp.backdrop} activeOpacity={1} onPress={onClose} />
       <View style={tp.sheet}>
         <View style={tp.handle} />
@@ -304,7 +272,9 @@ function TimePickerModal({ visible, currentHour, currentMinute, onSelect, onClos
                 onPress={() => onSelect(item.hour, item.minute)}
                 activeOpacity={0.75}
               >
-                <Text style={[tp.timeText, active && tp.timeTextActive]}>{item.label}</Text>
+                <Text style={[tp.timeText, active && tp.timeTextActive]}>
+                  {item.label}
+                </Text>
                 {active && <Text style={tp.checkmark}>✓</Text>}
               </TouchableOpacity>
             );
@@ -319,7 +289,10 @@ function TimePickerModal({ visible, currentHour, currentMinute, onSelect, onClos
 }
 
 const tp = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
   sheet: {
     backgroundColor: '#1A3C43',
     borderTopLeftRadius: 24,
@@ -352,10 +325,23 @@ const tp = StyleSheet.create({
     paddingHorizontal: 28 * SC,
     height: 52,
   },
-  timeRowActive: { backgroundColor: 'rgba(254,156,45,0.12)' },
-  timeText:       { color: 'rgba(255,255,255,0.70)', fontSize: 16, fontWeight: '500' },
-  timeTextActive: { color: ORANGE, fontWeight: '700' },
-  checkmark:      { color: ORANGE, fontSize: 16, fontWeight: '700' },
+  timeRowActive: {
+    backgroundColor: 'rgba(254,156,45,0.12)',
+  },
+  timeText: {
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  timeTextActive: {
+    color: ORANGE,
+    fontWeight: '700',
+  },
+  checkmark: {
+    color: ORANGE,
+    fontSize: 16,
+    fontWeight: '700',
+  },
   closeBtn: {
     marginHorizontal: 20 * SC,
     marginTop: 8,
@@ -369,15 +355,164 @@ const tp = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  closeBtnText: { color: '#1A1A1A', fontSize: 17, fontWeight: '700' },
+  closeBtnText: {
+    color: '#1A1A1A',
+    fontSize: 17,
+    fontWeight: '700',
+  },
 });
+
+// ── Model picker ─────────────────────────────────────────────────────────────
+const MODEL_OPTIONS = [
+  { value: 'whisper', label: 'Whisper', sublabel: 'OpenAI general' },
+  { value: 'soniva',  label: 'SONIVA',  sublabel: 'Stroke-tuned' },
+];
+
+function ModelPicker({ value, onValueChange }) {
+  return (
+    <View style={mp.wrap}>
+      {MODEL_OPTIONS.map((opt, i) => {
+        const active = value === opt.value;
+        return (
+          <TouchableOpacity
+            key={opt.value}
+            onPress={() => onValueChange(opt.value)}
+            activeOpacity={0.75}
+            style={[
+              mp.option,
+              active && mp.optionActive,
+              i === 0 && mp.optionLeft,
+              i === MODEL_OPTIONS.length - 1 && mp.optionRight,
+            ]}
+          >
+            <Text style={[mp.label, active && mp.labelActive]}>{opt.label}</Text>
+            <Text style={[mp.sub, active && mp.subActive]}>{opt.sublabel}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+const mp = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    borderRadius: 12 * SC,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(195,222,206,0.18)',
+  },
+  option: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10 * SC,
+    paddingHorizontal: 6 * SC,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    gap: 2,
+  },
+  optionActive: {
+    backgroundColor: 'rgba(254,156,45,0.18)',
+    borderColor: ORANGE,
+  },
+  optionLeft: {
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(195,222,206,0.12)',
+  },
+  optionRight: {},
+  label: {
+    color: DIM,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    includeFontPadding: false,
+  },
+  labelActive: { color: ORANGE },
+  sub: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 16,
+    letterSpacing: 0.2,
+  },
+  subActive: { color: 'rgba(254,156,45,0.70)' },
+});
+
+// ── Avatar ────────────────────────────────────────────────────────────────────
+function Avatar({ name, size = 64 }) {
+  const initials = (name || 'U')
+    .split(' ')
+    .map(w => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <View style={[av.circle, { width: size * SC, height: size * SC, borderRadius: size * SC / 2 }]}>
+      <Text style={[av.text, { fontSize: size * 0.38 }]}>{initials}</Text>
+    </View>
+  );
+}
+
+const av = StyleSheet.create({
+  circle: {
+    backgroundColor: TEAL,
+    borderWidth: 2.5,
+    borderColor: MINT + '55',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: { color: WHITE, fontWeight: '800', letterSpacing: 1, includeFontPadding: false },
+});
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+function VoiceIcon({ size = 18 }) {
+  const s = size * SC;
+  return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Rect x="9" y="2" width="6" height="13" rx="3" stroke={MINT} strokeWidth={1.8} />
+      <Path d="M5 10c0 3.866 3.134 7 7 7s7-3.134 7-7" stroke={MINT} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M12 19v3M9 22h6" stroke={MINT} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function BellIcon({ size = 18 }) {
+  const s = size * SC;
+  return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={MINT} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={MINT} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function AccessibilityIcon({ size = 18 }) {
+  const s = size * SC;
+  return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="4" r="2" stroke={MINT} strokeWidth={1.8} />
+      <Path d="M5 9l7-1 7 1M12 8v6M9 14l-2 6M15 14l2 6" stroke={MINT} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function ShieldIcon({ size = 18 }) {
+  const s = size * SC;
+  return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 2L4 6v6c0 5.5 3.5 10.7 8 12 4.5-1.3 8-6.5 8-12V6l-8-4z" stroke={MINT} strokeWidth={1.8} strokeLinejoin="round" />
+    </Svg>
+  );
+}
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function SettingsScreen({ navigation }) {
+  const { top: safeTop, bottom: safeBottom } = useSafeAreaInsets();
   const { signOut, isGuest, user } = useAuth();
   const refreshPrefs = usePrefsRefresh();
 
   const [profile,         setProfile]         = useState(null);
+  const [voiceStatus,     setVoiceStatus]     = useState(null);
+  const [voiceLoading,    setVoiceLoading]    = useState(true);
+  const [deletingVoice,   setDeletingVoice]   = useState(false);
   const [prefs,           setPrefs]           = useState(DEFAULT_PREFS);
   const [notifPermission, setNotifPermission] = useState(false);
   const [timePickerOpen,  setTimePickerOpen]  = useState(false);
@@ -391,9 +526,17 @@ export default function SettingsScreen({ navigation }) {
     getUserProfile().then(p => setProfile(p));
     loadPrefs().then(p => setPrefs(p));
     hasPermission().then(setNotifPermission);
+
+    if (!isGuest && user?.uid) {
+      getVoiceStatus()
+        .then(s => setVoiceStatus(s))
+        .catch(() => setVoiceStatus(null))
+        .finally(() => setVoiceLoading(false));
+    } else {
+      setVoiceLoading(false);
+    }
   }, []);
 
-  // Generic pref update — writes to AsyncStorage and notifies PrefsContext.
   const updatePref = useCallback(async (key, value) => {
     setPrefs(prev => {
       const next = { ...prev, [key]: value };
@@ -402,7 +545,6 @@ export default function SettingsScreen({ navigation }) {
     });
   }, [refreshPrefs]);
 
-  // Notification pref update — requests permission first if not yet granted.
   const updateNotifPref = useCallback(async (key, value) => {
     let granted = notifPermission;
     if (!granted) {
@@ -425,7 +567,6 @@ export default function SettingsScreen({ navigation }) {
     });
   }, [notifPermission, profile]);
 
-  // Called when the user picks a new time in the time picker modal.
   const updateReminderTime = useCallback(async (hour, minute) => {
     setTimePickerOpen(false);
     setPrefs(prev => {
@@ -456,10 +597,35 @@ export default function SettingsScreen({ navigation }) {
     );
   }
 
+  function handleDeleteVoice() {
+    Alert.alert(
+      'Delete voice clone?',
+      'Your personalised voice will be removed from ElevenLabs. You can re-record at any time.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingVoice(true);
+            try {
+              await deleteClonedVoice();
+              setVoiceStatus(v => ({ ...v, has_cloned_voice: false, voice_id: null }));
+            } catch {
+              Alert.alert('Error', 'Could not delete voice clone. Try again later.');
+            } finally {
+              setDeletingVoice(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function handleDeleteAccount() {
     Alert.alert(
       'Delete account?',
-      'This permanently deletes your account and all training progress. This cannot be undone.',
+      'This permanently deletes your account, all training progress, and your voice clone. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -476,9 +642,12 @@ export default function SettingsScreen({ navigation }) {
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      await fetchWithAuth(`${API_BASE_URL}/api/account`, { method: 'DELETE' });
+                      await fetchWithAuth(`${API_BASE_URL}/api/account`, {
+                        method: 'DELETE',
+                      });
                     } catch {
-                      // Best-effort backend deletion — proceed with local sign-out regardless.
+                      // Proceed with local sign-out even if backend call fails.
+                      // Firebase Auth user may still exist — backend deletion is best-effort.
                     }
                     await signOut();
                     navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
@@ -494,6 +663,8 @@ export default function SettingsScreen({ navigation }) {
   const displayName  = profile?.name || user?.name || (isGuest ? 'Guest' : 'User');
   const displayEmail = isGuest ? 'Guest session' : (user?.email || '—');
 
+  const hasClone = voiceStatus?.has_cloned_voice === true;
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" />
@@ -504,15 +675,16 @@ export default function SettingsScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject}
       />
 
+      {/* Header — back button on top row, title below */}
       <ScreenHeader navigation={navigation} title="Settings" />
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[s.content, { paddingBottom: 88 + 32 }]}
+        contentContainerStyle={[s.content, { paddingBottom: 88 + 24 }]}
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── Profile ── */}
+        {/* ── Profile block ── */}
         <View style={s.profileBlock}>
           <Avatar name={displayName} size={64} />
           <View style={s.profileText}>
@@ -532,12 +704,84 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
 
-        {/* ── Reminders — single daily reminder toggle + optional time row ── */}
-        <Section label="REMINDERS">
+        {/* ── Voice ── */}
+        <Section label="VOICE">
+          <Row
+            label="Enhanced voice"
+            sublabel="Use your personalised ElevenLabs voice for playback"
+            right={
+              <Toggle
+                value={prefs.enhancedVoice}
+                onValueChange={v => updatePref('enhancedVoice', v)}
+                disabled={isGuest || !hasClone}
+                accessibilityLabel="Enhanced voice"
+              />
+            }
+          />
+          <View style={[row.wrap, row.divider, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 * SC }]}>
+            <View style={{ gap: 2 }}>
+              <Text style={row.label}>Transcription model</Text>
+              <Text style={row.sublabel}>
+                {prefs.transcriptionModel === 'soniva'
+                  ? 'SONIVA — fine-tuned on post-stroke speech (Imperial College)'
+                  : 'Whisper — OpenAI general-purpose model'}
+              </Text>
+            </View>
+            <ModelPicker
+              value={prefs.transcriptionModel}
+              onValueChange={v => updatePref('transcriptionModel', v)}
+            />
+          </View>
+
+          <Row
+            label="Voice clone"
+            sublabel={
+              voiceLoading
+                ? 'Checking...'
+                : hasClone
+                ? 'Active — your voice is personalised'
+                : 'Not set up'
+            }
+            right={
+              voiceLoading
+                ? null
+                : hasClone
+                ? <ValueTag label="Active" color={MINT} />
+                : <ValueTag label="None" color={DIM} />
+            }
+          />
+          {!isGuest && (
+            <Row
+              label="Re-record voice"
+              sublabel="Update your voice samples"
+              onPress={() => navigation.navigate('SetupVoice')}
+              right={<ChevronRight />}
+            />
+          )}
+          {!isGuest && hasClone && (
+            <Row
+              label={deletingVoice ? 'Deleting...' : 'Delete voice clone'}
+              onPress={deletingVoice ? null : handleDeleteVoice}
+              tintLabel={RED}
+              isLast
+              right={null}
+            />
+          )}
+          {(!hasClone || isGuest) && (
+            <Row
+              label="Voice clone not set up"
+              sublabel={isGuest ? 'Sign in to set up a personalised voice' : 'Complete voice setup in onboarding'}
+              isLast
+              right={null}
+            />
+          )}
+        </Section>
+
+        {/* ── Notifications ── */}
+        <Section label="NOTIFICATIONS">
           <Row
             label="Daily reminder"
             sublabel="Remind me to practice each day"
-            isLast={!prefs.dailyReminder}
             right={
               <Toggle
                 value={prefs.dailyReminder}
@@ -551,34 +795,122 @@ export default function SettingsScreen({ navigation }) {
               label="Reminder time"
               sublabel="Tap to change"
               onPress={() => setTimePickerOpen(true)}
-              isLast
               right={<ValueTag label={formatTime(prefs.reminderHour, prefs.reminderMinute)} color={ORANGE} />}
             />
           )}
-        </Section>
-
-        {/* ── Display — large text only ── */}
-        <Section label="DISPLAY">
           <Row
-            label="Larger text"
-            sublabel="Increases text size across the app"
+            label="Re-engagement nudge"
+            sublabel="One gentle nudge after 3 missed days"
+            right={
+              <Toggle
+                value={prefs.reengagementEnabled}
+                onValueChange={v => updateNotifPref('reengagementEnabled', v)}
+                accessibilityLabel="Re-engagement nudge"
+              />
+            }
+          />
+          <Row
+            label="Weekly summary"
+            sublabel="Sunday evenings — how you did this week"
             isLast
             right={
               <Toggle
-                value={prefs.largeText}
-                onValueChange={v => updatePref('largeText', v)}
-                accessibilityLabel="Larger text"
+                value={prefs.weeklySummaryEnabled}
+                onValueChange={v => updateNotifPref('weeklySummaryEnabled', v)}
+                accessibilityLabel="Weekly summary"
               />
             }
           />
         </Section>
 
-        {/* ── Help — feedback link + version ── */}
-        <Section label="HELP">
+        {/* ── Training ── */}
+        <Section label="TRAINING">
+          <Row
+            label="Haptic feedback"
+            sublabel="Vibrations during exercises and milestones"
+            right={
+              <Toggle
+                value={prefs.hapticFeedback}
+                onValueChange={v => updatePref('hapticFeedback', v)}
+                accessibilityLabel="Haptic feedback"
+              />
+            }
+          />
+          <Row
+            label="Training history"
+            sublabel="View your completed sessions and scores"
+            onPress={() => navigation.navigate('Progress')}
+            isLast
+            right={<ChevronRight />}
+          />
+        </Section>
+
+        {/* ── Accessibility ── */}
+        <Section label="ACCESSIBILITY">
+          <Row
+            label="Large text"
+            sublabel="Increases text size across the app"
+            right={
+              <Toggle
+                value={prefs.largeText}
+                onValueChange={v => updatePref('largeText', v)}
+                accessibilityLabel="Large text"
+              />
+            }
+          />
+          <Row
+            label="Audio cues"
+            sublabel="Play tones to signal exercise transitions"
+            isLast
+            right={
+              <Toggle
+                value={prefs.audioCues}
+                onValueChange={v => updatePref('audioCues', v)}
+                accessibilityLabel="Audio cues"
+              />
+            }
+          />
+        </Section>
+
+        {/* ── Privacy & Data ── */}
+        <Section label="PRIVACY & DATA">
+          <Row
+            label="Privacy Policy"
+            onPress={() => Linking.openURL('https://eloqua.app/privacy')}
+            right={<ChevronRight />}
+          />
+          <Row
+            label="Terms of Service"
+            onPress={() => Linking.openURL('https://eloqua.app/terms')}
+            right={<ChevronRight />}
+          />
+          <Row
+            label="Your data"
+            sublabel="All voice and training data is stored securely and never sold"
+            isLast
+            right={null}
+          />
+        </Section>
+
+        {/* ── About ── */}
+        <Section label="ABOUT">
           <Row
             label="Send feedback"
             sublabel="Help us improve Eloqua"
-            onPress={() => Linking.openURL('mailto:gs2022@ic.ac.uk?subject=Eloqua%20Feedback')}
+            onPress={() =>
+              Linking.openURL(
+                'mailto:gs2022@ic.ac.uk?subject=Eloqua%20Feedback'
+              )
+            }
+            right={<ChevronRight />}
+          />
+          <Row
+            label="Rate the app"
+            onPress={() =>
+              Linking.openURL(
+                'https://apps.apple.com/app/id000000000'
+              )
+            }
             right={<ChevronRight />}
           />
           <Row
@@ -615,6 +947,7 @@ export default function SettingsScreen({ navigation }) {
           )}
         </View>
 
+
       </ScrollView>
 
       <TimePickerModal
@@ -625,19 +958,22 @@ export default function SettingsScreen({ navigation }) {
         onClose={() => setTimePickerOpen(false)}
       />
 
+      {/* Persistent bottom tab bar — also shown on Home and Progress */}
       <TabBar navigation={navigation} activeTab="settings" />
     </View>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1 },
+
+  // Header now rendered by shared ScreenHeader component
 
   content: {
     paddingHorizontal: 20 * SC,
     paddingTop: 8 * SC,
-    gap: 28 * SC,
+    gap: 24 * SC,
   },
 
   // ── Profile ──
@@ -645,12 +981,21 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16 * SC,
-    paddingVertical: 12 * SC,
+    paddingVertical: 8 * SC,
     paddingHorizontal: 4 * SC,
   },
-  profileText:  { flex: 1, gap: 4 },
-  profileName:  { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
-  profileEmail: { color: DIM,   fontSize: 16, letterSpacing: 0.1 },
+  profileText: { flex: 1, gap: 3 * SC },
+  profileName: {
+    color: WHITE,
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  profileEmail: {
+    color: DIM,
+    fontSize: 16,
+    letterSpacing: 0.1,
+  },
   createAccountBtn: {
     marginTop: 6 * SC,
     paddingHorizontal: 12 * SC,
@@ -668,7 +1013,7 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── Account buttons ──
+  // ── Danger zone ──
   dangerZone: {
     gap: 12 * SC,
     paddingTop: 8 * SC,
@@ -676,7 +1021,7 @@ const s = StyleSheet.create({
   signOutBtn: {
     backgroundColor: TEAL,
     borderRadius: 16 * SC,
-    paddingVertical: 20 * SC,
+    paddingVertical: 18 * SC,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(195,222,206,0.20)',
@@ -690,7 +1035,7 @@ const s = StyleSheet.create({
   deleteBtn: {
     backgroundColor: 'rgba(224,82,82,0.10)',
     borderRadius: 16 * SC,
-    paddingVertical: 18 * SC,
+    paddingVertical: 16 * SC,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(224,82,82,0.25)',

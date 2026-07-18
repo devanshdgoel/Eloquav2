@@ -400,10 +400,12 @@ export default function HomeScreen({ navigation }) {
 
             {/* Nodes */}
             {NODE_DEFS.map((def, i) => {
-              const isDone   = i < activeNode;
-              const isActive = i === activeNode;
-              const isFuture = i > activeNode;
-              const r        = isActive ? R_ACTIVE : R_OTHER;
+              const isDone    = i < activeNode;
+              const isActive  = i === activeNode;
+              const isFuture  = i > activeNode;
+              const r         = isActive ? R_ACTIVE : R_OTHER;
+              // Check-in milestone: every LEVELS_EVERY nodes (7, 14…) — gets orange accent
+              const isCheckin = i > 0 && i % LEVELS_EVERY === 0;
 
               // Done nodes fade progressively with distance — future nodes stay opaque
               const groupOpacity = isDone ? getDoneOpacity(i, activeNode) : 1.0;
@@ -420,23 +422,43 @@ export default function HomeScreen({ navigation }) {
                       : undefined
                   }
                 >
-                  {/* Base circle — always rendered at full group opacity (opaque for future nodes) */}
+                  {/* Base circle — checkin nodes get a warm orange-tinted fill when undone */}
                   <Circle
                     cx={def.cx}
                     cy={def.cy}
                     r={r}
-                    fill={isActive ? COLORS.nodeActiveBg : COLORS.nodeBg}
+                    fill={
+                      isActive              ? COLORS.nodeActiveBg
+                      : isCheckin && !isDone ? 'rgba(255,169,64,0.16)'
+                      : COLORS.nodeBg
+                    }
                   />
 
-                  {/* Bubble image — all non-active nodes; future nodes get partial opacity */}
+                  {/* Dashed orange accent ring — future/active checkin nodes only */}
+                  {isCheckin && !isDone && (
+                    <Circle
+                      cx={def.cx} cy={def.cy}
+                      r={r + 4}
+                      fill="none"
+                      stroke="rgba(255,169,64,0.60)"
+                      strokeWidth={2.5}
+                      strokeDasharray="5,3"
+                    />
+                  )}
+
+                  {/* Bubble image — all non-active nodes.
+                      Viewport is 6× the node radius (3× each side) so that the image is
+                      scaled up 3× before the clipPath crops to the circle. This ensures
+                      the bubble graphic fills the circle even if the source PNG has large
+                      transparent padding around the bubble shape. */}
                   {!isActive && (
                     <G opacity={isFuture ? futureContentOpacity : 1}>
                       <SvgImage
                         href={bubbleUri}
-                        x={def.cx - r}
-                        y={def.cy - r}
-                        width={r * 2}
-                        height={r * 2}
+                        x={def.cx - r * 3}
+                        y={def.cy - r * 3}
+                        width={r * 6}
+                        height={r * 6}
                         clipPath={`url(#cp_${i})`}
                         preserveAspectRatio="xMidYMid slice"
                       />
@@ -473,8 +495,23 @@ export default function HomeScreen({ navigation }) {
                     />
                   )}
 
-                  {/* Session number — future nodes */}
-                  {isFuture && (
+                  {/* Star icon — future checkin nodes (replaces the session number) */}
+                  {isFuture && isCheckin && (
+                    <SvgText
+                      x={def.cx}
+                      y={def.cy + 8}
+                      textAnchor="middle"
+                      fill={COLORS.orange}
+                      fillOpacity={0.80}
+                      fontSize={22}
+                      fontWeight="700"
+                    >
+                      {'★'}
+                    </SvgText>
+                  )}
+
+                  {/* Session number — future non-checkin nodes */}
+                  {isFuture && !isCheckin && (
                     <SvgText
                       x={def.cx}
                       y={def.cy + 6}

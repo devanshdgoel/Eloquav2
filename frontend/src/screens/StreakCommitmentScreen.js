@@ -24,7 +24,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Polyline, Line } from 'react-native-svg';
+import Svg, { Path, Polyline } from 'react-native-svg';
 import { colors } from '../theme';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -318,11 +318,6 @@ export default function StreakCommitmentScreen({ navigation, route }) {
 
         {/* ── Weekly calendar ── */}
         <Animated.View style={[styles.calendar, { opacity: calendarAnim }]}>
-          {/* Connector line behind circles */}
-          <View style={styles.connectorRow} pointerEvents="none">
-            <View style={styles.connectorLine} />
-          </View>
-
           {/* Day circles */}
           <View style={styles.daysRow}>
             {DAYS.map((label, i) => (
@@ -449,17 +444,6 @@ const styles = StyleSheet.create({
   // ── Calendar ──
   calendar: {
     position: 'relative',
-  },
-  connectorRow: {
-    position: 'absolute',
-    top: 34 * SC + CIRCLE_SIZE / 2,  // label height + half circle
-    left: CIRCLE_SIZE / 2,
-    right: CIRCLE_SIZE / 2,
-    zIndex: 0,
-  },
-  connectorLine: {
-    height: 1.5,
-    backgroundColor: 'rgba(195,222,206,0.18)',
   },
   daysRow: {
     flexDirection: 'row',

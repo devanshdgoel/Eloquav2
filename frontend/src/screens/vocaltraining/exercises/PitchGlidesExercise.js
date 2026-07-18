@@ -29,6 +29,7 @@ import {
 import { WebView } from 'react-native-webview';
 import Svg, { Ellipse, Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
@@ -399,6 +400,7 @@ const tus = StyleSheet.create({
 // Exercise screen — real pitch detection via hidden WebView
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+  const { top: safeTop } = useSafeAreaInsets();
   const tierConfig   = PITCH_TIERS[Math.max(0, Math.min(4, tier - 1))];
   const TOTAL_HOOPS  = tierConfig.totalHoops;
   const PITCH_RANGE_HZ = tierConfig.pitchRangeHz;
@@ -407,6 +409,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [phase,     setPhase]     = useState('calibrating'); // calibrating|listening|done
   const [pitchHz,   setPitchHz]   = useState(0);
   const [micError,  setMicError]  = useState(false);
+  // showHelpOverlay: true when ? is pressed — exercise paused, overlay shown
+  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
   const hoopsDoneRef  = useRef(0);
   const webViewRef    = useRef(null);
@@ -466,6 +470,20 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       `);
       setTimeout(() => onComplete(100), 1400);
     }
+  }
+
+  // Pause exercise and show inline instructions — hoopsDone progress is preserved.
+  function showHelp() {
+    clearHoldTimer();
+    inTargetRef.current = false;
+    setShowHelpOverlay(true);
+  }
+
+  // Dismiss overlay — the WebView continues receiving pitch data automatically.
+  function closeHelp() {
+    setShowHelpOverlay(false);
+    // Reset hold timer state so a fresh hold can begin
+    inTargetRef.current = false;
   }
 
   // ── WebView message handler ─────────────────────────────────────────────────
@@ -566,11 +584,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       )}
 
       {/* Header */}
-      <View style={{ position: 'absolute', top: fv(21), left: fs(14), zIndex: 30 }}>
+      <View style={{ position: 'absolute', top: safeTop + 14, left: fs(14), zIndex: 30 }}>
         <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Exit exercise"><Text style={bs.closeText}>✕</Text></TouchableOpacity>
       </View>
-      <View style={{ position: 'absolute', top: fv(20), right: fs(14), zIndex: 30 }}>
-        <TouchableOpacity style={bs.question} onPress={onShowDemo} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Show instructions"><Text style={bs.questionText}>?</Text></TouchableOpacity>
+      <View style={{ position: 'absolute', top: safeTop + 14, right: fs(14), zIndex: 30 }}>
+        <TouchableOpacity style={bs.question} onPress={showHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Show instructions"><Text style={bs.questionText}>?</Text></TouchableOpacity>
       </View>
 
       <Text style={[exs.prompt, promptBig && exs.promptBig]}>{promptText}</Text>
@@ -609,6 +627,31 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <View style={{ position: 'absolute', bottom: fv(16), left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} />
       </View>
+
+      {/* Help overlay — shown when ? is pressed; hoopsDone count is preserved */}
+      {showHelpOverlay && (
+        <View style={pgHelp.overlay}>
+          <View style={[pgHelp.header, { paddingTop: safeTop + 14 }]}>
+            <TouchableOpacity style={pgHelp.closeBtn} onPress={closeHelp} accessibilityRole="button" accessibilityLabel="Close instructions">
+              <Text style={pgHelp.closeText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={pgHelp.headerTitle}>Instructions</Text>
+            <View style={{ width: 56 }} />
+          </View>
+          <Text style={pgHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Pitch Glides</Text>
+          <View style={pgHelp.card}>
+            {PITCH_INSTR_STEPS.map(({ step, text }) => (
+              <View key={step} style={pgHelp.row}>
+                <View style={pgHelp.badge}><Text style={pgHelp.badgeNum}>{step}</Text></View>
+                <Text style={pgHelp.stepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={pgHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
+            <Text style={pgHelp.continueText}>Continue Exercise  →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -664,6 +707,59 @@ const xs = StyleSheet.create({
 const exs = StyleSheet.create({
   prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 30, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
   promptBig: { top: fv(137), fontSize: 34, letterSpacing: 1.7 },
+});
+
+// Help overlay styles
+const pgHelp = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: TEAL_DARK,
+    zIndex: 200,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, marginBottom: 0,
+  },
+  closeBtn: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  closeText: { color: WHITE, fontSize: 22, fontWeight: '600', includeFontPadding: false, textAlign: 'center', lineHeight: 22 },
+  headerTitle: {
+    flex: 1, color: WHITE, fontSize: 17, fontWeight: '600',
+    textAlign: 'center', letterSpacing: 0.3, opacity: 0.75,
+  },
+  exTitle: {
+    color: WHITE, fontSize: 44, fontWeight: '800',
+    letterSpacing: 1.0, textAlign: 'center',
+    marginTop: 8, marginBottom: 28, paddingHorizontal: 24,
+  },
+  card: {
+    marginHorizontal: 24, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 18,
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  badge: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: ORANGE,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  badgeNum: { color: '#1A1A1A', fontSize: 16, fontWeight: '800' },
+  stepText: {
+    flex: 1, color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 24, fontWeight: '400',
+  },
+  continueBtn: {
+    alignSelf: 'center', marginTop: 32,
+    backgroundColor: ORANGE, borderRadius: 28,
+    paddingHorizontal: 40, paddingVertical: 20,
+    shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
+  continueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
