@@ -1,20 +1,20 @@
 /**
  * TabBar — persistent bottom navigation for the three main screens.
  *
- * Renders on Home, Settings, and Progress. The active tab is highlighted in
- * orange; inactive tabs use a dimmed white. Handles safe-area bottom padding
- * so it sits correctly above the home indicator on iPhone.
+ * Active tab gets an orange pill background + a spring-animated scale bounce
+ * on mount so the indicator feels responsive. Using forNoAnimation on the
+ * stack transitions means this bar appears fixed while the content behind it
+ * changes — giving a native tab-bar effect.
  */
-import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const ORANGE    = '#FFA940';
-const WHITE     = '#FFFFFF';
-const TAB_BG    = '#111D1F';
-const INACTIVE  = 'rgba(255,255,255,0.45)';
+const ORANGE   = '#FFA940';
+const WHITE    = '#FFFFFF';
+const TAB_BG   = '#111D1F';
+const INACTIVE = 'rgba(255,255,255,0.45)';
 
-// Icon assets for each tab — shared with HomeScreen
 const TAB_ICONS = {
   settings: require('../../assets/images/GearIcon.png'),
   home:     require('../../assets/images/HomeIcon.png'),
@@ -25,12 +25,56 @@ const TAB_LABELS = {
   home:     'Home',
   progress: 'Progress',
 };
+const TABS = ['settings', 'home', 'progress'];
+
+// Individual tab button with a spring-pop animation when it becomes active.
+function TabButton({ tab, isActive, onPress }) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  // Spring-pop the active icon on mount so the user sees responsive feedback.
+  useEffect(() => {
+    if (!isActive) return;
+    Animated.sequence([
+      Animated.spring(scale, { toValue: 1.18, useNativeDriver: true, tension: 280, friction: 10 }),
+      Animated.spring(scale, { toValue: 1.00, useNativeDriver: true, tension: 120, friction: 8 }),
+    ]).start();
+  }, []); // only on mount — avoids re-firing when sibling tabs re-render
+
+  const isHome = tab === 'home';
+
+  return (
+    <TouchableOpacity
+      style={styles.tabBtn}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isActive }}
+      accessibilityLabel={TAB_LABELS[tab]}
+    >
+      {/* Orange pill background — visible only on active tab */}
+      {isActive && <View style={styles.activePill} />}
+
+      <Animated.Image
+        source={TAB_ICONS[tab]}
+        style={[
+          styles.icon,
+          isHome && styles.iconHome,
+          { tintColor: isActive ? ORANGE : INACTIVE },
+          { transform: [{ scale }] },
+        ]}
+        resizeMode="contain"
+      />
+      <Text style={[styles.label, { color: isActive ? ORANGE : INACTIVE }]}>
+        {TAB_LABELS[tab]}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function TabBar({ navigation, activeTab }) {
   const { bottom: safeBottom } = useSafeAreaInsets();
 
   function handlePress(tab) {
-    // Don't navigate if already on this tab — avoids stack accumulation.
     if (tab === activeTab) return;
     navigation.navigate(
       tab === 'settings' ? 'Settings'
@@ -41,33 +85,14 @@ export default function TabBar({ navigation, activeTab }) {
 
   return (
     <View style={[styles.bar, { paddingBottom: safeBottom, height: 72 + safeBottom }]}>
-      {(['settings', 'home', 'progress']).map(tab => {
-        const isActive = tab === activeTab;
-        return (
-          <TouchableOpacity
-            key={tab}
-            style={styles.tabBtn}
-            onPress={() => handlePress(tab)}
-            activeOpacity={0.75}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            accessibilityLabel={TAB_LABELS[tab]}
-          >
-            <Image
-              source={TAB_ICONS[tab]}
-              style={[
-                styles.icon,
-                tab === 'home' && styles.iconHome,
-                { tintColor: isActive ? ORANGE : INACTIVE },
-              ]}
-              resizeMode="contain"
-            />
-            <Text style={[styles.label, { color: isActive ? ORANGE : INACTIVE }]}>
-              {TAB_LABELS[tab]}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+      {TABS.map(tab => (
+        <TabButton
+          key={tab}
+          tab={tab}
+          isActive={tab === activeTab}
+          onPress={() => handlePress(tab)}
+        />
+      ))}
     </View>
   );
 }
@@ -87,6 +112,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 10,
     gap: 4,
+  },
+  // Semi-transparent orange pill sits behind the icon + label of the active tab
+  activePill: {
+    position: 'absolute',
+    top: 6,
+    width: 56,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,169,64,0.13)',
   },
   icon: {
     width: 26,

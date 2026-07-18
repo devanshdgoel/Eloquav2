@@ -106,21 +106,17 @@ export default function AppNavigator() {
          * Progress slides in from the RIGHT (it's conceptually to the right of Home).
          * Together these create a horizontal tab-like layout without a tab navigator.
          */}
+        {/*
+         * Settings and Progress use instant transitions so the bottom TabBar
+         * appears to stay fixed while only the page content changes — giving a
+         * native tab-bar feel without needing a Tab Navigator.
+         */}
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
           options={{
             gestureEnabled: false,
-            cardStyleInterpolator: ({ current, layouts }) => ({
-              cardStyle: {
-                transform: [{
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-layouts.screen.width, 0],
-                  }),
-                }],
-              },
-            }),
+            cardStyleInterpolator: CardStyleInterpolators.forNoAnimation,
           }}
         />
         <Stack.Screen
@@ -128,16 +124,7 @@ export default function AppNavigator() {
           component={ProgressScreen}
           options={{
             gestureEnabled: false,
-            cardStyleInterpolator: ({ current, layouts }) => ({
-              cardStyle: {
-                transform: [{
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width, 0],
-                  }),
-                }],
-              },
-            }),
+            cardStyleInterpolator: CardStyleInterpolators.forNoAnimation,
           }}
         />
         <Stack.Screen name="Assessment" component={AssessmentScreen} />

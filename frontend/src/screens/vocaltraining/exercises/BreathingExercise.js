@@ -519,7 +519,7 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
               <Text style={brHelp.closeText}>✕</Text>
             </TouchableOpacity>
             <Text style={brHelp.headerTitle}>Instructions</Text>
-            <View style={{ width: 56 }} />
+            <SpeakerButton text={INSTRUCTIONS.map(s => s.text).join('. ')} size={44} />
           </View>
           <Text style={brHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Breathing</Text>
           <View style={brHelp.card}>

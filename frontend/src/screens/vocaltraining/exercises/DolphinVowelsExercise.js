@@ -802,7 +802,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
               <Text style={dvHelp.closeText}>✕</Text>
             </TouchableOpacity>
             <Text style={dvHelp.headerTitle}>Instructions</Text>
-            <View style={{ width: 56 }} />
+            <SpeakerButton text={VOWEL_INSTR_STEPS.map(s => s.text).join('. ')} size={44} />
           </View>
           <Text style={dvHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Dolphin Vowels</Text>
           <View style={dvHelp.card}>

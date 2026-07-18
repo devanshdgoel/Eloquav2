@@ -886,13 +886,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
         </View>
       )}
 
-      <Image
-        source={require('../../assets/images/wave-logo.png')}
-        style={styles.waveLogo}
-        resizeMode="contain"
-        accessible={false}
-      />
-
       {/* First-play motivational overlay — fades in automatically */}
       {firstPlayMsg ? (
         <View style={styles.firstPlayOverlay} pointerEvents="none">
@@ -1133,12 +1126,6 @@ const styles = StyleSheet.create({
     shadowColor: '#48D28C',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
-  },
-
-  waveLogo: {
-    position: 'absolute',
-    bottom: 24, right: Math.round(16 * SC),
-    width: Math.round(146 * SC), height: Math.round(55 * SC),
   },
 
   // First-play motivational overlay

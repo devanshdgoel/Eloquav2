@@ -30,9 +30,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth } from '../../utils/authHeaders';
+import SpeakerButton from '../../components/SpeakerButton';
 import { API_BASE_URL } from '../../config/env';
 import { getUserProfile } from '../../utils/storage';
 
@@ -79,6 +82,7 @@ function todayDateString() {
 
 export default function DailyVoiceNoteScreen({ navigation, route }) {
   const { nextScreen, nextParams } = route.params ?? {};
+  const { top: safeTop } = useSafeAreaInsets();
 
   // phase: 'checking' | 'idle' | 'recording' | 'uploading'
   const [phase,    setPhase]    = useState('checking');
@@ -280,10 +284,25 @@ export default function DailyVoiceNoteScreen({ navigation, route }) {
     <LinearGradient colors={BG_GRADIENT} style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* Skip button — top right, very subtle so it doesn't compete with the question */}
-      {(isIdle) && (
+      {/* Back button — top left, takes user back to Home */}
+      {isIdle && (
         <TouchableOpacity
-          style={s.skipTopBtn}
+          style={[s.backBtn, { top: safeTop + 12 }]}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+            <Path d="M15 18l-6-6 6-6" stroke={WHITE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </TouchableOpacity>
+      )}
+
+      {/* Skip button — top right, very subtle so it doesn't compete with the question */}
+      {isIdle && (
+        <TouchableOpacity
+          style={[s.skipTopBtn, { top: safeTop + 12 }]}
           onPress={handleSkip}
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -313,6 +332,14 @@ export default function DailyVoiceNoteScreen({ navigation, route }) {
           >
             {todayQ}
           </Text>
+          {/* Read-aloud button — only shown in idle; hides when recording starts */}
+          {isIdle && (
+            <SpeakerButton
+              text={todayQ.replace(/\n/g, ' ')}
+              size={44}
+              style={{ marginTop: 12 }}
+            />
+          )}
         </View>
 
         {/* ── Idle state ── */}
@@ -426,10 +453,22 @@ export default function DailyVoiceNoteScreen({ navigation, route }) {
 const s = StyleSheet.create({
   root: { flex: 1 },
 
+  // ── Back button (top left) ────────────────────────────────────────────────
+  backBtn: {
+    position: 'absolute',
+    left: 16,
+    width: 40, height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+
   // ── Skip button (top right) ───────────────────────────────────────────────
   skipTopBtn: {
     position: 'absolute',
-    top: 54, right: 20,
+    right: 20,
     paddingHorizontal: 16, paddingVertical: 8,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 20,

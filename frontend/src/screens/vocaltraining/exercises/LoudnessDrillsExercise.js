@@ -872,7 +872,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
               <Text style={exHelp.closeText}>✕</Text>
             </TouchableOpacity>
             <Text style={exHelp.headerTitle}>Instructions</Text>
-            <View style={{ width: 56 }} />
+            <SpeakerButton text={DEMO_STEPS.map(s => s.text).join('. ')} size={44} />
           </View>
           <Text style={exHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Loudness Drills</Text>
           <View style={exHelp.card}>

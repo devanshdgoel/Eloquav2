@@ -636,7 +636,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
               <Text style={pgHelp.closeText}>✕</Text>
             </TouchableOpacity>
             <Text style={pgHelp.headerTitle}>Instructions</Text>
-            <View style={{ width: 56 }} />
+            <SpeakerButton text={PITCH_INSTR_STEPS.map(s => s.text).join('. ')} size={44} />
           </View>
           <Text style={pgHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Pitch Glides</Text>
           <View style={pgHelp.card}>

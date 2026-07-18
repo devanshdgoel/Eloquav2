@@ -649,7 +649,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
                 <Text style={exHelp.closeText}>✕</Text>
               </TouchableOpacity>
               <Text style={exHelp.headerTitle}>Instructions</Text>
-              <View style={{ width: 56 }} />
+              <SpeakerButton text={INSTRUCTIONS_TEXT} size={44} />
             </View>
             <Text style={exHelp.exTitle} numberOfLines={1} adjustsFontSizeToFit>Sustained Sound</Text>
             <View style={exHelp.card}>

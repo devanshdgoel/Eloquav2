@@ -29,7 +29,7 @@ import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
-import { usePrefsRefresh } from '../context/PrefsContext';
+import { usePrefsRefresh, useLargeText } from '../context/PrefsContext';
 import { getUserProfile } from '../utils/storage';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { API_BASE_URL } from '../config/env';
@@ -45,6 +45,10 @@ import ScreenHeader from '../components/ScreenHeader';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
+
+// File-local context so sub-components can read the large-text font scaler
+// without needing it passed as a prop through every call site.
+const FontCtx = React.createContext((x) => x);
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 const BG_TOP    = '#37767A';
@@ -146,9 +150,10 @@ const tog = StyleSheet.create({
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 function Section({ label, children }) {
+  const fs = React.useContext(FontCtx);
   return (
     <View style={sec.wrap}>
-      <Text style={sec.label}>{label}</Text>
+      <Text style={[sec.label, { fontSize: fs(13) }]}>{label}</Text>
       <View style={sec.card}>{children}</View>
     </View>
   );
@@ -175,6 +180,7 @@ const sec = StyleSheet.create({
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 function Row({ label, sublabel, right, onPress, isLast = false, tintLabel }) {
+  const fs   = React.useContext(FontCtx);
   const Wrap = onPress ? TouchableOpacity : View;
   return (
     <Wrap
@@ -185,8 +191,8 @@ function Row({ label, sublabel, right, onPress, isLast = false, tintLabel }) {
       accessibilityLabel={onPress ? label : undefined}
     >
       <View style={row.left}>
-        <Text style={[row.label, tintLabel && { color: tintLabel }]}>{label}</Text>
-        {sublabel ? <Text style={row.sublabel}>{sublabel}</Text> : null}
+        <Text style={[row.label, { fontSize: fs(17) }, tintLabel && { color: tintLabel }]}>{label}</Text>
+        {sublabel ? <Text style={[row.sublabel, { fontSize: fs(15) }]}>{sublabel}</Text> : null}
       </View>
       {right}
     </Wrap>
@@ -222,9 +228,10 @@ const row = StyleSheet.create({
 
 // ── Value badge ───────────────────────────────────────────────────────────────
 function ValueTag({ label, color = MINT }) {
+  const fs = React.useContext(FontCtx);
   return (
     <View style={[vt.wrap, { borderColor: color + '44' }]}>
-      <Text style={[vt.text, { color }]}>{label}</Text>
+      <Text style={[vt.text, { color, fontSize: fs(15) }]}>{label}</Text>
     </View>
   );
 }
@@ -375,7 +382,10 @@ const tp = StyleSheet.create({
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function SettingsScreen({ navigation }) {
   const { signOut, isGuest, user } = useAuth();
-  const refreshPrefs = usePrefsRefresh();
+  const refreshPrefs  = usePrefsRefresh();
+  const largeText     = useLargeText();
+  // fs scales any font size by 1.25 when large text is on.
+  const fs = React.useCallback((base) => largeText ? Math.round(base * 1.25) : base, [largeText]);
 
   const [profile,         setProfile]         = useState(null);
   const [prefs,           setPrefs]           = useState(DEFAULT_PREFS);
@@ -495,6 +505,7 @@ export default function SettingsScreen({ navigation }) {
   const displayEmail = isGuest ? 'Guest session' : (user?.email || '—');
 
   return (
+    <FontCtx.Provider value={fs}>
     <View style={s.root}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
@@ -516,8 +527,8 @@ export default function SettingsScreen({ navigation }) {
         <View style={s.profileBlock}>
           <Avatar name={displayName} size={64} />
           <View style={s.profileText}>
-            <Text style={s.profileName}>{displayName}</Text>
-            <Text style={s.profileEmail}>{displayEmail}</Text>
+            <Text style={[s.profileName, { fontSize: fs(20) }]}>{displayName}</Text>
+            <Text style={[s.profileEmail, { fontSize: fs(16) }]}>{displayEmail}</Text>
             {isGuest && (
               <TouchableOpacity
                 onPress={() => navigation.navigate('SignUp')}
@@ -526,7 +537,7 @@ export default function SettingsScreen({ navigation }) {
                 accessibilityRole="button"
                 accessibilityLabel="Create account to save progress"
               >
-                <Text style={s.createAccountText}>Create account to save progress →</Text>
+                <Text style={[s.createAccountText, { fontSize: fs(16) }]}>Create account to save progress →</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -597,7 +608,7 @@ export default function SettingsScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel={isGuest ? 'Exit guest session' : 'Sign out'}
           >
-            <Text style={s.signOutText}>
+            <Text style={[s.signOutText, { fontSize: fs(17) }]}>
               {isGuest ? 'Exit guest session' : 'Sign out'}
             </Text>
           </TouchableOpacity>
@@ -610,7 +621,7 @@ export default function SettingsScreen({ navigation }) {
               accessibilityRole="button"
               accessibilityLabel="Delete account"
             >
-              <Text style={s.deleteText}>Delete account</Text>
+              <Text style={[s.deleteText, { fontSize: fs(16) }]}>Delete account</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -627,6 +638,7 @@ export default function SettingsScreen({ navigation }) {
 
       <TabBar navigation={navigation} activeTab="settings" />
     </View>
+    </FontCtx.Provider>
   );
 }
 

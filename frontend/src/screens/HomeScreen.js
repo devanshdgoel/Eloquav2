@@ -18,6 +18,8 @@ import Svg, {
   Image as SvgImage,
   Defs,
   ClipPath,
+  Filter,
+  FeDropShadow,
   Line,
 } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -179,8 +181,8 @@ export default function HomeScreen({ navigation }) {
     && progress.sessions_completed % LEVELS_EVERY === 0
     && progress.sessions_completed > progress.last_checkin_session;
 
-  const bubbleUri = useMemo(
-    () => Image.resolveAssetSource(require('../../assets/images/Bubble.png')).uri, []
+  const nodeIconUri = useMemo(
+    () => Image.resolveAssetSource(require('../../assets/images/NodeIcon.png')).uri, []
   );
   const dolphinUri = useMemo(
     () => Image.resolveAssetSource(require('../../assets/images/Dolphin2.png')).uri, []
@@ -356,7 +358,7 @@ export default function HomeScreen({ navigation }) {
         <Animated.View style={{ transform: [{ translateY: animY }] }}>
           <Svg width={W} height={CANVAS_H}>
 
-            {/* Clip paths */}
+            {/* Clip paths + drop-shadow filter for node icons */}
             <Defs>
               {NODE_DEFS.map((def, i) => {
                 const r = i === activeNode ? R_ACTIVE : R_OTHER;
@@ -366,6 +368,10 @@ export default function HomeScreen({ navigation }) {
                   </ClipPath>
                 );
               })}
+              {/* Soft shadow applied to the node icon images */}
+              <Filter id="nodeShadow" x="-15%" y="-15%" width="130%" height="130%">
+                <FeDropShadow dx="0" dy="3" stdDeviation="5" floodColor="rgba(0,0,0,0.28)" />
+              </Filter>
             </Defs>
 
             {/* Sine-wave path */}
@@ -446,21 +452,20 @@ export default function HomeScreen({ navigation }) {
                     />
                   )}
 
-                  {/* Bubble image — all non-active nodes.
-                      Viewport is 6× the node radius (3× each side) so that the image is
-                      scaled up 3× before the clipPath crops to the circle. This ensures
-                      the bubble graphic fills the circle even if the source PNG has large
-                      transparent padding around the bubble shape. */}
+                  {/* Node icon — all non-active nodes with drop shadow.
+                      Viewport is 2.2× diameter so the image fills the circle snugly
+                      (NodeIcon has some transparent padding). */}
                   {!isActive && (
                     <G opacity={isFuture ? futureContentOpacity : 1}>
                       <SvgImage
-                        href={bubbleUri}
-                        x={def.cx - r * 3}
-                        y={def.cy - r * 3}
-                        width={r * 6}
-                        height={r * 6}
+                        href={nodeIconUri}
+                        x={def.cx - r * 1.1}
+                        y={def.cy - r * 1.1}
+                        width={r * 2.2}
+                        height={r * 2.2}
                         clipPath={`url(#cp_${i})`}
-                        preserveAspectRatio="xMidYMid slice"
+                        preserveAspectRatio="xMidYMid meet"
+                        filter="url(#nodeShadow)"
                       />
                     </G>
                   )}
@@ -483,12 +488,12 @@ export default function HomeScreen({ navigation }) {
                     <Circle cx={def.cx} cy={def.cy} r={r + 8} fill="none" stroke={COLORS.orange} strokeWidth={4.5} />
                   )}
 
-                  {/* Checkmark — done nodes */}
+                  {/* Checkmark — done nodes. Dark teal contrasts against the light NodeIcon. */}
                   {isDone && (
                     <Path
                       d={`M ${def.cx - 13} ${def.cy} L ${def.cx - 4} ${def.cy + 10} L ${def.cx + 13} ${def.cy - 10}`}
-                      stroke={COLORS.white}
-                      strokeWidth={3.5}
+                      stroke="#1C4047"
+                      strokeWidth={4}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       fill="none"
@@ -502,7 +507,7 @@ export default function HomeScreen({ navigation }) {
                       y={def.cy + 8}
                       textAnchor="middle"
                       fill={COLORS.orange}
-                      fillOpacity={0.80}
+                      fillOpacity={0.90}
                       fontSize={22}
                       fontWeight="700"
                     >
@@ -510,16 +515,16 @@ export default function HomeScreen({ navigation }) {
                     </SvgText>
                   )}
 
-                  {/* Session number — future non-checkin nodes */}
+                  {/* Session number — dark teal text contrasts well against the light NodeIcon */}
                   {isFuture && !isCheckin && (
                     <SvgText
                       x={def.cx}
                       y={def.cy + 6}
                       textAnchor="middle"
-                      fill={COLORS.white}
-                      fillOpacity={futureContentOpacity}
-                      fontSize={16}
-                      fontWeight="700"
+                      fill="#1C4047"
+                      fillOpacity={1}
+                      fontSize={17}
+                      fontWeight="800"
                     >
                       {i + 1}
                     </SvgText>
