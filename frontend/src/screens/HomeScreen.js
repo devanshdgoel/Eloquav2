@@ -18,8 +18,6 @@ import Svg, {
   Image as SvgImage,
   Defs,
   ClipPath,
-  Filter,
-  FeDropShadow,
   Line,
 } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -358,7 +356,7 @@ export default function HomeScreen({ navigation }) {
         <Animated.View style={{ transform: [{ translateY: animY }] }}>
           <Svg width={W} height={CANVAS_H}>
 
-            {/* Clip paths + drop-shadow filter for node icons */}
+            {/* Clip paths for node icons */}
             <Defs>
               {NODE_DEFS.map((def, i) => {
                 const r = i === activeNode ? R_ACTIVE : R_OTHER;
@@ -368,10 +366,6 @@ export default function HomeScreen({ navigation }) {
                   </ClipPath>
                 );
               })}
-              {/* Soft shadow applied to the node icon images */}
-              <Filter id="nodeShadow" x="-15%" y="-15%" width="130%" height="130%">
-                <FeDropShadow dx="0" dy="3" stdDeviation="5" floodColor="rgba(0,0,0,0.28)" />
-              </Filter>
             </Defs>
 
             {/* Sine-wave path */}
@@ -452,11 +446,20 @@ export default function HomeScreen({ navigation }) {
                     />
                   )}
 
-                  {/* Node icon — all non-active nodes with drop shadow.
+                  {/* Node icon — all non-active nodes.
+                      A semi-transparent offset circle provides the drop shadow
+                      (SVG filter primitives are unsupported in this Expo build).
                       Viewport is 2.2× diameter so the image fills the circle snugly
                       (NodeIcon has some transparent padding). */}
                   {!isActive && (
                     <G opacity={isFuture ? futureContentOpacity : 1}>
+                      {/* Shadow circle — slightly larger, offset down, semi-transparent */}
+                      <Circle
+                        cx={def.cx + 1}
+                        cy={def.cy + 4}
+                        r={r}
+                        fill="rgba(0,0,0,0.18)"
+                      />
                       <SvgImage
                         href={nodeIconUri}
                         x={def.cx - r * 1.1}
@@ -465,7 +468,6 @@ export default function HomeScreen({ navigation }) {
                         height={r * 2.2}
                         clipPath={`url(#cp_${i})`}
                         preserveAspectRatio="xMidYMid meet"
-                        filter="url(#nodeShadow)"
                       />
                     </G>
                   )}

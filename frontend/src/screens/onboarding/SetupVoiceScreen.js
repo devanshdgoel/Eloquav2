@@ -25,6 +25,7 @@ import { auth } from '../../config/firebase';
 import { cloneVoice, getVoiceStatus } from '../../services/voiceService';
 import { setOnboardingComplete } from '../../utils/storage';
 import { logScreenView, logFunnelEvent } from '../../utils/analytics';
+import { useLargeText } from '../../context/PrefsContext';
 
 // The three reference sentences used to capture a baseline voice profile.
 const SENTENCES = [
@@ -34,6 +35,9 @@ const SENTENCES = [
 ];
 
 export default function SetupVoiceScreen({ navigation }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+
   const [currentIndex, setCurrentIndex]   = useState(0);
   const [recordings, setRecordings]       = useState([null, null, null]);
   const [isRecording, setIsRecording]     = useState(false);
@@ -234,17 +238,17 @@ export default function SetupVoiceScreen({ navigation }) {
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
 
-        <Text style={styles.title}>Voice Setup</Text>
-        <Text style={styles.subtitle}>Tap the mic button, then read the sentence aloud. Recording stops automatically when you finish.</Text>
+        <Text style={[styles.title, { fontSize: fs(38) }]}>Voice Setup</Text>
+        <Text style={[styles.subtitle, { fontSize: fs(18), lineHeight: fs(18) * 1.55 }]}>Tap the mic button, then read the sentence aloud. Recording stops automatically when you finish.</Text>
 
         {/* Row that labels the card and offers a read-aloud button for accessibility */}
         <View style={styles.sentenceHeader}>
-          <Text style={styles.sentenceLabel}>Read this sentence:</Text>
+          <Text style={[styles.sentenceLabel, { fontSize: fs(17) }]}>Read this sentence:</Text>
           <SpeakerButton text={SENTENCES[currentIndex]} size={44} />
         </View>
 
         <View style={styles.sentenceCard}>
-          <Text style={styles.sentenceText}>"{SENTENCES[currentIndex]}"</Text>
+          <Text style={[styles.sentenceText, { fontSize: fs(22), lineHeight: fs(22) * 1.55 }]}>"{SENTENCES[currentIndex]}"</Text>
         </View>
       </LinearGradient>
 
@@ -273,7 +277,7 @@ export default function SetupVoiceScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.recordingStatus} accessibilityLiveRegion="polite">
+        <Text style={[styles.recordingStatus, { fontSize: fs(16) }]} accessibilityLiveRegion="polite">
           {isRecording ? 'Recording… stops when you finish' : `Sentence ${currentIndex + 1} of ${SENTENCES.length}`}
         </Text>
 

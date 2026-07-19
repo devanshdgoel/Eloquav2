@@ -17,8 +17,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { registerWithEmail } from '../../services/authService';
 import { colors } from '../../theme';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
+import { useLargeText } from '../../context/PrefsContext';
 
 export default function SignUpScreen({ navigation }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+
   useEffect(() => {
     const logExit = logScreenView('SignUp');
     return logExit;
@@ -105,11 +109,11 @@ export default function SignUpScreen({ navigation }) {
               resizeMode="contain"
               accessibilityLabel="Eloqua logo"
             />
-            <Text style={styles.wordmark}>Eloqua</Text>
-            <Text style={styles.tagline}>Voice training for Parkinson's</Text>
+            <Text style={[styles.wordmark, { fontSize: fs(26) }]}>Eloqua</Text>
+            <Text style={[styles.tagline, { fontSize: fs(14) }]}>Voice training for Parkinson's</Text>
           </View>
 
-          <Text style={styles.heading}>Create your account</Text>
+          <Text style={[styles.heading, { fontSize: fs(28) }]}>Create your account</Text>
 
           {/* Name */}
           <Text style={styles.fieldLabel}>Full name</Text>
@@ -201,25 +205,42 @@ export default function SignUpScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Terms & conditions */}
-          <TouchableOpacity
-            style={styles.tcsRow}
-            onPress={() => setAgreed(!agreed)}
-            activeOpacity={0.8}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: agreed }}
-            accessibilityLabel="Agree to Terms of Service and Privacy Policy"
-          >
-            <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-              {agreed && <Text style={styles.checkmark}>✓</Text>}
-            </View>
+          {/* Terms & conditions — checkbox is separate from the links so each
+              can be tapped independently. Checkbox toggles agreement; links
+              open the full Policy screen without affecting the checkbox state. */}
+          <View style={styles.tcsRow}>
+            <TouchableOpacity
+              onPress={() => setAgreed(!agreed)}
+              activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: agreed }}
+              accessibilityLabel="Agree to Terms of Service and Privacy Policy"
+            >
+              <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                {agreed && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+            </TouchableOpacity>
             <Text style={styles.tcsText}>
               I agree to the{' '}
-              <Text style={styles.tcsLink}>Terms of Service</Text>
+              <Text
+                style={styles.tcsLink}
+                onPress={() => navigation.navigate('Policy', { section: 'terms' })}
+                accessibilityRole="link"
+                accessibilityLabel="Read Terms of Service"
+              >
+                Terms of Use
+              </Text>
               {' '}and{' '}
-              <Text style={styles.tcsLink}>Privacy Policy</Text>
+              <Text
+                style={styles.tcsLink}
+                onPress={() => navigation.navigate('Policy', { section: 'privacy' })}
+                accessibilityRole="link"
+                accessibilityLabel="Read Privacy Policy"
+              >
+                Privacy Policy
+              </Text>
             </Text>
-          </TouchableOpacity>
+          </View>
 
           {/* Create account button */}
           <TouchableOpacity
@@ -232,7 +253,7 @@ export default function SignUpScreen({ navigation }) {
           >
             {loading
               ? <ActivityIndicator color="#1C4047" size="small" />
-              : <Text style={styles.createBtnText}>Create Account</Text>
+              : <Text style={[styles.createBtnText, { fontSize: fs(18) }]}>Create Account</Text>
             }
           </TouchableOpacity>
 
@@ -246,7 +267,7 @@ export default function SignUpScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Sign in to existing account"
           >
-            <Text style={styles.signInText}>
+            <Text style={[styles.signInText, { fontSize: fs(16) }]}>
               Already have an account?{'  '}
               <Text style={styles.signInBold}>Sign In</Text>
             </Text>

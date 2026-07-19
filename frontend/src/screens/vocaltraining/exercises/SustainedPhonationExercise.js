@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
+import { hapticSuccess } from '../../../utils/haptics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -316,6 +318,9 @@ const ins = StyleSheet.create({
 
 function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }) {
   const { top: safeTop } = useSafeAreaInsets();
+  const hapticEnabled = useHapticFeedback();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const tierConfig = PHONATION_TIERS[Math.max(0, Math.min(4, tier - 1))];
 
   const [phase,      setPhase]      = useState('calibrating');
@@ -516,6 +521,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         setPhaseS('done');
         setMsg('Well done!');
         const exerciseScore = Math.min(100, Math.round((bestRef.current / tierConfig.targetSeconds) * 100));
+        hapticSuccess(hapticEnabled);
         setTimeout(() => onComplete(exerciseScore), 1500);
       } else {
         roundRef.current = nextRound;
@@ -615,7 +621,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         {/* Instruction message — prominent pill above the waveform so it reads
             clearly while the user focuses on the centre of the screen */}
         <View style={ex.msgPill}>
-          <Text style={ex.msg}>{msg}</Text>
+          <Text style={[ex.msg, { fontSize: fs(26) }]}>{msg}</Text>
         </View>
 
         {/* 26-bar waveform visualization */}
@@ -656,12 +662,12 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
               {INSTRUCTIONS.map(({ step, text }) => (
                 <View key={step} style={exHelp.row}>
                   <View style={exHelp.badge}><Text style={exHelp.badgeNum}>{step}</Text></View>
-                  <Text style={exHelp.stepText}>{text}</Text>
+                  <Text style={[exHelp.stepText, { fontSize: fs(17) }]}>{text}</Text>
                 </View>
               ))}
             </View>
             <TouchableOpacity style={exHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
-              <Text style={exHelp.continueText}>Continue Exercise  →</Text>
+              <Text style={[exHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
             </TouchableOpacity>
           </View>
         )}

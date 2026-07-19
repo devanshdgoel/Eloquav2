@@ -69,6 +69,14 @@ async def clone_voice(
     try:
         voice_id = create_cloned_voice(user_id, saved_paths, user_name)
     except VoiceCloningError as e:
+        # Quota exhaustion → 422 so the client can show a specific graceful message.
+        # Network failures → 503 (dependency unavailable).
+        # All other errors → 500 (unexpected server-side failure).
+        if e.error_type == "quota":
+            raise HTTPException(
+                status_code=422,
+                detail={"error_type": "quota", "message": e.message},
+            )
         status_code = 503 if e.error_type == "network" else 500
         raise HTTPException(status_code=status_code, detail=e.message)
     finally:

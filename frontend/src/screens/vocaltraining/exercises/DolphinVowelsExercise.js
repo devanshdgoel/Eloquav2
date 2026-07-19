@@ -35,6 +35,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
+import { hapticSuccess } from '../../../utils/haptics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -323,6 +325,9 @@ const dm = StyleSheet.create({
  */
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
   const { top: safeTop } = useSafeAreaInsets();
+  const hapticEnabled = useHapticFeedback();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   // Which vowel (0-4) is current; -1 means not yet started
   const [vowelIndex, setVowelIndex] = useState(0);
   // How many vowels have been successfully completed
@@ -556,6 +561,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
         }).start(() => {
           phaseRef.current = 'done';
           setPhase('done');
+          hapticSuccess(hapticEnabled);
           setTimeout(onComplete, 800);
         });
         return;
@@ -809,12 +815,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip }) {
             {VOWEL_INSTR_STEPS.map(({ step, text }) => (
               <View key={step} style={dvHelp.row}>
                 <View style={dvHelp.badge}><Text style={dvHelp.badgeNum}>{step}</Text></View>
-                <Text style={dvHelp.stepText}>{text}</Text>
+                <Text style={[dvHelp.stepText, { fontSize: fs(17) }]}>{text}</Text>
               </View>
             ))}
           </View>
           <TouchableOpacity style={dvHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
-            <Text style={dvHelp.continueText}>Continue Exercise  →</Text>
+            <Text style={[dvHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
         </View>
       )}

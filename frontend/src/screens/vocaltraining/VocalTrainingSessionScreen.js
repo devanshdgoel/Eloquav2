@@ -28,6 +28,8 @@ import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
 import { logSessionEvent, logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
+import { useHapticFeedback } from '../../context/PrefsContext';
+import { hapticSuccess } from '../../utils/haptics';
 
 const { width: W } = Dimensions.get('window');
 
@@ -131,6 +133,7 @@ const completeStyles = StyleSheet.create({
 
 export default function VocalTrainingSessionScreen({ navigation, route }) {
   const { nodeIndex = 0 } = route.params ?? {};
+  const hapticEnabled = useHapticFeedback();
 
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const [isDone,        setIsDone]        = useState(false);
@@ -241,6 +244,8 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       const result  = await completeSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
+      // Strong success pulse to mark the full training session completion.
+      hapticSuccess(hapticEnabled);
       navigation.replace('StreakCelebration', {
         streakDays: result.streak_days,
         userName:   profile?.name ?? '',

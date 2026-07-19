@@ -30,7 +30,7 @@ import { setTiersFromAssessment, computeProgressPlan, storeProgressPlan } from '
 import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
-import { getVoiceStatus } from '../services/voiceService';
+import { getVoiceStatus, cloneVoice } from '../services/voiceService';
 import { useLargeText } from '../context/PrefsContext';
 import ScreenHeader from '../components/ScreenHeader';
 import SpeakerButton from '../components/SpeakerButton';
@@ -376,19 +376,25 @@ export default function AssessmentScreen({ navigation, route }) {
   async function cloneVoiceFromAssessment(uris) {
     try {
       const status = await getVoiceStatus();
+      // Skip if the user already has a cloned voice on file.
       if (status.has_cloned_voice) return;
 
-      const form = new FormData();
-      uris.forEach((uri, i) => {
-        form.append('files', { uri, type: 'audio/m4a', name: `voice_sample_${i}.m4a` });
-      });
-      form.append('user_name', auth.currentUser?.displayName || 'User');
-      await fetchWithAuth(`${API_BASE_URL}/api/voice/clone`, {
-        method: 'POST',
-        body: form,
-      });
+      // cloneVoice handles the multipart upload and throws e.isQuotaError=true
+      // when the ElevenLabs voice slot limit is reached.
+      await cloneVoice(uris, auth.currentUser?.displayName || 'User');
     } catch (e) {
-      console.warn('[Assessment] voice cloning failed (non-fatal):', e?.message);
+      if (e.isQuotaError) {
+        // Quota exhausted — not a crash. Show a friendly notice; training continues
+        // with the default voice and the user is not blocked from proceeding.
+        Alert.alert(
+          'Voice profile unavailable',
+          "We couldn't create your personal voice profile right now. " +
+          "Your training will continue with our standard voice.",
+          [{ text: 'OK' }],
+        );
+      } else {
+        console.warn('[Assessment] voice cloning failed (non-fatal):', e?.message);
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View, StyleSheet, Easing } from 'react-native';
+import OfflineBanner from '../components/OfflineBanner';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
@@ -38,6 +39,7 @@ import StreakCommitmentScreen from '../screens/StreakCommitmentScreen';
 import BaselineResultsScreen from '../screens/BaselineResultsScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import DailyVoiceNoteScreen from '../screens/vocaltraining/DailyVoiceNoteScreen';
+import PolicyScreen from '../screens/onboarding/PolicyScreen';
 
 const Stack = createStackNavigator();
 
@@ -55,6 +57,7 @@ export default function AppNavigator() {
   return (
     <PrefsProvider>
     <ErrorBoundary>
+    <View style={{ flex: 1 }}>
     <NavigationContainer>
       {/*
        * Single flat stack — always starts at Splash.
@@ -138,8 +141,13 @@ export default function AppNavigator() {
         <Stack.Screen name="BaselineResults" component={BaselineResultsScreen} />
         {/* Daily voice note — shown before every training and baseline session */}
         <Stack.Screen name="DailyVoiceNote" component={DailyVoiceNoteScreen} />
+        {/* Privacy Policy and Terms of Use — opened from SignUpScreen */}
+        <Stack.Screen name="Policy" component={PolicyScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    {/* Rendered above NavigationContainer so it appears on every screen */}
+    <OfflineBanner />
+    </View>
     </ErrorBoundary>
     </PrefsProvider>
   );

@@ -18,8 +18,12 @@ import { loginWithEmail, resetPassword } from '../../services/authService';
 import { colors } from '../../theme';
 import { isOnboardingComplete } from '../../utils/storage';
 import { logScreenView } from '../../utils/analytics';
+import { useLargeText } from '../../context/PrefsContext';
 
 export default function SignInScreen({ navigation }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+
   useEffect(() => {
     const logExit = logScreenView('SignIn');
     return logExit;
@@ -110,11 +114,11 @@ export default function SignInScreen({ navigation }) {
               resizeMode="contain"
               accessibilityLabel="Eloqua logo"
             />
-            <Text style={styles.wordmark}>Eloqua</Text>
-            <Text style={styles.tagline}>Voice training for Parkinson's</Text>
+            <Text style={[styles.wordmark, { fontSize: fs(28) }]}>Eloqua</Text>
+            <Text style={[styles.tagline, { fontSize: fs(15) }]}>Voice training for Parkinson's</Text>
           </View>
 
-          <Text style={styles.heading}>Welcome back</Text>
+          <Text style={[styles.heading, { fontSize: fs(32) }]}>Welcome back</Text>
 
           {/* Email field */}
           <Text style={styles.fieldLabel}>Email address</Text>
@@ -182,7 +186,7 @@ export default function SignInScreen({ navigation }) {
           >
             {loading
               ? <ActivityIndicator color="#1C4047" size="small" />
-              : <Text style={styles.signInBtnText}>Sign In</Text>
+              : <Text style={[styles.signInBtnText, { fontSize: fs(18) }]}>Sign In</Text>
             }
           </TouchableOpacity>
 
@@ -196,7 +200,7 @@ export default function SignInScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Create a new account"
           >
-            <Text style={styles.createText}>
+            <Text style={[styles.createText, { fontSize: fs(16) }]}>
               New to Eloqua?{'  '}
               <Text style={styles.createTextBold}>Create an account</Text>
             </Text>

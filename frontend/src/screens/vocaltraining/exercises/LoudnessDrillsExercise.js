@@ -36,6 +36,8 @@ import { fetchWithAuth } from '../../../utils/authHeaders';
 import { API_BASE_URL } from '../../../config/env';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
+import { hapticMedium, hapticSuccess } from '../../../utils/haptics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -443,6 +445,9 @@ const IDLE_PROMPT_MESSAGES = [
 
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const { top: safeTop } = useSafeAreaInsets();
+  const hapticEnabled = useHapticFeedback();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const tierConfig = LOUDNESS_TIER_CONFIG[Math.max(0, Math.min(4, tier - 1))];
   const TOTAL_ROUNDS = tierConfig.rounds.length;
   const [phase, setPhase]           = useState('idle');
@@ -734,6 +739,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   function doWhack() {
     setPhaseS('whacked');
+    // Medium thud feedback when the jellyfish is successfully whacked.
+    hapticMedium(hapticEnabled);
     Animated.parallel([
       Animated.sequence([
         Animated.timing(scaleAnim, { toValue: 1.28, duration: 140, useNativeDriver: false }),
@@ -770,6 +777,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       setPhaseS('done');
       // V2: score = successful rounds / (successful + missed rounds) × 100
       const score = Math.round((TOTAL_ROUNDS / Math.max(TOTAL_ROUNDS, TOTAL_ROUNDS + missCountRef.current)) * 100);
+      hapticSuccess(hapticEnabled);
       setTimeout(() => onComplete(score), 1200);
       return;
     }
@@ -879,12 +887,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
             {DEMO_STEPS.map(({ step, text }) => (
               <View key={step} style={exHelp.row}>
                 <View style={exHelp.badge}><Text style={exHelp.badgeNum}>{step}</Text></View>
-                <Text style={exHelp.stepText}>{text}</Text>
+                <Text style={[exHelp.stepText, { fontSize: fs(17) }]}>{text}</Text>
               </View>
             ))}
           </View>
           <TouchableOpacity style={exHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
-            <Text style={exHelp.continueText}>Continue Exercise  →</Text>
+            <Text style={[exHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
         </View>
       )}

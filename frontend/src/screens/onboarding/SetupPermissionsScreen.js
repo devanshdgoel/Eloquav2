@@ -14,6 +14,7 @@ import { Audio } from 'expo-av';
 import { logScreenView } from '../../utils/analytics';
 import { MicIcon, SpeakerIcon } from '../../components/Icons';
 import { colors } from '../../theme';
+import { useLargeText } from '../../context/PrefsContext';
 
 // Background gradient is now sourced from colors.gradients.app (imported above).
 const ORANGE    = '#FFA940';
@@ -37,6 +38,8 @@ const WHY_POINTS = [
 
 export default function SetupPermissionsScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
 
   useEffect(() => {
     const logExit = logScreenView('SetupPermissions');
@@ -81,8 +84,8 @@ export default function SetupPermissionsScreen({ navigation }) {
         </TouchableOpacity>
 
         <View style={s.header}>
-          <Text style={s.title}>Microphone{'\n'}access</Text>
-          <Text style={s.subtitle}>Here is exactly why Eloqua needs it.</Text>
+          <Text style={[s.title, { fontSize: fs(34) }]}>Microphone{'\n'}access</Text>
+          <Text style={[s.subtitle, { fontSize: fs(17) }]}>Here is exactly why Eloqua needs it.</Text>
         </View>
 
         <View style={s.cards}>
@@ -90,8 +93,8 @@ export default function SetupPermissionsScreen({ navigation }) {
             <View key={i} style={s.card}>
               <View style={s.cardIconWrap}>{p.renderIcon()}</View>
               <View style={s.cardText}>
-                <Text style={s.cardTitle}>{p.title}</Text>
-                <Text style={s.cardBody}>{p.body}</Text>
+                <Text style={[s.cardTitle, { fontSize: fs(18) }]}>{p.title}</Text>
+                <Text style={[s.cardBody, { fontSize: fs(16), lineHeight: fs(16) * 1.45 }]}>{p.body}</Text>
               </View>
             </View>
           ))}
@@ -102,7 +105,7 @@ export default function SetupPermissionsScreen({ navigation }) {
         </View>
 
         <TouchableOpacity style={s.btn} onPress={handleAllow} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Allow microphone access">
-          <Text style={s.btnText}>Allow microphone  →</Text>
+          <Text style={[s.btnText, { fontSize: fs(18) }]}>Allow microphone  →</Text>
         </TouchableOpacity>
 
       </View>

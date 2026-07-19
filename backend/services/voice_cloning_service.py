@@ -22,6 +22,53 @@ class VoiceCloningError(Exception):
         super().__init__(message)
 
 
+def check_voice_quota() -> None:
+    """
+    Check the ElevenLabs subscription quota before attempting to clone a voice.
+
+    Calls GET /v1/user/subscription and compares voice_count to voice_limit.
+    Raises VoiceCloningError(error_type='quota') when the limit is reached so the
+    caller can return a 422 with a user-friendly message instead of letting the
+    clone attempt fail with an opaque 422 from ElevenLabs.
+
+    Network failures during the quota check are logged but do NOT block the clone
+    attempt — if ElevenLabs is unreachable for the check it will also fail for the
+    clone, and that error path is already handled.
+    """
+    if not ELEVENLABS_API_KEY:
+        # Config error is caught by create_cloned_voice's own check; skip here.
+        return
+
+    try:
+        response = requests.get(
+            "https://api.elevenlabs.io/v1/user/subscription",
+            headers={"xi-api-key": ELEVENLABS_API_KEY},
+            timeout=10,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.warning("ElevenLabs quota check network error (skipping): %s", exc)
+        return
+
+    if response.status_code != 200:
+        logger.warning("ElevenLabs quota check returned %s (skipping)", response.status_code)
+        return
+
+    try:
+        data = response.json()
+        voice_limit = data.get("voice_limit", 0)
+        voice_count = data.get("voice_count", 0)
+    except Exception:
+        logger.warning("Could not parse ElevenLabs subscription response (skipping quota check)")
+        return
+
+    if voice_limit > 0 and voice_count >= voice_limit:
+        raise VoiceCloningError(
+            f"Voice profile limit reached ({voice_count}/{voice_limit}). "
+            "Your training will continue with our standard voice.",
+            "quota",
+        )
+
+
 def create_cloned_voice(user_id: str, audio_paths: list, user_name: str = "User") -> str:
     """
     Create an ElevenLabs Instant Voice Clone from one or more audio samples
@@ -32,6 +79,9 @@ def create_cloned_voice(user_id: str, audio_paths: list, user_name: str = "User"
     """
     if not ELEVENLABS_API_KEY:
         raise VoiceCloningError("ElevenLabs API key not configured.", "config")
+
+    # Pre-flight quota check — fail fast with a clear message before uploading audio.
+    check_voice_quota()
 
     if not audio_paths:
         raise VoiceCloningError("No audio samples provided.", "input")

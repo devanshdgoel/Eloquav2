@@ -17,6 +17,8 @@ import Svg, { Path, Polygon } from 'react-native-svg';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
+import { hapticSuccess } from '../../../utils/haptics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -371,6 +373,9 @@ const bi = StyleSheet.create({
 // maxCycles defaults to TOTAL_CYCLES (3). Baseline passes 1 to keep it short.
 function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTAL_CYCLES }) {
   const { top: safeTop } = useSafeAreaInsets();
+  const hapticEnabled = useHapticFeedback();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const [cycleIndex, setCycleIndex] = useState(0);
   const [doneCount,  setDoneCount]  = useState(0);
   // showHelpOverlay: true when ? is pressed — exercise paused, overlay shown
@@ -424,6 +429,7 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
         runCycle(index + 1);
       } else {
         crossfade('Well done');
+        hapticSuccess(hapticEnabled);
         schedule(onComplete, 1500);
       }
     }, INHALE_MS + HOLD_MS + EXHALE_MS + 350);
@@ -526,12 +532,12 @@ function DrillScreen({ onComplete, onExit, onShowVideo, onSkip, maxCycles = TOTA
             {INSTRUCTIONS.map(({ step, text }) => (
               <View key={step} style={brHelp.row}>
                 <View style={brHelp.badge}><Text style={brHelp.badgeNum}>{step}</Text></View>
-                <Text style={brHelp.stepText}>{text}</Text>
+                <Text style={[brHelp.stepText, { fontSize: fs(17) }]}>{text}</Text>
               </View>
             ))}
           </View>
           <TouchableOpacity style={brHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
-            <Text style={brHelp.continueText}>Continue Exercise  →</Text>
+            <Text style={[brHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
         </View>
       )}

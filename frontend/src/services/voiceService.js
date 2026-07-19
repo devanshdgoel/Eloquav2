@@ -28,6 +28,14 @@ export async function cloneVoice(audioUris, userName = 'User') {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    // 422 with error_type='quota' means the ElevenLabs voice slot limit is reached.
+    // We mark this as a quota error so callers can show a specific friendly message
+    // rather than a generic failure — training can still continue with the default voice.
+    if (response.status === 422 && error.detail?.error_type === 'quota') {
+      const quotaErr = new Error(error.detail.message || 'Voice profile limit reached.');
+      quotaErr.isQuotaError = true;
+      throw quotaErr;
+    }
     throw new Error(error.detail || 'Voice cloning failed.');
   }
 

@@ -33,6 +33,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
+import { hapticSuccess } from '../../../utils/haptics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -401,6 +403,9 @@ const tus = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const { top: safeTop } = useSafeAreaInsets();
+  const hapticEnabled = useHapticFeedback();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const tierConfig   = PITCH_TIERS[Math.max(0, Math.min(4, tier - 1))];
   const TOTAL_HOOPS  = tierConfig.totalHoops;
   const PITCH_RANGE_HZ = tierConfig.pitchRangeHz;
@@ -468,6 +473,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         try { if (window._stream) { window._stream.getTracks().forEach(function(t){t.stop();}); } } catch(e){}
         true;
       `);
+      hapticSuccess(hapticEnabled);
       setTimeout(() => onComplete(100), 1400);
     }
   }
@@ -643,12 +649,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
             {PITCH_INSTR_STEPS.map(({ step, text }) => (
               <View key={step} style={pgHelp.row}>
                 <View style={pgHelp.badge}><Text style={pgHelp.badgeNum}>{step}</Text></View>
-                <Text style={pgHelp.stepText}>{text}</Text>
+                <Text style={[pgHelp.stepText, { fontSize: fs(17) }]}>{text}</Text>
               </View>
             ))}
           </View>
           <TouchableOpacity style={pgHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
-            <Text style={pgHelp.continueText}>Continue Exercise  →</Text>
+            <Text style={[pgHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
         </View>
       )}

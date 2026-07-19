@@ -258,7 +258,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const idleOpacity   = useRef(new Animated.Value(0)).current;
   const [idleMsg, setIdleMsg] = useState('');
   const IDLE_MESSAGES = [
-    "Come on, you've got this! 💪",
+    "Come on, you've got this!",
     "Take a breath and give it a go!",
     "You're doing great. Try speaking now!",
     "Whenever you're ready, say it out loud!",

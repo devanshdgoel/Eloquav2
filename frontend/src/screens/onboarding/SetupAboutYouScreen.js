@@ -18,12 +18,16 @@ import { auth } from '../../config/firebase';
 import { saveUserProfileToFirestore } from '../../services/userService';
 import { saveUserProfile, setOnboardingComplete } from '../../utils/storage';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
+import { useLargeText } from '../../context/PrefsContext';
 
 const AGE_RANGES = [
   'Under 18', '18–24', '25–34', '35–44', '45–54', '55–64', '65–74', '75+',
 ];
 
 export default function SetupAboutYouScreen({ navigation }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+
   useEffect(() => {
     const logExit = logScreenView('SetupAboutYou');
     return logExit;
@@ -70,10 +74,10 @@ export default function SetupAboutYouScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>About you</Text>
-          <Text style={styles.subtitle}>A couple of quick details to get started.</Text>
+          <Text style={[styles.title, { fontSize: fs(40) }]}>About you</Text>
+          <Text style={[styles.subtitle, { fontSize: fs(18) }]}>A couple of quick details to get started.</Text>
 
-          <Text style={styles.label}>Your name</Text>
+          <Text style={[styles.label, { fontSize: fs(20) }]}>Your name</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
@@ -87,7 +91,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             />
           </View>
 
-          <Text style={styles.label}>Age <Text style={styles.optional}>(optional)</Text></Text>
+          <Text style={[styles.label, { fontSize: fs(20) }]}>Age <Text style={[styles.optional, { fontSize: fs(16) }]}>(optional)</Text></Text>
           <TouchableOpacity
             style={styles.selectCard}
             onPress={() => setAgeModalVisible(true)}
@@ -110,7 +114,7 @@ export default function SetupAboutYouScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Continue"
           >
-            <Text style={styles.nextArrow}>Continue  →</Text>
+            <Text style={[styles.nextArrow, { fontSize: fs(18) }]}>Continue  →</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
