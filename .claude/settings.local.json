@@ -136,7 +136,9 @@
       "PowerShell(Write-Host \"=== BACKEND SERVICES ===\" ; Get-ChildItem -Path \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\\\\services\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
       "Bash(python -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\(p.get\\('dependencies',{}\\).get\\('react-native-webview','not found'\\)\\)\")",
       "Bash(Get-ChildItem *)",
-      "Bash(Copy-Item *)"
+      "Bash(Copy-Item *)",
+      "PowerShell(Get-PSDrive C | Select-Object Used, Free, @{N='UsedGB';E={[math]::Round\\($_.Used/1GB,1\\)}}, @{N='FreeGB';E={[math]::Round\\($_.Free/1GB,1\\)}})",
+      "Bash(wmic logicaldisk *)"
     ]
   }
 }

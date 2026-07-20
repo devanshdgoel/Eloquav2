@@ -94,6 +94,38 @@ This document describes how Eloqua handles failures across every layer of the st
 **Mechanism:** Clone failure is non-fatal — assessment completes and assessment data is still saved
 **Fallback:** Speech Enhancement works without a voice clone (falls back to a generic voice or ElevenLabs default)
 
+### ElevenLabs quota exhausted
+**Where:** `backend/api/voice_routes.py` → `backend/services/voice_service.py`
+**Trigger:** Monthly character quota on the ElevenLabs free/starter plan exceeded; API returns HTTP 429 or quota-specific error body
+**Mechanism:** `isQuotaError()` helper in `voice_service.py` detects quota responses and sets a `quota_exceeded` flag in the response. The frontend `VoiceSetupExercise` checks this flag and shows a graceful "Voice personalisation unavailable right now" message, then allows the user to skip setup.
+**Fallback:** User bypasses voice cloning; Speech Enhancement uses the ElevenLabs default voice. Assessment and training sessions continue normally.
+**Action:** Upgrade ElevenLabs plan or wait for monthly reset. No code change needed.
+
+### Voice analysis endpoint fails (baseline session)
+**Where:** `ReadingMiniExercise.analyzeRecording()` / `PitchGlideMiniExercise.analyzeRecording()`
+**Trigger:** Network failure, backend 5xx, or 12-second abort timeout on `/api/analyze-voice`
+**Mechanism:** Both mini-exercises have a 12-second abort controller on the analysis fetch. Any failure (network, timeout, non-2xx) is caught silently.
+**Fallback:** `onComplete(null)` is called — the baseline session records a null score for that dimension rather than blocking. The user is not shown an error; they flow to the next exercise as normal.
+**Note:** A null score means that dimension is excluded from the composite average. The baseline can still complete and produce a progress plan from whichever scores did land.
+
+### Network offline (global)
+**Where:** `OfflineBanner` component, mounted in `AppNavigator.js`
+**Trigger:** `@react-native-community/netinfo` reports `isConnected: false`
+**Mechanism:** `NetInfo.addEventListener` subscription updates a context value; `OfflineBanner` renders a persistent yellow banner at the top of every screen when offline.
+**Fallback:** Banner is purely informational — it does not block navigation. API calls still proceed and will fail with network errors, triggering their normal per-feature fallbacks. This gives the user clear context for why requests are failing.
+
+### 401 token expiry mid-session (resolved automatically)
+**Where:** `frontend/src/utils/authHeaders.js` → `fetchWithAuth()`
+**Trigger:** Firebase ID tokens expire after 1 hour. Any API call made after expiry returns HTTP 401.
+**Mechanism:** `fetchWithAuth` intercepts 401, calls `auth.currentUser.getIdToken(true)` to force-refresh, then retries the original request once with the new token. Transparent to all callers.
+**Fallback:** If the refresh also fails (user revoked, signed out on another device), the retry also returns 401. At that point the per-feature error handling takes over (e.g. exercise advances leniently, save shows Alert with retry).
+
+### Backend transient errors (503/504)
+**Where:** `frontend/src/utils/authHeaders.js` → `fetchWithAuth()`
+**Trigger:** Render backend temporarily unavailable during a deploy, cold-start race, or brief overload
+**Mechanism:** `fetchWithAuth` retries up to 2 times with delays of 1s then 2s before propagating the error. Covers Render cold-start (typically resolves within 15s) and brief 503 blips.
+**Fallback:** After 2 retries (~3s total), error propagates to the per-feature handler (spinner dismissed, Alert shown, or exercise advances leniently depending on context).
+
 ---
 
 ## Global JS Exception Boundary
@@ -109,7 +141,9 @@ This document describes how Eloqua handles failures across every layer of the st
 | Scenario | What the user sees | Where they can go |
 |---|---|---|
 | Firebase hangs on startup (15 s) | Splash + "Trouble restoring session" banner | Sign In / Sign Up buttons |
-| Network totally offline | Per-screen error states (see above) | Retry buttons; offline content shows cached state |
+| Network totally offline | Yellow OfflineBanner at top of screen + per-screen errors | Retry when reconnected |
+| 401 expired token | Transparent auto-refresh — user sees nothing | Request succeeds after token refresh |
+| Backend 503/504 transient | Transparent auto-retry (1s, 2s delays) | Request succeeds or triggers per-feature fallback |
 | Backend cold start (first request slow) | Spinner / processing indicator | Wait; warm-up ping reduces frequency |
 | Assessment save fails | Back to results screen + Alert | Retry save or Continue to Home |
 | Check-in save fails | Alert with options | Retry or Go Home |
@@ -117,6 +151,8 @@ This document describes how Eloqua handles failures across every layer of the st
 | Home roadmap load fails | Orange retry banner | Tap banner |
 | FunctionalSpeech 401 | Exercise advances leniently | Continues normally |
 | PitchGlides mic denied | "Microphone unavailable" overlay | Skip exercise |
+| Baseline analysis fails (ReadingMini / PitchGlideMini) | Silent null score — user sees "Analysing…" then moves on | Continues to next exercise |
+| ElevenLabs quota exhausted | "Voice personalisation unavailable" message in VoiceSetupExercise | Skip voice setup; training continues without personalised voice |
 | Any uncaught JS crash | "Something went wrong" screen | Try Again |
 
 ---
@@ -127,8 +163,9 @@ The following improvements are noted for a future release:
 
 | Item | Priority | Notes |
 |---|---|---|
-| NetInfo offline detection | Medium | Requires `@react-native-community/netinfo` install. Show global offline banner; queue or block API calls. |
-| Retry with exponential backoff | Medium | Wrap `fetch` calls in a shared `fetchWithRetry(url, opts, maxRetries=3)` utility. Back off 1s → 2s → 4s before showing error. |
-| 401 auto-refresh on frontend | Medium | Intercept 401 responses, call `auth.currentUser.getIdToken(true)` to force-refresh, retry the original request once. |
+| ~~NetInfo offline detection~~ | ~~Medium~~ | ✅ **Implemented 2026-07-19** — `OfflineBanner` component + `@react-native-community/netinfo` subscription in `AppNavigator.js` |
+| ~~Retry with exponential backoff~~ | ~~Medium~~ | ✅ **Implemented 2026-07-19** — `fetchWithAuth` retries 503/504 with delays `[1000, 2000]` ms before propagating error |
+| ~~401 auto-refresh on frontend~~ | ~~Medium~~ | ✅ **Implemented 2026-07-19** — `fetchWithAuth` intercepts 401, force-refreshes token, retries once |
 | Sentry / crash reporting | Low | Wire `componentDidCatch` in `ErrorBoundary` and silent `catch` blocks to a crash reporter for production observability. |
 | iOS/Android push notifications | Low | Daily training reminders. Requires `expo-notifications` + server-side FCM integration. |
+| audioCues wiring | Low | `useAudioCues()` hook exposed but not wired to actual audio file playback. Files needed: `correct.mp3`, `exercise_complete.mp3`, `session_complete.mp3`. |

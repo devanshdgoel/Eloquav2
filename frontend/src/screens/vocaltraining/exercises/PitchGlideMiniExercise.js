@@ -23,6 +23,7 @@ import { API_BASE_URL } from '../../../config/env';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useLargeText } from '../../../context/PrefsContext';
 
 const BG_GRADIENT = ['#37767A', '#1C4047', '#0A1618'];
 const ORANGE = '#FFA940';
@@ -44,6 +45,9 @@ export default function PitchGlideMiniExercise({
   exerciseIndex   = 0,
   totalExercises  = 6,
 }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+
   // phase: 'ready' | 'recording' | 'processing'
   const [phase,   setPhase]   = useState('ready');
   const [elapsed, setElapsed] = useState(0);
@@ -160,7 +164,7 @@ export default function PitchGlideMiniExercise({
       <View style={s.body}>
         <Text style={s.title}>Pitch{'\n'}Range</Text>
 
-        <Text style={s.instruction}>
+        <Text style={[s.instruction, { fontSize: fs(18) }]}>
           {"Say \"Ahhh\" and slowly slide\nyour voice from LOW to HIGH.\nGo as high as you can."}
         </Text>
 
@@ -169,7 +173,7 @@ export default function PitchGlideMiniExercise({
         )}
 
         {isProcessing && (
-          <Text style={s.processing}>Analysing…</Text>
+          <Text style={[s.processing, { fontSize: fs(20) }]}>Analysing…</Text>
         )}
 
         {!isProcessing && (
@@ -180,7 +184,7 @@ export default function PitchGlideMiniExercise({
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
           >
-            <Text style={s.btnText}>{isRecording ? 'Done  ✓' : 'Start  →'}</Text>
+            <Text style={[s.btnText, { fontSize: fs(20) }]}>{isRecording ? 'Done  ✓' : 'Start  →'}</Text>
           </TouchableOpacity>
         )}
       </View>

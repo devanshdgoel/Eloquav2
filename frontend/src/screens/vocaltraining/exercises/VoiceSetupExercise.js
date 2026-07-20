@@ -31,6 +31,7 @@ import { MicIcon, StopIcon } from '../../../components/Icons';
 import { auth } from '../../../config/firebase';
 import { cloneVoice, getVoiceStatus } from '../../../services/voiceService';
 import { getUserProfile } from '../../../utils/storage';
+import { useLargeText } from '../../../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 
@@ -93,6 +94,8 @@ const hb = StyleSheet.create({
 // ── Phase 0: Intro ────────────────────────────────────────────────────────────
 // Explains the purpose and lets the user skip without reading sentences.
 function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <FadeIn>
       <LinearGradient
@@ -116,7 +119,7 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
       <View style={ip.content}>
         <Text style={ip.eyebrow}>SMART SPEECH</Text>
         <Text style={ip.title}>Create Your{'\n'}Voice Profile</Text>
-        <Text style={ip.body}>
+        <Text style={[ip.body, { fontSize: fs(17) }]}>
           Read 2 short sentences aloud. We use them to personalise Smart Speech
           {' '}— so it sounds like <Text style={ip.emphasis}>you</Text>.
         </Text>
@@ -124,15 +127,15 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
         <View style={ip.card}>
           <View style={ip.cardRow}>
             <View style={ip.stepBadge}><Text style={ip.stepNum}>1</Text></View>
-            <Text style={ip.cardText}>Tap the mic and read the sentence aloud</Text>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>Tap the mic and read the sentence aloud</Text>
           </View>
           <View style={ip.cardRow}>
             <View style={ip.stepBadge}><Text style={ip.stepNum}>2</Text></View>
-            <Text style={ip.cardText}>Tap stop when you finish</Text>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>Tap stop when you finish</Text>
           </View>
           <View style={ip.cardRow}>
             <View style={ip.stepBadge}><Text style={ip.stepNum}>3</Text></View>
-            <Text style={ip.cardText}>Repeat for the second sentence — done</Text>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>Repeat for the second sentence — done</Text>
           </View>
         </View>
       </View>
@@ -148,7 +151,7 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
           accessibilityRole="button"
           accessibilityLabel="Skip voice setup"
         >
-          <Text style={ip.skipText}>Skip for now</Text>
+          <Text style={[ip.skipText, { fontSize: fs(17) }]}>Skip for now</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={ip.primaryBtn}
@@ -157,7 +160,7 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
           accessibilityRole="button"
           accessibilityLabel="Begin voice recording"
         >
-          <Text style={ip.primaryText}>Begin  →</Text>
+          <Text style={[ip.primaryText, { fontSize: fs(17) }]}>Begin  →</Text>
         </TouchableOpacity>
       </View>
 
@@ -231,6 +234,8 @@ const ip = StyleSheet.create({
 // ── Phase 1: Recording ────────────────────────────────────────────────────────
 // Shows one sentence at a time with a mic button. Progress pill tracks position.
 function RecordingPhase({ sentenceIndex, isRecording, onMicPress, onSkip, onExit, sessionFill }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <FadeIn>
       <LinearGradient
@@ -262,7 +267,7 @@ function RecordingPhase({ sentenceIndex, isRecording, onMicPress, onSkip, onExit
       <View style={rp.sentenceArea}>
         <Text style={rp.readLabel}>READ THIS ALOUD</Text>
         <View style={rp.sentenceCard}>
-          <Text style={rp.sentenceText}>"{SENTENCES[sentenceIndex]}"</Text>
+          <Text style={[rp.sentenceText, { fontSize: fs(20) }]}>"{SENTENCES[sentenceIndex]}"</Text>
         </View>
       </View>
 
@@ -280,7 +285,7 @@ function RecordingPhase({ sentenceIndex, isRecording, onMicPress, onSkip, onExit
             : <MicIcon  size={32} color={WHITE} />
           }
         </TouchableOpacity>
-        <Text style={rp.micStatus} accessibilityLiveRegion="polite">
+        <Text style={[rp.micStatus, { fontSize: fs(16) }]} accessibilityLiveRegion="polite">
           {isRecording ? 'Recording…  tap to stop' : 'Tap to start recording'}
         </Text>
       </View>
@@ -291,7 +296,7 @@ function RecordingPhase({ sentenceIndex, isRecording, onMicPress, onSkip, onExit
         accessibilityRole="button"
         accessibilityLabel="Skip voice setup"
       >
-        <Text style={rp.skipLinkText}>Skip voice setup</Text>
+        <Text style={[rp.skipLinkText, { fontSize: fs(15) }]}>Skip voice setup</Text>
       </TouchableOpacity>
 
       <SessionBar fill={sessionFill} />
@@ -362,6 +367,8 @@ const rp = StyleSheet.create({
 // ── Phase 2: Processing ────────────────────────────────────────────────────────
 // Shown while samples are uploaded to ElevenLabs. No user interaction — just wait.
 function ProcessingPhase() {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <FadeIn>
       <LinearGradient
@@ -372,8 +379,8 @@ function ProcessingPhase() {
       <StatusBar barStyle="light-content" />
       <View style={pp.center}>
         <ActivityIndicator size="large" color={ORANGE} />
-        <Text style={pp.title}>Creating your voice profile</Text>
-        <Text style={pp.sub}>This may take up to 30 seconds…</Text>
+        <Text style={[pp.title, { fontSize: fs(24) }]}>Creating your voice profile</Text>
+        <Text style={[pp.sub, { fontSize: fs(16) }]}>This may take up to 30 seconds…</Text>
       </View>
     </FadeIn>
   );

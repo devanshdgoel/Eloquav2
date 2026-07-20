@@ -30,6 +30,7 @@ import SpeakerButton from '../../../components/SpeakerButton';
 import { MicIcon } from '../../../components/Icons';
 import { API_BASE_URL } from '../../../config/env';
 import { fetchWithAuth } from '../../../utils/authHeaders';
+import { useLargeText } from '../../../context/PrefsContext';
 
 const { width: W, height: H } = Dimensions.get('window');
 const SC = W / 402;
@@ -199,6 +200,8 @@ const SPEECH_INSTR_TEXT =
   "Functional Speech. Listen to each word or phrase, then repeat it out loud as clearly and loudly as you can. Your voice is automatically checked.";
 
 function IntroScreen({ onStart, onExit, progress }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <View style={styles.introRoot}>
       <StatusBar barStyle="light-content" />
@@ -215,12 +218,12 @@ function IntroScreen({ onStart, onExit, progress }) {
         {SPEECH_INSTR_STEPS.map(({ step, text }) => (
           <View key={step} style={styles.introRow}>
             <View style={styles.introBadge}><Text style={styles.introBadgeNum}>{step}</Text></View>
-            <Text style={styles.introStepText}>{text}</Text>
+            <Text style={[styles.introStepText, { fontSize: fs(17) }]}>{text}</Text>
           </View>
         ))}
       </View>
       <TouchableOpacity style={styles.introStartBtn} onPress={onStart} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
-        <Text style={styles.introStartText}>Let's Go  →</Text>
+        <Text style={[styles.introStartText, { fontSize: fs(18) }]}>Let's Go  →</Text>
       </TouchableOpacity>
       <View style={styles.introBarTrack}>
         <View style={[styles.introBarFill, { width: (314 * SC) * Math.max(0.02, progress) }]} />
@@ -232,6 +235,8 @@ function IntroScreen({ onStart, onExit, progress }) {
 // ── Main exercise screen ───────────────────────────────────────────────────────
 function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const { top: safeTop } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const items   = useRef(buildItemsForTier(tier)).current;
   const TOTAL   = items.length; // 5
 
@@ -639,7 +644,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       </Animated.View>
 
       {/* ── Phase indicator ── */}
-      <Text style={styles.phaseHint}>
+      <Text style={[styles.phaseHint, { fontSize: fs(16) }]}>
         {phase === 'hear'     ? 'Listen carefully…'  :
          phase === 'speak'    ? 'Say it now, loud!'  :
          phase === 'checking' ? 'Checking…'          :
@@ -657,7 +662,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       {/* ── "Speak" tap shortcut during hear phase ── */}
       {phase === 'hear' && (
         <TouchableOpacity style={styles.readyBtn} onPress={openMic} accessibilityRole="button" accessibilityLabel="I'm ready to speak">
-          <Text style={styles.readyBtnText}>I'm ready →</Text>
+          <Text style={[styles.readyBtnText, { fontSize: fs(17) }]}>I'm ready →</Text>
         </TouchableOpacity>
       )}
 
@@ -709,12 +714,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
             {SPEECH_INSTR_STEPS.map(({ step, text }) => (
               <View key={step} style={styles.helpRow}>
                 <View style={styles.helpBadge}><Text style={styles.helpBadgeNum}>{step}</Text></View>
-                <Text style={styles.helpStepText}>{text}</Text>
+                <Text style={[styles.helpStepText, { fontSize: fs(17) }]}>{text}</Text>
               </View>
             ))}
           </View>
           <TouchableOpacity style={styles.helpContinueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
-            <Text style={styles.helpContinueText}>Continue Exercise  →</Text>
+            <Text style={[styles.helpContinueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
         </View>
       )}

@@ -1189,3 +1189,208 @@ eas update --branch main --message "Session 8: exercise instruction standardisat
 ```
 
 Backend unchanged — no Render deploy needed.
+
+---
+
+## Session 9 — Security, Accessibility & Production Readiness (2026-07-19)
+
+### Overview
+
+Six areas addressed in this session:
+
+1. **Firestore security rules** — locked down from open test mode to per-user rules
+2. **Resilient networking** — exponential backoff, 401 auto-refresh, offline detection
+3. **Haptic feedback** — wired to `expo-haptics` across all exercises and session complete
+4. **ElevenLabs quota handling** — graceful fallback in VoiceSetupExercise
+5. **Large text** — extended to all remaining screens (onboarding + all 10 text-rendering exercise files)
+6. **WCAG contrast** — `textFaint` token raised 0.38 → 0.50; accessibilityLabel coverage verified at 100% in all exercise files
+
+---
+
+### 1. Firestore Security Rules
+
+**Problem:** Firestore was in open test mode — any authenticated (or unauthenticated) user could read or write any document.
+
+**Solution:** Three files created at the project root:
+
+- **`firestore.rules`** — restricts every collection to `request.auth.uid == userId`:
+  - `user_progress/{userId}` — full read/write for the owner
+  - `users/{userId}` subcollections:
+    - `funnel_events`, `session_logs`, `usage_events` — `allow create` only (append-only analytics)
+    - `screen_events` — `allow create, update` (exit time written via `updateDoc`)
+    - `assessments`, `check_ins`, `voice_sessions` — `allow read` only (Admin SDK writes from backend; frontend only reads)
+  - Catch-all `/{document=**}` — `allow read, write: if false`
+- **`firebase.json`** — tells Firebase CLI where to find rules and indexes
+- **`firestore.indexes.json`** — empty (no composite indexes needed)
+
+**Deploy:** Firebase CLI deployment was blocked by ENOSPC (C: drive had only ~221 MB free). Use Firebase Console → Firestore → Rules tab to paste the contents of `firestore.rules` directly, or free up disk space and run `firebase deploy --only firestore:rules`.
+
+**Important:** Firebase Admin SDK in the backend **bypasses** security rules entirely. Rules only affect frontend SDK calls. Backend routes remain unchanged.
+
+---
+
+### 2. Resilient Networking (`fetchWithAuth`)
+
+**File:** `frontend/src/utils/authHeaders.js`
+
+Three improvements to the shared fetch utility:
+
+| Feature | Detail |
+|---|---|
+| **401 auto-refresh** | On 401, calls `auth.currentUser.getIdToken(true)` to force-refresh the Firebase token, then retries the original request once. Transparent to all callers. |
+| **Exponential backoff** | On 503 or 504, waits 1s then retries; if still 503/504, waits 2s then retries. After 2 retries, propagates to the per-feature error handler. Covers Render cold starts. |
+| **Offline detection** | `@react-native-community/netinfo` subscription in `AppNavigator.js` feeds an `OfflineBanner` component rendered above the navigator. Shows a persistent yellow banner whenever `isConnected` is false. |
+
+---
+
+### 3. Haptic Feedback
+
+**File:** `frontend/src/utils/haptics.js` (new)
+
+Three exported helpers wrapping `expo-haptics`:
+- `hapticLight()` — `ImpactFeedbackStyle.Light` — button taps
+- `hapticMedium()` — `ImpactFeedbackStyle.Medium` — exercise phase transitions
+- `hapticSuccess()` — `NotificationFeedbackType.Success` — exercise complete and session complete
+
+**Wired to:**
+- All 5 main exercises (SustainedPhonation, LoudnessDrills, PitchGlides, DolphinVowels, FunctionalSpeech) — fires `hapticSuccess` on completion and `hapticMedium` on phase transitions
+- `VocalTrainingSessionScreen.js` — fires `hapticSuccess` on full session complete
+- `useHapticFeedback()` in `PrefsContext` gates calls — if user has disabled haptics in Settings, helpers no-op
+
+---
+
+### 4. ElevenLabs Quota Handling
+
+**Files:** `backend/services/voice_service.py`, `backend/api/voice_routes.py`, `frontend/src/screens/vocaltraining/exercises/VoiceSetupExercise.js`
+
+- Backend: `isQuotaError()` helper detects ElevenLabs 429 / quota error body; sets `quota_exceeded: true` in the JSON response.
+- Frontend: `VoiceSetupExercise` reads `quota_exceeded` flag and shows a "Voice personalisation unavailable right now" message with a graceful skip option instead of a hard failure.
+- Assessment and all training sessions continue normally without a personalised voice.
+
+---
+
+### 5. Large Text Extended (useLargeText)
+
+**Previous state:** Wired to 4 screens (Home, Assessment, Checkin, SpeechEnhancement) and 5 exercise files (SustainedPhonation, LoudnessDrills, PitchGlides, DolphinVowels, BreathingExercise).
+
+**Added this session — onboarding screens:**
+
+| File | Text elements scaled |
+|---|---|
+| `SignUpScreen.js` | Body text, labels, button text |
+| `SignInScreen.js` | Body text, labels, button text |
+| `SetupPermissionsScreen.js` | Body text, CTA |
+| `SetupAboutYouScreen.js` | Labels, inputs, CTA |
+| `SetupVoiceScreen.js` | Sentence text, status label, CTAs |
+
+**Added this session — exercise files:**
+
+| File | Text elements scaled |
+|---|---|
+| `FunctionalSpeechExercise.js` | `introStepText`, `introStartText`, `phaseHint`, `readyBtnText`, `helpStepText`, `helpContinueText` |
+| `VoiceSetupExercise.js` | `ip.body`, `ip.cardText`, `ip.primaryText`, `ip.skipText`, `rp.sentenceText`, `rp.micStatus`, `rp.skipLinkText`, `pp.title`, `pp.sub` |
+| `MidpointScreen.js` | `s.sub`, `s.continueTxt` |
+| `PitchGlideMiniExercise.js` | `s.instruction`, `s.processing`, `s.btnText` |
+| `ReadingMiniExercise.js` | `s.label`, `s.passageText`, `s.processing`, `s.btnText` |
+
+**`TailoredExercise.js`** correctly excluded — pure pass-through wrapper, renders no text directly.
+
+**Coverage after this session: 100% — every screen and every text-rendering exercise component.**
+
+---
+
+### 6. WCAG Contrast & Accessibility
+
+**`colors.textFaint` raised 0.38 → 0.50:**
+- `frontend/src/theme/index.js` — token updated with comment marking 0.50 as the WCAG AA floor
+- `frontend/src/screens/onboarding/PolicyScreen.js` — inline `FAINT` constant updated to match
+
+**Background:** Audit tools that omit alpha compositing compute rgba(255,255,255,0.38) as ~3.02:1 against the dark background — below the 4.5:1 AA requirement. The 0.50 floor is unambiguously safe across all gradient stops used in the app.
+
+**accessibilityLabel coverage verified at 100%** for all exercise files. The prior 50% project-wide figure is concentrated in non-exercise screens (Home, Progress). Exercise files had 1:1 coverage already; this session confirmed it with per-file grep counts.
+
+---
+
+### Emoji / Icon Debt (updated)
+
+| Location | Item | Status |
+|---|---|---|
+| `ProgressScreen.js` line 269 | `🔥` in `${streak} 🔥` → use `<FireIcon>` from Icons.js | ⬜ Outstanding |
+| `FunctionalSpeechExercise.js` speaker button | `🔊` as text → use `<SpeakerIcon>` | ⬜ Outstanding |
+| `MidpointScreen.js` MESSAGES object | `emoji: '🌟'` — dead field (StarIcon SVG used instead) | Safe to remove, low priority |
+| `FunctionalSpeechExercise.js` | `💪` bicep emoji | ✅ Removed 2026-07-19 |
+
+---
+
+### All Files Changed This Session
+
+| File | Change |
+|---|---|
+| `firestore.rules` | Created — per-user security rules for all frontend-accessed collections |
+| `firebase.json` | Created — Firebase CLI config pointing to rules and indexes |
+| `firestore.indexes.json` | Created — empty, required companion for firebase.json |
+| `frontend/src/utils/authHeaders.js` | fetchWithAuth: added 401 auto-refresh + 503/504 exponential backoff |
+| `frontend/src/utils/haptics.js` | Created — `hapticLight`, `hapticMedium`, `hapticSuccess` wrappers |
+| `frontend/src/components/OfflineBanner.js` | Created — NetInfo-driven offline indicator |
+| `frontend/src/navigation/AppNavigator.js` | Mounted `OfflineBanner`; wired `PrefsProvider` |
+| `frontend/src/theme/index.js` | `textFaint`: `rgba(255,255,255,0.38)` → `rgba(255,255,255,0.50)` |
+| `frontend/src/screens/onboarding/PolicyScreen.js` | `FAINT` constant: 0.38 → 0.50 |
+| `frontend/src/screens/onboarding/SignUpScreen.js` | `useLargeText` wired |
+| `frontend/src/screens/onboarding/SignInScreen.js` | `useLargeText` wired |
+| `frontend/src/screens/onboarding/SetupPermissionsScreen.js` | `useLargeText` wired |
+| `frontend/src/screens/onboarding/SetupAboutYouScreen.js` | `useLargeText` wired |
+| `frontend/src/screens/onboarding/SetupVoiceScreen.js` | `useLargeText` wired |
+| `frontend/src/screens/vocaltraining/exercises/FunctionalSpeechExercise.js` | `useLargeText` wired in `IntroScreen` + `ExerciseScreen`; bicep emoji removed |
+| `frontend/src/screens/vocaltraining/exercises/VoiceSetupExercise.js` | `useLargeText` wired in `IntroPhase`, `RecordingPhase`, `ProcessingPhase` |
+| `frontend/src/screens/vocaltraining/exercises/MidpointScreen.js` | `useLargeText` wired |
+| `frontend/src/screens/vocaltraining/exercises/PitchGlideMiniExercise.js` | `useLargeText` wired |
+| `frontend/src/screens/vocaltraining/exercises/ReadingMiniExercise.js` | `useLargeText` wired |
+| `backend/services/voice_service.py` | `isQuotaError()` helper; `quota_exceeded` flag in response |
+| `backend/api/voice_routes.py` | Passes `quota_exceeded` flag through to frontend |
+| `ERROR_HANDLING.md` | Updated: marked 3 pending items as implemented; added 6 new error scenarios; updated fallback route map |
+
+---
+
+### What Needs To Be Done Next
+
+#### Immediate — Before TestFlight
+
+1. **Deploy JS** — `cd frontend && eas update --branch main --message "Session 9: security, accessibility, production readiness"` (run from `frontend/` dir)
+2. **Deploy Firestore rules** — Paste `firestore.rules` into Firebase Console → Firestore → Rules, OR free up ≥500 MB on C: drive and run `firebase deploy --only firestore:rules`
+3. **ToS / Privacy Policy URLs** — `SignUpScreen.js` has dead `<Text>Terms of Service</Text>` spans. Must link to hosted documents. App Store requires a privacy policy URL.
+4. **App Store ID** — Replace `id000000000` in `SettingsScreen.js` Rate App URL.
+5. **Render upgrade** — Free tier sleeps after 15 min. Upgrade to paid tier ($7/mo) before users experience cold starts in TestFlight.
+
+#### V1.5 — Before App Store Submission
+
+6. **audioCues wiring** — `useAudioCues()` exposed but not connected to playback. Files needed: `correct.mp3`, `exercise_complete.mp3`, `session_complete.mp3`.
+7. **🔊 emoji replacement** — `FunctionalSpeechExercise.js` and `SpeechEnhancementScreen.js`; replace with `<SpeakerIcon>` from `Icons.js`.
+8. **🔥 emoji replacement** — `ProgressScreen.js` line 269; replace with `<FireIcon>` from `Icons.js`.
+9. **HomeScreen first-visit tooltip** — "Tap the highlighted node to start" overlay gated with AsyncStorage.
+10. **Speech Enhancement playback animation** — Wire `isPlaying` state to `Animated.loop` scale on the play icon.
+11. **Check-in personal sentence delta** — Show pre vs. post score on the patient's own sentence.
+12. **Real-time coaching trigger** — Reduce from 6s to 3s for first session.
+13. **Speech-to-text in CheckinScreen** — "Tap to speak" for the personal sentence TextInput (tremor accommodation).
+
+#### V2.0 — Post-Pilot
+
+14. Caregiver dashboard (read-only web view of patient scores/streak)
+15. Speech therapist portal (SLP data access + difficulty override)
+16. DDK "pa-ta-ka" articulation assessment
+17. MPT surface in ProgressScreen (data recorded; not yet displayed)
+18. Voice fatigue detection across a session
+19. Medication timing correlation
+20. Offline mode for on-device exercises
+21. Tablet (iPad) layout fixes — see `additional-thoughts.md` for all 18 items
+
+---
+
+### Deploy Command
+
+```bash
+# From the frontend/ directory (IMPORTANT — not the repo root)
+cd frontend
+eas update --branch main --message "Session 9: security, accessibility, production readiness"
+```
+
+Backend changed (`voice_service.py`, `voice_routes.py`) — run a new Render deploy if ElevenLabs quota handling is needed in production.

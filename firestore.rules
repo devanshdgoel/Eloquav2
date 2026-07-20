@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── user_progress/{userId} ────────────────────────────────────────────────
+    // The main progress document read and written directly from the frontend.
+    // progressService.js: fetchProgress, completeSession (getDoc, setDoc, updateDoc)
+    // difficultyService.js: fetchDifficultyTiers, adjustDifficulty, storeProgressPlan,
+    //   fetchProgressPlan (getDoc, updateDoc)
+    // The backend Admin SDK also writes here (bypasses rules — no conflict).
+    match /user_progress/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ── users/{userId} ────────────────────────────────────────────────────────
+    // Top-level user document is written exclusively by the Admin SDK backend
+    // (voice_id, profile data).  The frontend may read it in future for display.
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // Writes from the frontend are not permitted; Admin SDK handles all writes.
+      allow write: if false;
+
+      // ── Analytics subcollections ──────────────────────────────────────────
+      // These are fire-and-forget writes from analytics.js.  The frontend never
+      // reads them back; only create (and update for screen_events) is needed.
+
+      match /funnel_events/{doc} {
+        allow create: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /session_logs/{doc} {
+        allow create: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /usage_events/{doc} {
+        allow create: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // screen_events needs create (on screen mount) and update (on unmount to
+      // record exited_at / duration_s via the docRef returned from addDoc).
+      match /screen_events/{doc} {
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // ── Backend-written subcollections ────────────────────────────────────
+      // assessments, check_ins, and voice_sessions are written only by the
+      // Admin SDK (assessment_routes.py).  Allow the owner to read their own
+      // records in case the frontend needs them for progress display.
+      match /assessments/{doc} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /check_ins/{doc} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /voice_sessions/{doc} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ── Deny everything else ─────────────────────────────────────────────────
+    // Firestore denies by default, but making this explicit prevents any
+    // accidental open rule from a future wildcard match.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

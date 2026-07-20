@@ -21,6 +21,7 @@ import { API_BASE_URL } from '../../../config/env';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useLargeText } from '../../../context/PrefsContext';
 
 const BG_GRADIENT = ['#37767A', '#1C4047', '#0A1618'];
 const ORANGE = '#FFA940';
@@ -44,6 +45,9 @@ export default function ReadingMiniExercise({
   exerciseIndex   = 0,
   totalExercises  = 6,
 }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+
   // phase: 'ready' | 'recording' | 'processing'
   const [phase,   setPhase]   = useState('ready');
   const [elapsed, setElapsed] = useState(0);
@@ -153,10 +157,10 @@ export default function ReadingMiniExercise({
       />
 
       <View style={s.body}>
-        <Text style={s.label}>Read this sentence aloud,{'\n'}at your natural pace:</Text>
+        <Text style={[s.label, { fontSize: fs(18) }]}>Read this sentence aloud,{'\n'}at your natural pace:</Text>
 
         <View style={s.passageCard}>
-          <Text style={s.passageText}>{PASSAGE}</Text>
+          <Text style={[s.passageText, { fontSize: fs(22) }]}>{PASSAGE}</Text>
         </View>
 
         {isRecording && (
@@ -164,7 +168,7 @@ export default function ReadingMiniExercise({
         )}
 
         {isProcessing && (
-          <Text style={s.processing}>Analysing…</Text>
+          <Text style={[s.processing, { fontSize: fs(20) }]}>Analysing…</Text>
         )}
 
         {!isProcessing && (
@@ -175,7 +179,7 @@ export default function ReadingMiniExercise({
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
           >
-            <Text style={s.btnText}>{isRecording ? 'Done  ✓' : 'Start  →'}</Text>
+            <Text style={[s.btnText, { fontSize: fs(20) }]}>{isRecording ? 'Done  ✓' : 'Start  →'}</Text>
           </TouchableOpacity>
         )}
       </View>

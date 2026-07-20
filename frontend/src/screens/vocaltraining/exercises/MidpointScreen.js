@@ -15,6 +15,7 @@ import {
 import { StarIcon } from '../../../components/Icons';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
+import { useLargeText } from '../../../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 
@@ -27,6 +28,8 @@ const MESSAGES = [
 ];
 
 export default function MidpointScreen({ onComplete, onExit }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const opacity  = useRef(new Animated.Value(0)).current;
   const slideY   = useRef(new Animated.Value(30)).current;
   const starScale = useRef(new Animated.Value(0.6)).current;
@@ -69,7 +72,7 @@ export default function MidpointScreen({ onComplete, onExit }) {
         </Animated.View>
 
         <Text style={s.heading}>{m.heading}</Text>
-        <Text style={s.sub}>{m.sub}</Text>
+        <Text style={[s.sub, { fontSize: fs(18) }]}>{m.sub}</Text>
 
         {/* Progress pips — 8 total (4 done, 1 midpoint, 3 remaining) */}
         <View style={s.pips}>
@@ -79,7 +82,7 @@ export default function MidpointScreen({ onComplete, onExit }) {
         </View>
 
         <TouchableOpacity style={s.continueBtn} onPress={onComplete} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Keep going">
-          <Text style={s.continueTxt}>Keep going  →</Text>
+          <Text style={[s.continueTxt, { fontSize: fs(18) }]}>Keep going  →</Text>
         </TouchableOpacity>
       </Animated.View>
     </View>

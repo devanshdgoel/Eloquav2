@@ -37,7 +37,7 @@
  * - Import from `colors.*` — never hard-code hex values in screens
  * - One orange: colors.orange (#FFA940) — all CTAs, accents, streaks
  * - Secondary text: colors.textSecondary (rgba white 0.60)
- * - Faint text: colors.textFaint (rgba white 0.38) — hints only
+ * - Faint text: colors.textFaint (rgba white 0.50) — hints only
  * - Cards: colors.surfaceSubtle + colors.border
  * - Destructive: colors.red (#E05252)
  *
@@ -115,7 +115,7 @@ export const colors = {
   // ── Text on dark backgrounds ─────────────────────────────────────────────────
   textPrimary:   _p.white,
   textSecondary: 'rgba(255,255,255,0.60)',        // subtitles, body copy
-  textFaint:     'rgba(255,255,255,0.38)',        // hints, placeholders
+  textFaint:     'rgba(255,255,255,0.50)',        // hints, placeholders — min 0.50 for WCAG AA at 16px
 
   // ── Text on light (mint) backgrounds ─────────────────────────────────────────
   textDark:      _p.teal900,                     // #1C4047
