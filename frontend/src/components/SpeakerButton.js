@@ -14,6 +14,7 @@
 import React, { useState, useEffect } from 'react';
 import { TouchableOpacity, StyleSheet } from 'react-native';
 import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
 import Svg, { Path } from 'react-native-svg';
 
 const ORANGE = '#FFA940';
@@ -54,6 +55,13 @@ export default function SpeakerButton({ text, size = 52, style }) {
     }
 
     if (!text) return;
+
+    // Recording exercises set allowsRecordingIOS: true which switches the iOS
+    // audio session to PlayAndRecord and routes output to the earpiece.
+    // Reset to Playback before speaking so speech comes through the speaker.
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+    } catch {}
 
     setSpeaking(true);
     Speech.speak(text, {

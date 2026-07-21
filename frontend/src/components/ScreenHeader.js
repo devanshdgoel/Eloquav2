@@ -27,10 +27,11 @@ export default function ScreenHeader({
   navigation,
   title,
   onBack,
-  backLabel = 'Go back',
-  backIcon  = '←',
+  backLabel    = 'Go back',
+  backIcon     = '←',
   rightAction,
   subtitle,
+  titleCentered = false,
 }) {
   const { top } = useSafeAreaInsets();
 
@@ -67,7 +68,11 @@ export default function ScreenHeader({
       </View>
 
       {/* Row 2: title (and optional subtitle) below the back button */}
-      <Text style={styles.title} numberOfLines={2} adjustsFontSizeToFit>
+      <Text
+        style={[styles.title, titleCentered && styles.titleCentered]}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+      >
         {title}
       </Text>
       {subtitle ? (
@@ -120,6 +125,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
     lineHeight: 34,
+  },
+  titleCentered: {
+    textAlign: 'center',
   },
   subtitle: {
     color: 'rgba(255,255,255,0.60)',

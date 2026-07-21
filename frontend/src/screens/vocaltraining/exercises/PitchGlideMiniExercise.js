@@ -189,16 +189,16 @@ export default function PitchGlideMiniExercise({
         )}
       </View>
 
+      {/* Session progress bar */}
+      <View style={s.progressTrack}>
+        <View style={[s.progressFill, { width: `${sessionFill * 100}%` }]} />
+      </View>
+
       {!isRecording && !isProcessing && (
         <View style={s.bottom}>
           <CantDoNow onSkip={onSkip} onEnd={onExit} />
         </View>
       )}
-
-      {/* Session progress bar */}
-      <View style={s.progressTrack}>
-        <View style={[s.progressFill, { width: `${sessionFill * 100}%` }]} />
-      </View>
     </LinearGradient>
   );
 }
@@ -258,7 +258,7 @@ const s = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.4,
   },
-  bottom: { alignItems: 'center', paddingBottom: 44 },
+  bottom: { alignItems: 'center', paddingTop: 10, paddingBottom: 28 },
   progressTrack: {
     height: 8,
     backgroundColor: 'rgba(0,0,0,0.08)',

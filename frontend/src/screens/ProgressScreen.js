@@ -135,10 +135,14 @@ const chip = StyleSheet.create({
 });
 
 // ── Stat pill ─────────────────────────────────────────────────────────────────
-function StatPill({ value, label, accent }) {
+// icon prop accepts an optional React element shown beside the value (e.g. FireIcon).
+function StatPill({ value, label, accent, icon }) {
   return (
     <View style={pill.wrap}>
-      <Text style={[pill.value, { color: accent }]}>{value}</Text>
+      <View style={pill.valueRow}>
+        <Text style={[pill.value, { color: accent }]}>{value}</Text>
+        {icon && <View style={pill.iconWrap}>{icon}</View>}
+      </View>
       <Text style={pill.label}>{label}</Text>
     </View>
   );
@@ -151,7 +155,9 @@ const pill = StyleSheet.create({
     borderColor: CARD_BORDER,
     gap: 3,
   },
+  valueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   value: { fontSize: 28, fontWeight: '800', letterSpacing: 0.3 },
+  iconWrap: { marginTop: 1 },
   label: { color: DIM, fontSize: 14, fontWeight: '500', textAlign: 'center' },
 });
 
@@ -266,9 +272,10 @@ export default function ProgressScreen({ navigation }) {
           {/* ── Streak + Level stats ── */}
           <View style={s.statsRow}>
             <StatPill
-              value={`${streak} 🔥`}
+              value={`${streak}`}
               label={'day streak'}
               accent={ORANGE}
+              icon={<FireIcon size={22} color={ORANGE} />}
             />
             <StatPill
               value={`Level ${level}`}

@@ -163,7 +163,7 @@ export default function OpeningScreen({ navigation }) {
         {/* Tagline */}
         <View style={styles.taglineBlock}>
           <Text style={styles.taglineWhite}>Be heard.</Text>
-          <Text style={styles.taglineMint}>Feel Understood.</Text>
+          <Text style={styles.taglineMint}>Feel understood.</Text>
         </View>
       </Animated.View>
     </View>

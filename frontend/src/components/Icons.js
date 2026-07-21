@@ -17,18 +17,21 @@ import React from 'react';
 import Svg, { Path, Rect, Circle, Polygon } from 'react-native-svg';
 
 // ── Microphone ─────────────────────────────────────────────────────────────────
+// Matches the DailyVoiceNote mic style: wide pill capsule body, U-shaped arc,
+// thin stem. No horizontal base line at bottom.
 export function MicIcon({ size = 24, color = '#FFFFFF' }) {
   const s = size;
   return (
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
-      {/* Body of the microphone */}
-      <Rect x="9" y="2" width="6" height="11" rx="3" fill={color} />
-      {/* Stand arc */}
-      <Path d="M5 11a7 7 0 0 0 14 0" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      {/* Stem */}
-      <Path d="M12 18v4" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      {/* Base */}
-      <Path d="M8 22h8" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      {/* Capsule body — pill shape (rx = half width) gives a more rounded look */}
+      <Rect x="7.5" y="1" width="9" height="13" rx="4.5" fill={color} />
+      {/* U-shaped stand arc — stroke only, no fill, no top edge */}
+      <Path
+        d="M4.5 13a7.5 7.5 0 0 0 15 0"
+        stroke={color} strokeWidth="2" strokeLinecap="round"
+      />
+      {/* Thin vertical stem below the arc */}
+      <Path d="M12 20.5v3" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </Svg>
   );
 }

@@ -81,9 +81,6 @@ const AMOEBA_SETS = [
   },
 ];
 
-const MIC_ICON_SVG = `<svg viewBox="0 0 112 112" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path fill-rule="evenodd" clip-rule="evenodd" d="M56 0C86.9279 0 112 25.0721 112 56C112 86.9279 86.9279 112 56 112C25.0721 112 0 86.9279 0 56C0 25.0721 25.0721 0 56 0ZM28 54C28 61 30.2665 67.1337 34.7998 72.4004C39.3331 77.667 45.0667 80.7669 52 81.7002V94H60V81.7002C66.9333 80.7669 72.6669 77.667 77.2002 72.4004C81.7335 67.1337 84 61 84 54H76C76.0053 59.5333 74.0563 64.2498 70.1523 68.1484C66.2484 72.0471 61.5306 73.9973 56 74C50.4693 74.0027 45.7529 72.0537 41.8516 68.1523C37.9503 64.251 36 59.5333 36 54H28ZM56 18C52.6667 18 49.8333 19.1667 47.5 21.5C45.1667 23.8333 44 26.6667 44 30V54C44 57.3333 45.1667 60.1667 47.5 62.5C49.8333 64.8333 52.6667 66 56 66C59.3333 66 62.1667 64.8333 64.5 62.5C66.8333 60.1667 68 57.3333 68 54V30C68 26.6667 66.8333 23.8333 64.5 21.5C62.1667 19.1667 59.3333 18 56 18Z" fill="#000000"/>
-</svg>`;
 
 // ── Mic group ─────────────────────────────────────────────────────────────────
 function MicGroup({ onPress, scale = 1, isRecording = false }) {
@@ -124,7 +121,7 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
           backgroundColor: '#2D6974',
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <SvgXml xml={MIC_ICON_SVG} width={Math.round(112 * SC)} height={Math.round(112 * SC)} />
+          <MicIcon size={Math.round(66 * SC)} color="#FFFFFF" />
         </View>
       </TouchableOpacity>
     );
@@ -155,12 +152,10 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
         borderRadius: Math.round(78.5 * s),
         backgroundColor: '#2D6974',
       }} />
-      <SvgXml
-        xml={MIC_ICON_SVG}
-        style={{ position: 'absolute', left: Math.round(106 * s), top: Math.round(101 * s) }}
-        width={Math.round(112 * s)}
-        height={Math.round(112 * s)}
-      />
+      {/* Mic icon centred on the teal circle: circle at (83,78)+157×157, centre = (161.5,156.5)*s; icon size 66*s → offset by 33*s */}
+      <View style={{ position: 'absolute', left: Math.round(128.5 * s), top: Math.round(123.5 * s) }}>
+        <MicIcon size={Math.round(66 * s)} color="#FFFFFF" />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -555,11 +550,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
         duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
       });
 
-      // Start preloading audio immediately.
-      // If audio_b64 is present (backend returned bytes inline), this writes to
-      // local storage and loads — no network wait, playback is instant.
-      // If only audio_url is present (older backend path), downloads in background.
-      if (data.audio_url || data.audio_b64) preloadAudio(data.audio_url, data.audio_b64);
+      // Start downloading the audio in the background immediately.
+      // The user reads the transcript for several seconds, giving the download
+      // time to finish so playback is instant when they tap Play.
+      if (data.audio_url) preloadAudio(data.audio_url);
 
       // Fire-and-forget: non-blocking voice analysis for progress tracking.
       // Does NOT affect the current session's results.
@@ -599,36 +593,38 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Playback ─────────────────────────────────────────────────────────────────
 
-  // Pre-load the TTS audio as soon as results arrive so playback is instant.
+  // Download and pre-load TTS audio as soon as results arrive.
   //
-  // Primary path (audio_b64 present): the backend returned audio bytes inline
-  // with the JSON response — write to a local cache file and load Sound from
-  // there. No second network request; playback is ready in < 100 ms.
+  // Using FileSystem.downloadAsync rather than passing a remote URI directly
+  // to Sound.createAsync because:
+  //   1. The backend JSON response no longer embeds base64 audio, so it returns
+  //      in ~2 KB instead of ~400 KB — the transcript appears on screen faster.
+  //   2. A native binary download (downloadAsync) is more efficient than the
+  //      combined download + decode path inside Sound.createAsync.
+  //   3. Sound.createAsync from a local path is consistently fast (< 500 ms).
   //
-  // Fallback path (audio_b64 absent): download from the audio_url. Still starts
-  // in the background so there's time to finish before the user taps Play.
-  async function preloadAudio(audioUrl, audio_b64 = null) {
-    if (!isMountedRef.current) return;
+  // The user typically reads the transcript for 5–15 s before tapping Play —
+  // more than enough time for a 160 KB audio file to download on any 3G+ network.
+  async function preloadAudio(audioUrl) {
+    if (!isMountedRef.current || !audioUrl) return;
     const generation = sessionGenerationRef.current;
     try {
-      let uri;
-      if (audio_b64) {
-        // Write base64 bytes to device storage — fast local I/O, no network wait.
-        const localPath = `${FileSystem.cacheDirectory}eloqua_enhanced_${generation}.m4a`;
-        await FileSystem.writeAsStringAsync(localPath, audio_b64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        uri = localPath;
-      } else if (audioUrl) {
-        uri = `${API_BASE_URL}${audioUrl}`;
-      } else {
-        return;
-      }
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true }
+      // Download the audio file to a local cache path for this session.
+      const localPath = `${FileSystem.cacheDirectory}eloqua_enhanced_${generation}.m4a`;
+      const { uri: downloadedUri } = await FileSystem.downloadAsync(
+        `${API_BASE_URL}${audioUrl}`,
+        localPath,
       );
+
+      // Abort if the component unmounted or a new session started while downloading.
+      if (!isMountedRef.current || sessionGenerationRef.current !== generation) return;
+
+      // Load into expo-av from the local file — fast with no network dependency.
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: downloadedUri },
+        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true },
+      );
+
       // Discard if: component unmounted, playback already started, or new session began.
       if (!isMountedRef.current || soundRef.current || sessionGenerationRef.current !== generation) {
         sound.unloadAsync().catch(() => {});
@@ -658,16 +654,24 @@ export default function SpeechEnhancementScreen({ navigation }) {
         sound = preloadedSoundRef.current;
         preloadedSoundRef.current = null;
       } else {
-        // Fallback: preload didn't finish in time (slow network, very fast tap).
-        // Download now and show a spinner so the user knows we're working.
+        // Fallback: preload didn't finish in time (very fast tap or slow network).
+        // Download directly to local cache then load — same fast path as preload.
         setIsLoadingAudio(true);
+        const generation = sessionGenerationRef.current;
+        const localPath  = `${FileSystem.cacheDirectory}eloqua_enhanced_${generation}_fb.m4a`;
+        const { uri: downloadedUri } = await FileSystem.downloadAsync(
+          `${API_BASE_URL}${result.audio_url}`,
+          localPath,
+        );
+
+        if (!isMountedRef.current) return;
+
         const loaded = await Audio.Sound.createAsync(
-          { uri: `${API_BASE_URL}${result.audio_url}` },
-          { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true }
+          { uri: downloadedUri },
+          { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true },
         );
         sound = loaded.sound;
 
-        // The user navigated away while downloading — discard and bail.
         if (!isMountedRef.current) {
           sound.unloadAsync().catch(() => {});
           return;
@@ -742,10 +746,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
     >
       <StatusBar barStyle="light-content" />
 
-      {/* Header — back button on top row, title below */}
+      {/* Header — back button on top row, title centred below */}
       <ScreenHeader
         navigation={navigation}
         title="Smart Speech"
+        titleCentered
         backIcon={phase === S.RECORDING ? '✕' : '←'}
         backLabel={phase === S.RECORDING ? 'Cancel recording' : 'Go back'}
         onBack={() => {
@@ -762,8 +767,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {/* ── IDLE ──────────────────────────────────────────────────────────── */}
       {phase === S.IDLE && (
         <View style={styles.idleArea}>
-          <MicGroup onPress={handleMicPress} isRecording={false} />
           <Text style={[styles.hintText, { fontSize: fs(20) }]}>Tap the mic to begin</Text>
+          <View style={{ height: 28 }} />
+          <MicGroup onPress={handleMicPress} isRecording={false} />
         </View>
       )}
 
@@ -909,6 +915,7 @@ const styles = StyleSheet.create({
   // ── IDLE ──
   idleArea: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingTop: 60, // shifts the mic slightly below the visual centre
   },
 
   // ── RECORDING ──

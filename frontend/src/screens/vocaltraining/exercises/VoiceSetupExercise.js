@@ -119,10 +119,6 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
       <View style={ip.content}>
         <Text style={ip.eyebrow}>SMART SPEECH</Text>
         <Text style={ip.title}>Create Your{'\n'}Voice Profile</Text>
-        <Text style={[ip.body, { fontSize: fs(17) }]}>
-          Read 2 short sentences aloud. We use them to personalise Smart Speech
-          {' '}— so it sounds like <Text style={ip.emphasis}>you</Text>.
-        </Text>
 
         <View style={ip.card}>
           <View style={ip.cardRow}>
@@ -135,7 +131,7 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
           </View>
           <View style={ip.cardRow}>
             <View style={ip.stepBadge}><Text style={ip.stepNum}>3</Text></View>
-            <Text style={[ip.cardText, { fontSize: fs(16) }]}>Repeat for the second sentence — done</Text>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>Repeat for a second sentence — done</Text>
           </View>
         </View>
       </View>
@@ -143,16 +139,7 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
       {/* Spacer pushes buttons toward the bottom */}
       <View style={{ flex: 1 }} />
 
-      <View style={ip.btnRow}>
-        <TouchableOpacity
-          style={ip.skipBtn}
-          onPress={onSkip}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Skip voice setup"
-        >
-          <Text style={[ip.skipText, { fontSize: fs(17) }]}>Skip for now</Text>
-        </TouchableOpacity>
+      <View style={ip.btnArea}>
         <TouchableOpacity
           style={ip.primaryBtn}
           onPress={onBegin}
@@ -160,7 +147,16 @@ function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
           accessibilityRole="button"
           accessibilityLabel="Begin voice recording"
         >
-          <Text style={[ip.primaryText, { fontSize: fs(17) }]}>Begin  →</Text>
+          <Text style={[ip.primaryText, { fontSize: fs(17) }]}>Let's go  →</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onSkip}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Skip voice setup"
+          hitSlop={{ top: 12, bottom: 12, left: 20, right: 20 }}
+        >
+          <Text style={[ip.skipLink, { fontSize: fs(15) }]}>Skip for now</Text>
         </TouchableOpacity>
       </View>
 
@@ -184,13 +180,8 @@ const ip = StyleSheet.create({
   },
   title: {
     color: WHITE, fontSize: 40, fontWeight: '800',
-    letterSpacing: 0.5, lineHeight: 48, marginBottom: 16,
+    letterSpacing: 0.5, lineHeight: 48, marginBottom: 24,
   },
-  body: {
-    color: 'rgba(255,255,255,0.70)',
-    fontSize: 17, lineHeight: 26, marginBottom: 28,
-  },
-  emphasis: { fontWeight: '800', color: WHITE },
   card: {
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderRadius: 16,
@@ -208,27 +199,26 @@ const ip = StyleSheet.create({
     flex: 1, color: 'rgba(255,255,255,0.85)',
     fontSize: 16, lineHeight: 22,
   },
-  btnRow: {
-    flexDirection: 'row', gap: 12,
+  btnArea: {
+    gap: 16,
     paddingHorizontal: 20,
     paddingBottom: 80, // sit above the session bar
-  },
-  skipBtn: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 28, paddingVertical: 18,
     alignItems: 'center',
   },
-  skipText: { color: 'rgba(255,255,255,0.70)', fontSize: 17, fontWeight: '600' },
   primaryBtn: {
-    flex: 1,
+    width: '100%',
     backgroundColor: ORANGE, borderRadius: 28,
     paddingVertical: 18, alignItems: 'center',
     shadowColor: ORANGE, shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   primaryText: { color: '#1A1A1A', fontSize: 17, fontWeight: '800' },
+  skipLink: {
+    color: 'rgba(255,255,255,0.50)',
+    fontSize: 15,
+    textDecorationLine: 'underline',
+    letterSpacing: 0.2,
+  },
 });
 
 // ── Phase 1: Recording ────────────────────────────────────────────────────────

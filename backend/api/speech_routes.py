@@ -1,4 +1,3 @@
-import base64
 import logging
 from typing import Optional
 
@@ -236,8 +235,11 @@ async def enhance_text_route(
         "speed":            1.0,
     }
 
+    # Generate TTS audio and return its URL.
+    # The frontend downloads the audio file in the background via FileSystem.downloadAsync
+    # while the user reads the transcript — no base64 encoding needed, which keeps
+    # this JSON response small (~2 KB) so the transcript appears on screen faster.
     audio_url = None
-    audio_b64 = None
     try:
         enhanced_path = generate_enhanced_speech(
             final_transcript,
@@ -245,21 +247,15 @@ async def enhance_text_route(
             voice_settings=voice_settings,
         )
         audio_url = f"/api/audio/{enhanced_path.name}"
-        # Encode the audio file as base64 so the frontend can write it directly
-        # to local storage — eliminates the second HTTP round-trip and makes
-        # playback instant regardless of server-to-device network latency.
-        with open(enhanced_path, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode("utf-8")
     except SpeechEnhancementError as e:
         logger.warning("enhance-text TTS failed: %s", e)
     except Exception as e:
-        logger.warning("enhance-text audio_b64 encoding failed: %s", e)
+        logger.warning("enhance-text TTS unexpected error: %s", e)
 
     return success_response({
         "cleaned_transcript": final_transcript,
         "clarity_applied": final_transcript != raw_transcript,
         "audio_url": audio_url,
-        "audio_b64": audio_b64,
         "voice_profile": {"cloned": True} if using_cloned_voice else DEFAULT_PROFILE.to_dict(),
     })
 

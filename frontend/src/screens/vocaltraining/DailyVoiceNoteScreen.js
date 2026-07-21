@@ -36,6 +36,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth } from '../../utils/authHeaders';
 import SpeakerButton from '../../components/SpeakerButton';
+import { MicIcon } from '../../components/Icons';
 import { API_BASE_URL } from '../../config/env';
 import { getUserProfile } from '../../utils/storage';
 
@@ -357,12 +358,7 @@ export default function DailyVoiceNoteScreen({ navigation, route }) {
                 accessibilityRole="button"
                 accessibilityLabel="Start recording your voice note"
               >
-                {/* Mic icon — two rects forming a mic shape */}
-                <View style={s.micIcon}>
-                  <View style={s.micBody} />
-                  <View style={s.micBase} />
-                  <View style={s.micStand} />
-                </View>
+                <MicIcon size={34} color="#1A1A1A" />
               </TouchableOpacity>
             </View>
             <Text style={s.micLabel}>Tap to answer</Text>
@@ -575,37 +571,6 @@ const s = StyleSheet.create({
     shadowRadius: 18,
     elevation: 12,
   },
-  // Simple mic icon built from views (no SVG dependency)
-  micIcon: {
-    width: 28, height: 36,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  micBody: {
-    width: 16, height: 22,
-    borderRadius: 8,
-    backgroundColor: '#1A1A1A',
-    position: 'absolute',
-    top: 0,
-  },
-  micBase: {
-    width: 24, height: 12,
-    borderRadius: 12,
-    borderWidth: 2.5,
-    borderColor: '#1A1A1A',
-    borderTopWidth: 0,
-    position: 'absolute',
-    bottom: 4,
-  },
-  micStand: {
-    width: 2.5,
-    height: 6,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 2,
-    position: 'absolute',
-    bottom: 0,
-  },
-
   micLabel: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: 16,
