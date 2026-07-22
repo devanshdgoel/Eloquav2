@@ -138,7 +138,11 @@
       "Bash(Get-ChildItem *)",
       "Bash(Copy-Item *)",
       "PowerShell(Get-PSDrive C | Select-Object Used, Free, @{N='UsedGB';E={[math]::Round\\($_.Used/1GB,1\\)}}, @{N='FreeGB';E={[math]::Round\\($_.Free/1GB,1\\)}})",
-      "Bash(wmic logicaldisk *)"
+      "Bash(wmic logicaldisk *)",
+      "Bash(python -c \"import docx; print\\('python-docx available'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python gen_docs.py)",
+      "Bash(python *)"
     ]
   }
 }
