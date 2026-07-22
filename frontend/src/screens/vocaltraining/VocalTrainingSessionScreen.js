@@ -26,6 +26,7 @@ import LoudnessDrills     from './exercises/LoudnessDrillsExercise';
 import TailoredExercise   from './exercises/TailoredExercise';
 import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
+import ExerciseTitleCard  from './ExerciseTitleCard';
 import { logSessionEvent, logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
 import { useHapticFeedback } from '../../context/PrefsContext';
@@ -36,16 +37,50 @@ const { width: W } = Dimensions.get('window');
 // The fixed sequence of exercises that make up one training session.
 // Breathing appears twice: at the start and as a mid-session reset
 // (after every three consecutive exercises, per clinical recommendation).
-// Labels are user-facing — plain language, no clinical jargon.
+// Labels and desc are user-facing — plain language, no clinical jargon.
+// desc is shown on the "Next up" card between exercises so users always
+// know what they are about to do without relying on memory.
 const SESSION_EXERCISES = [
-  { type: 'breathing',   label: 'Breathing' },
-  { type: 'phonation',   label: 'Sustained Sound' },
-  { type: 'pitchGlides', label: 'Pitch Glides' },
-  { type: 'loudness',    label: 'Voice Power' },
-  { type: 'midpoint',    label: 'Halfway There' },
-  { type: 'breathing',   label: 'Breathing' },
-  { type: 'tailored',    label: 'Your Exercise' },
-  { type: 'speech',      label: 'Everyday Speech' },
+  {
+    type: 'breathing',
+    label: 'Breathing',
+    desc: 'Breathe in slowly through your nose, then breathe out through your mouth.',
+  },
+  {
+    type: 'phonation',
+    label: 'Sustained Sound',
+    desc: "Take a deep breath, then hold a steady 'Ahhh' sound for as long as you can.",
+  },
+  {
+    type: 'pitchGlides',
+    label: 'Pitch Glides',
+    desc: 'Slide your voice gently from a low note up to a high note, then back down again.',
+  },
+  {
+    type: 'loudness',
+    label: 'Voice Power',
+    desc: 'Say each word or phrase out loud, clearly and with as much volume as you can.',
+  },
+  {
+    type: 'midpoint',
+    label: 'Halfway There',
+    desc: 'Take a moment to rest. You are halfway through your session.',
+  },
+  {
+    type: 'breathing',
+    label: 'Breathing',
+    desc: 'Breathe in slowly through your nose, then breathe out through your mouth.',
+  },
+  {
+    type: 'tailored',
+    label: 'Your Exercise',
+    desc: 'Extra practice in the area that will help you most, chosen just for you.',
+  },
+  {
+    type: 'speech',
+    label: 'Everyday Speech',
+    desc: 'Speak a short sentence naturally, as if you are talking to a friend.',
+  },
 ];
 
 const EXERCISE_MAP = {
@@ -57,18 +92,6 @@ const EXERCISE_MAP = {
   tailored:    TailoredExercise,
   speech:      FunctionalSpeech,
 };
-
-// Show brief encouragement after skill exercises (not breathing / midpoint).
-const SCORED_TYPES_SET = new Set(['phonation', 'loudness', 'pitchGlides', 'speech', 'tailored']);
-
-// Rotating warm messages — cycle through them as the session progresses.
-const ENC_MSGS = [
-  "Nicely done.",
-  "That's the one.",
-  "Your voice carried that.",
-  "Well done.",
-  "Keep going.",
-];
 
 const PROGRESS_BAR_H = 8;
 
@@ -140,10 +163,9 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   const [tiers,         setTiers]         = useState(DEFAULT_TIERS);
   const [focusKey,      setFocusKey]      = useState(null);
 
-  // After-exercise encouragement: brief full-screen message between exercises.
-  const [transitioning,  setTransitioning]  = useState(false);
-  const [transitionMsg,  setTransitionMsg]  = useState('');
-  const encMsgIdxRef = useRef(0);
+  // ExerciseTitleCard shown between every exercise.
+  // nextIndex: which exercise comes next. null = no card showing.
+  const [transition, setTransition] = useState(null);
 
   // V2: collect per-exercise scores during the session for Firestore persistence.
   const exerciseScoresRef = useRef({});
@@ -262,12 +284,13 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     handleExerciseComplete(null, true);
   }
 
-  // V2: exercises pass an optional score (0–100). Collect per exercise type,
-  // then show a brief warm encouragement message before advancing.
-  // wasSkipped=true suppresses the transition message and auto-advances through
-  // the MidpointScreen if it is next (a rest screen makes no sense after a skip).
+  // Called when an exercise finishes (or is skipped).
+  // Shows a "Next up" card so the user always knows what comes next before it starts.
+  // wasSkipped=true suppresses the encouragement line and auto-skips MidpointScreen
+  // (a "halfway there!" rest card makes no sense immediately after a skip).
   async function handleExerciseComplete(score = null, wasSkipped = false) {
     const { type } = SESSION_EXERCISES[exerciseIndex];
+
     // Only persist scores for exercises that were genuinely completed.
     if (!wasSkipped && score !== null && Number.isFinite(score) && EXERCISE_KEYS.includes(type)) {
       exerciseScoresRef.current[type] = Math.round(score);
@@ -275,49 +298,39 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
 
     const nextIndex = exerciseIndex + 1;
     const isLast    = nextIndex >= SESSION_EXERCISES.length;
-    // Show encouragement only when the user actually completed a scored exercise.
-    const doEncourage = !wasSkipped && SCORED_TYPES_SET.has(type);
 
-    // If the user just skipped and the next screen is MidpointScreen, skip it too.
-    // Showing a "halfway there!" rest screen immediately after a skip feels incoherent.
-    const nextType        = !isLast ? SESSION_EXERCISES[nextIndex]?.type : null;
+    // If the user just skipped and the next exercise is MidpointScreen, skip that too.
+    const nextType         = !isLast ? SESSION_EXERCISES[nextIndex]?.type : null;
     const autoSkipMidpoint = wasSkipped && nextType === 'midpoint';
-    const targetIndex     = autoSkipMidpoint ? nextIndex + 1 : nextIndex;
-    const targetIsLast    = targetIndex >= SESSION_EXERCISES.length;
+    const targetIndex      = autoSkipMidpoint ? nextIndex + 1 : nextIndex;
+    const targetIsLast     = targetIndex >= SESSION_EXERCISES.length;
 
-    // Animate progress bar to the index we are actually landing on.
+    // Animate progress bar to where we are actually landing.
     animateProgressTo(targetIndex / SESSION_EXERCISES.length);
 
-    if (doEncourage) {
-      // Show warm message for 1.5 s, then advance or finish.
-      // doEncourage is only true when wasSkipped=false, so targetIndex === nextIndex here.
-      const msg = ENC_MSGS[encMsgIdxRef.current % ENC_MSGS.length];
-      encMsgIdxRef.current += 1;
-      setTransitionMsg(msg);
-      setTransitioning(true);
-      setTimeout(async () => {
-        setTransitioning(false);
-        try {
-          if (isLast) {
-            await finishSession();
-          } else {
-            setExerciseIndex(nextIndex);
-          }
-        } catch {
-          Alert.alert(
-            'Could not save session',
-            'Check your connection and try again.',
-            [{ text: 'Go home', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }]
-          );
-        }
-      }, 1500);
-    } else {
-      if (targetIsLast) {
+    if (targetIsLast) {
+      // Session finished — go straight to StreakCelebration, no card needed.
+      try {
         await finishSession();
-      } else {
-        setExerciseIndex(targetIndex);
+      } catch {
+        Alert.alert(
+          'Could not save session',
+          'Check your connection and try again.',
+          [{ text: 'Go home', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }],
+        );
       }
+      return;
     }
+
+    // Show the ExerciseTitleCard — user taps → to continue.
+    setTransition({ nextIndex: targetIndex });
+  }
+
+  // Called when the user taps "I'm ready" on the "Next up" card.
+  function handleTransitionReady() {
+    const { nextIndex } = transition;
+    setTransition(null);
+    setExerciseIndex(nextIndex);
   }
 
   if (isDone) {
@@ -332,13 +345,16 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       {/* ── Exercise area ─────────────────────────────────────────────────── */}
       <View style={styles.exerciseArea}>
 
-        {/* Brief encouragement screen between exercises.
-            Uses LinearGradient instead of a flat colour to stay consistent
-            with the session gradient used by all exercise screens. */}
-        {transitioning ? (
-          <LinearGradient colors={colors.gradients.session} style={styles.transitionScreen}>
-            <Text style={styles.transitionMsg}>{transitionMsg}</Text>
-          </LinearGradient>
+        {/* ExerciseTitleCard — shown between every exercise.
+            Matches the reference designs: large left-aligned title, exercise
+            illustration, ghost → button. The card waits for a tap so users
+            who need extra time are never rushed. */}
+        {transition ? (
+          <ExerciseTitleCard
+            exercise={SESSION_EXERCISES[transition.nextIndex]}
+            onReady={handleTransitionReady}
+            onExit={() => navigation.goBack()}
+          />
         ) : (
           <>
             <ExerciseComponent
@@ -401,21 +417,6 @@ const styles = StyleSheet.create({
     paddingBottom: PROGRESS_BAR_H,
   },
 
-  // Between-exercise encouragement screen — background handled by LinearGradient
-  transitionScreen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  transitionMsg: {
-    color: '#FFFFFF',
-    fontSize: 36,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.3,
-    lineHeight: 44,
-  },
 
   progressTrack: {
     height: PROGRESS_BAR_H,

@@ -170,10 +170,18 @@ function TitleScreen({ onNext, onExit, sessionFill }) {
         />
 
         <View style={ts.body}>
+          {/* Title left-aligned to match the reference design */}
           <Text style={ts.title}>{'Sustained\nSound'}</Text>
-          <Text style={ts.subtitle}>
-            {"Hold a steady \"Aah\" as long as you can.\nThree rounds — your best score counts."}
-          </Text>
+
+          {/* Green equalizer bars — matches the SP reference image (SP12.png).
+              Bell-curve heights make the tallest bar stand out in the centre. */}
+          <View style={ts.barsOuter}>
+            <View style={ts.barsRow}>
+              {[0.28, 0.52, 0.72, 1.0, 0.72, 0.52, 0.28].map((r, i) => (
+                <View key={i} style={[ts.bar, { height: 96 * r }]} />
+              ))}
+            </View>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -214,6 +222,20 @@ const ts = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   arrowText: { color: WHITE, fontSize: 26, fontWeight: '300' },
+
+  // Equalizer bars illustration
+  barsOuter: {
+    marginTop: 28,
+    borderWidth: 1.5, borderColor: '#48D28C',
+    borderRadius: 4, paddingHorizontal: 16, paddingVertical: 10,
+  },
+  barsRow: {
+    flexDirection: 'row', alignItems: 'flex-end',
+    gap: 8, height: 110,
+  },
+  bar: {
+    width: 18, borderRadius: 4, backgroundColor: '#48D28C',
+  },
 });
 
 // ── Instructions screen ───────────────────────────────────────────────────────
