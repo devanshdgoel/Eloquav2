@@ -142,7 +142,11 @@
       "Bash(python -c \"import docx; print\\('python-docx available'\\)\")",
       "Bash(pip install *)",
       "Bash(python gen_docs.py)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(npm ls *)",
+      "Bash(node_modules/.bin/expo --version)",
+      "PowerShell($fe = \"C:\\\\Users\\\\rishi\\\\OneDrive\\\\Desktop\\\\Eloquav2\\\\frontend\"; Write-Output \"=== integrity \\(native PowerShell view\\) ===\"; Write-Output \\(\"expo/package.json: \" + \\(Test-Path \"$fe\\\\node_modules\\\\expo\\\\package.json\"\\)\\); Write-Output \\(\"@expo/cli dir:     \" + \\(Test-Path \"$fe\\\\node_modules\\\\@expo\\\\cli\"\\)\\); Write-Output \\(\"@expo/cli/build:   \" + \\(Test-Path \"$fe\\\\node_modules\\\\@expo\\\\cli\\\\build\"\\)\\); Write-Output \\(\"expo-av:           \" + \\(Test-Path \"$fe\\\\node_modules\\\\expo-av\\\\package.json\"\\)\\); Write-Output \\(\"expo.cmd shim:     \" + \\(Test-Path \"$fe\\\\node_modules\\\\.bin\\\\expo.cmd\"\\)\\); Write-Output \\(\"top-level pkgs:    \" + \\(Get-ChildItem \"$fe\\\\node_modules\" -Directory -ErrorAction SilentlyContinue\\).Count\\))",
+      "PowerShell(Set-Location *)"
     ]
   }
 }
