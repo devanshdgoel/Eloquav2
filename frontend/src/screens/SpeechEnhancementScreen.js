@@ -620,9 +620,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
       if (!isMountedRef.current || sessionGenerationRef.current !== generation) return;
 
       // Load into expo-av from the local file — fast with no network dependency.
+      // volume: 1.0 is explicit because some devices default lower after a recording session.
       const { sound } = await Audio.Sound.createAsync(
         { uri: downloadedUri },
-        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true },
+        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 },
       );
 
       // Discard if: component unmounted, playback already started, or new session began.
@@ -668,7 +669,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
         const loaded = await Audio.Sound.createAsync(
           { uri: downloadedUri },
-          { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true },
+          { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 },
         );
         sound = loaded.sound;
 
@@ -690,6 +691,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
         }
       });
 
+      // Re-assert speaker routing right before playback.
+      // Recording mode can quietly leave the audio session routed to the earpiece
+      // even after allowsRecordingIOS is set to false, making playback very quiet.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        playThroughEarpieceAndroid: false,
+      });
       await sound.playAsync();
 
       // First-time play: show motivational message for 4 s.
