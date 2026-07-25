@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
@@ -26,4 +26,9 @@ export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
 
-export const db = getFirestore(app);
+// React Native's WebSocket implementation can stall Firestore's connection
+// handshake, causing the "Backend didn't respond within 10 seconds" warning.
+// Long-polling uses plain HTTP requests instead — more reliable on mobile.
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
