@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
@@ -410,6 +411,74 @@ const ds = StyleSheet.create({
 
 
 // ─────────────────────────────────────────────────────────────────────────────────
+// Web Speech API STT — runs in a hidden WebView so we get on-device recognition
+// with ~200 ms interim results and zero server round-trips.
+//
+// Message protocol (RN → WebView):  'start' | 'reset' | 'stop'
+// Message protocol (WebView → RN):  { sttOk: bool } | { t: string } | { err: string }
+// ─────────────────────────────────────────────────────────────────────────────────
+const STT_WEBVIEW_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:transparent">
+<script>
+var rec=null,running=false,lastT='';
+function post(o){try{window.ReactNativeWebView.postMessage(JSON.stringify(o));}catch(e){}}
+function startRec(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){post({sttOk:false});return;}
+  post({sttOk:true});
+  rec=new SR();
+  rec.continuous=true;
+  rec.interimResults=true;
+  rec.lang='en-US';
+  rec.maxAlternatives=1;
+  rec.onresult=function(e){
+    var t='';
+    for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript+' ';
+    t=t.trim().toLowerCase();
+    if(t!==lastT){lastT=t;post({t:t});}
+  };
+  rec.onerror=function(e){if(e.error!=='no-speech'&&e.error!=='aborted')post({err:e.error});};
+  rec.onend=function(){if(running){try{rec.start();}catch(_){}}};
+  try{rec.start();}catch(e){post({sttOk:false});}
+}
+window.addEventListener('message',function(e){
+  if(e.data==='start'){running=true;startRec();}
+  else if(e.data==='reset'){lastT='';post({t:''});if(rec&&running){try{rec.stop();}catch(_){}}}
+  else if(e.data==='stop'){running=false;try{if(rec)rec.stop();}catch(_){};}
+});
+<\/script></body></html>`;
+
+/**
+ * Checks whether the user's STT transcript contains the key words from the target phrase.
+ * Returns true (allow whack) when:
+ *   - STT is not available (Web Speech API absent in this WebView)
+ *   - transcript is empty / too short to judge (interim result hasn't arrived yet)
+ *   - at least one keyword from the target phrase appears in the transcript
+ *
+ * Matching is deliberately lenient: dysarthric speech often drops syllables or
+ * gets mis-transcribed, so we only require that ANY key word (≥3 chars) be found.
+ * Very short words like "GO" (2 chars) are excluded from key-word matching, so
+ * tier-1 single-word rounds rely purely on the volume gate.
+ */
+function wordsMatch(targetPhrase, transcript, sttAvailable) {
+  // STT disabled or unavailable — pass through so the volume gate alone decides
+  if (!sttAvailable) return true;
+  // Too short to contain a real word yet — give the benefit of the doubt
+  if (!transcript || transcript.length < 2) return true;
+  const tgt = targetPhrase.toLowerCase().replace(/[^a-z ]/g, '').trim();
+  const txt = transcript.toLowerCase().replace(/[^a-z ]/g, '').trim();
+  const txtWords = txt.split(/\s+/);
+  // Only keywords long enough to be meaningful; very short words are too ambiguous
+  const keys = tgt.split(/\s+/).filter(w => w.length >= 3);
+  // If the whole phrase is very short words (e.g. "GO"), skip word checking
+  if (keys.length === 0) return true;
+  // Exact match OR prefix match for ≥4-char keys (handles truncation/slurring)
+  return keys.some(k =>
+    txtWords.some(w => w === k || (k.length >= 4 && w.startsWith(k.slice(0, 3))))
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
 // Exercise screen (main game)
 // ─────────────────────────────────────────────────────────────────────────────────
 
@@ -462,6 +531,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   // Fires when the user speaks but below threshold — shows "LOUDER!" prompt
   const softTimerRef      = useRef(null);
 
+  // STT refs — WebView handle, running transcript, and availability flag
+  const sttWebViewRef     = useRef(null);
+  const sttTranscriptRef  = useRef('');
+  // Default true so that if the WebView never replies we don't block all whacks
+  const sttAvailableRef   = useRef(true);
+
   function setPhaseS(p) { phaseRef.current = p; setPhase(p); }
   function setRoundS(n) { roundIdxRef.current = n; setRoundIdx(n); }
 
@@ -473,6 +548,23 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       cleanup();
     };
   }, []);
+
+  // Handle messages from the hidden STT WebView
+  function handleSttMessage(event) {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.sttOk === false) {
+        // Web Speech API not supported — fall back to volume-only mode
+        sttAvailableRef.current = false;
+      } else if (msg.sttOk === true) {
+        sttAvailableRef.current = true;
+      } else if (typeof msg.t === 'string') {
+        // Interim or final transcript — update running buffer for word check
+        sttTranscriptRef.current = msg.t;
+      }
+      // Ignore err messages (e.g. no-speech, audio-capture) — not fatal
+    } catch (_) {}
+  }
 
   async function calibrateAmbient() {
     ambientSamplesRef.current = [];
@@ -502,10 +594,13 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           adaptiveThreshRef.current = Math.min(MAX_THRESHOLD, Math.max(tierConfig.minVolume, p90 * 1.6 + 0.12));
         }
         try { await recording.stopAndUnloadAsync(); } catch (_) {}
+        // Calibration mic released — now start the STT WebView
+        if (sttWebViewRef.current) sttWebViewRef.current.postMessage('start');
         startRound();
       }, CALIBRATION_MS);
     } catch (_) {
       adaptiveThreshRef.current = tierConfig.minVolume;
+      if (sttWebViewRef.current) sttWebViewRef.current.postMessage('start');
       startRound();
     }
   }
@@ -522,6 +617,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   function startRound() {
     if (phaseRef.current === 'done') return;
+
+    // Clear the previous round's transcript so the new word starts from scratch
+    sttTranscriptRef.current = '';
+    if (sttWebViewRef.current) sttWebViewRef.current.postMessage('reset');
+
     pickHole();
 
     riseAnim.setValue(0);
@@ -630,6 +730,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (idleTimerRef.current){ clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
     if (softTimerRef.current){ clearTimeout(softTimerRef.current); softTimerRef.current = null; }
     timerAnim.stopAnimation();
+    // Stop the STT WebView so it doesn't keep the mic open after the round ends
+    if (sttWebViewRef.current) sttWebViewRef.current.postMessage('stop');
     try {
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
@@ -654,33 +756,37 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   async function handleWhack() {
     if (phaseRef.current !== 'waiting') return;
-    clearIdleTimer();
 
-    // Clear the "too soft" prompt — they spoke loud enough now
+    // Cancel any pending re-arm of the speak timer so we don't double-fire
+    if (speakRef.current) { clearTimeout(speakRef.current); speakRef.current = null; }
+
+    // STT word check — volume was loud enough; verify the right word was spoken.
+    // wordsMatch() returns true when STT is unavailable or transcript is empty,
+    // so this gate never blocks users whose device doesn't support Web Speech API.
+    const currentWord = (tierConfig.rounds[roundIdxRef.current] ?? tierConfig.rounds[0]).word;
+    if (!wordsMatch(currentWord, sttTranscriptRef.current, sttAvailableRef.current)) {
+      // Wrong word — show prompt, let the countdown continue, do NOT whack
+      if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
+      setTooSoftMsg(`Say "${currentWord}"!`);
+      // Auto-hide prompt after 2 s so it doesn't linger if the user goes quiet
+      setTimeout(() => { if (phaseRef.current === 'waiting') setTooSoftMsg(''); }, 2000);
+      return;
+    }
+
+    clearIdleTimer();
     if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
     setTooSoftMsg('');
-
     if (countdownRef.current) { clearTimeout(countdownRef.current); countdownRef.current = null; }
-    if (speakRef.current)     { clearTimeout(speakRef.current);     speakRef.current     = null; }
     timerAnim.stopAnimation();
 
-    // Stop the recording — we no longer send audio to the backend for word checking.
-    // Sustaining volume above the adaptive threshold for MIN_SPEAK_MS is already
-    // strong evidence the user attempted the phrase; adding a backend round-trip
-    // (~1–3 s) would make the game feel sluggish and can incorrectly penalise
-    // users whose dysarthric speech isn't recognised by Whisper.
+    // Stop the recording — volume + STT together are sufficient signal; no backend needed.
     const rec = recordingRef.current;
     recordingRef.current = null;
-    try {
-      if (rec) await rec.stopAndUnloadAsync();
-    } catch (_) {}
+    try { if (rec) await rec.stopAndUnloadAsync(); } catch (_) {}
 
     // Flash the WordCard green for 300 ms — immediate positive visual feedback.
     setWordSuccess(true);
-    setTimeout(() => {
-      setWordSuccess(false);
-      doWhack();
-    }, 300);
+    setTimeout(() => { setWordSuccess(false); doWhack(); }, 300);
   }
 
   function doWhack() {
@@ -808,6 +914,18 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 35 }}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} />
       </View>
+
+      {/* Hidden STT WebView — 1×1 invisible, runs Web Speech API on-device */}
+      <WebView
+        ref={sttWebViewRef}
+        source={{ html: STT_WEBVIEW_HTML, baseUrl: 'https://localhost' }}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
+        onMessage={handleSttMessage}
+        javaScriptEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        originWhitelist={['*']}
+      />
 
       {/* Help overlay — shown when ? is pressed; exercise is paused */}
       {showHelpOverlay && (
@@ -995,32 +1113,31 @@ const exHelp = StyleSheet.create({
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────────
 
-const STEP_TITLE    = 0;
-const STEP_DEMO     = 1;
-const STEP_EXERCISE = 2;
+const STEP_DEMO     = 0;
+const STEP_EXERCISE = 1;
 
 export default function LoudnessDrillsExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  // null = AsyncStorage check in progress; avoids a one-frame flash to the title.
-  // First visit: STEP_TITLE → STEP_DEMO → STEP_EXERCISE.
-  // Returning:   AsyncStorage key set → skip straight to STEP_EXERCISE.
+  // null = AsyncStorage check in progress; avoids a one-frame flash.
+  // ExerciseTitleCard is shown by VocalTrainingSessionScreen before this component
+  // mounts, so first visit goes to STEP_DEMO (instructions) not a separate title screen.
+  // Returning: AsyncStorage key set → skip straight to STEP_EXERCISE.
   const [step, setStep] = useState(null);
 
   useEffect(() => {
     AsyncStorage.getItem(DEMO_KEY)
-      .then(val => setStep(val ? STEP_EXERCISE : STEP_TITLE))
-      .catch(() => setStep(STEP_TITLE));
+      .then(val => setStep(val ? STEP_EXERCISE : STEP_DEMO))
+      .catch(() => setStep(STEP_DEMO));
   }, []);
 
   if (step === null) return null;
-  if (step === STEP_TITLE) return <TitleScreen onNext={() => setStep(STEP_DEMO)} onExit={onExit} />;
   if (step === STEP_DEMO) return (
     <DemoScreen
       onFinish={() => {
-        // Mark the intro seen so future sessions bypass both title and demo.
+        // Mark the intro seen so future sessions bypass the demo entirely.
         AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
         setStep(STEP_EXERCISE);
       }}
-      onExit={() => setStep(STEP_TITLE)}
+      onExit={onExit}
     />
   );
   return (

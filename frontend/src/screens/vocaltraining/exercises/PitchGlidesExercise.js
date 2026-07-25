@@ -5,12 +5,13 @@
  * The dolphin position maps to the user's normalised voice level:
  *   gentle voice → lower-left hoop, strong voice → upper-right hoop.
  *
- * Flow: Title → Tutorial → Exercise (calibrate 1.5 s → 4 hoops)
+ * Flow: Tutorial → Exercise (calibrate 1.5 s → 4 hoops)
  *
  * Exercise mechanics:
  *   - 1.5 s calibration: ambient noise sampled → adaptive threshold set.
  *   - normVol 0–1 = how far above ambient the user is speaking.
- *   - Rounds alternate: HIGH effort → LOW effort → HIGH → LOW (TOTAL_HOOPS times).
+ *   - Rounds alternate: LOW effort → HIGH effort → LOW → HIGH (TOTAL_HOOPS times).
+ *     Starting LOW builds confidence before asking for a strong voice.
  *   - Hold normalised level in target zone for HOLD_MS to complete a hoop.
  *   - Vertical orange volume bar mirrors current voice level.
  */
@@ -449,7 +450,14 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
 
   function normVol(rawVol) {
     const thresh = adaptiveThreshRef.current;
-    return Math.max(0, Math.min(1, (rawVol - thresh * 0.45) / (thresh * 2.4)));
+    const lo = thresh * 0.45; // ambient noise floor — below this counts as silence
+    // Span = the actual achievable rawVol range above the floor.
+    // The old formula used (thresh * 2.4) as the span, but that can exceed
+    // (1.0 - lo) when thresh > ~0.38, making normVol top out below 0.66 and
+    // the dolphin unable to reach the upper hoop at any volume.
+    // Using (1.0 - lo) guarantees normVol reaches 1.0 at the device's max output.
+    const span = Math.max(0.30, 1.0 - lo);
+    return Math.max(0, Math.min(1, (rawVol - lo) / span));
   }
 
   async function calibrateAmbient() {
@@ -797,8 +805,10 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
           return;
         }
 
-        // Zone check — same alternating HIGH/LOW pattern as iOS
-        const targetHigh = hoopsDoneRef.current % 2 === 0;
+        // Zone check — same alternating LOW/HIGH pattern as iOS:
+        // even hoop index → LOW (gentle, builds confidence first)
+        // odd hoop index  → HIGH (strong voice)
+        const targetHigh = hoopsDoneRef.current % 2 === 1;
         const inZone = targetHigh
           ? norm >= TARGET_HI_MIN
           : (norm >= TARGET_LO_MIN && norm <= TARGET_LO_MAX);
@@ -1100,9 +1110,8 @@ const pgHelp = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 // Root
 // ══════════════════════════════════════════════════════════════════════════════
-const STEP_TITLE    = 0;
-const STEP_TUTORIAL = 1;
-const STEP_EXERCISE = 2;
+const STEP_TUTORIAL = 0;
+const STEP_EXERCISE = 1;
 
 export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
   // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
@@ -1111,13 +1120,14 @@ export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier =
 
   useEffect(() => {
     AsyncStorage.getItem(DEMO_KEY)
-      .then(val => setStep(val ? STEP_EXERCISE : STEP_TITLE))
-      .catch(() => setStep(STEP_TITLE));
+      // ExerciseTitleCard is shown by VocalTrainingSessionScreen before this component
+      // mounts, so we skip straight to Tutorial on first visit (no separate TitleScreen).
+      .then(val => setStep(val ? STEP_EXERCISE : STEP_TUTORIAL))
+      .catch(() => setStep(STEP_TUTORIAL));
   }, []);
 
   if (step === null) return null;
 
-  if (step === STEP_TITLE)    return <TitleScreen onNext={() => setStep(STEP_TUTORIAL)} onExit={onExit} />;
   if (step === STEP_TUTORIAL) return (
     <TutorialScreen
       onFinish={() => {
@@ -1125,7 +1135,7 @@ export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier =
         AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
         setStep(STEP_EXERCISE);
       }}
-      onExit={() => setStep(STEP_TITLE)}
+      onExit={onExit}
     />
   );
   return (

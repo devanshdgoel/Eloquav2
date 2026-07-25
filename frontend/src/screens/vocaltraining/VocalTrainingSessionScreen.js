@@ -23,7 +23,7 @@ import BreathingExercise  from './exercises/BreathingExercise';
 import SustainedPhonation from './exercises/SustainedPhonationExercise';
 import PitchGlides        from './exercises/PitchGlidesExercise';
 import LoudnessDrills     from './exercises/LoudnessDrillsExercise';
-import TailoredExercise   from './exercises/TailoredExercise';
+import TailoredExercise, { findWeakestKey } from './exercises/TailoredExercise';
 import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
 import ExerciseTitleCard  from './ExerciseTitleCard';
@@ -327,6 +327,15 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       return;
     }
 
+    const upcomingType = SESSION_EXERCISES[targetIndex]?.type;
+
+    // MidpointScreen is itself a "halfway" announcement card — showing an
+    // ExerciseTitleCard before it creates an identical duplicate.  Skip straight in.
+    if (upcomingType === 'midpoint') {
+      setExerciseIndex(targetIndex);
+      return;
+    }
+
     // Show the ExerciseTitleCard — user taps → to continue.
     setTransition({ nextIndex: targetIndex });
   }
@@ -336,6 +345,25 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     const { nextIndex } = transition;
     setTransition(null);
     setExerciseIndex(nextIndex);
+  }
+
+  /**
+   * Returns the exercise descriptor to pass to ExerciseTitleCard.
+   * For 'tailored', resolves the actual selected exercise so the card shows
+   * the real exercise name and illustration instead of the generic "Your Exercise".
+   * The tiers/focusKey are already loaded in state by the time any transition fires.
+   */
+  function resolveCardExercise(exercise) {
+    if (exercise.type !== 'tailored') return exercise;
+    const selectedKey = findWeakestKey(tiers, focusKey);
+    // Find the SESSION_EXERCISES entry for the selected type to get its label/desc
+    const real = SESSION_EXERCISES.find(e => e.type === selectedKey);
+    return {
+      // Use the real exercise's type so ExerciseTitleCard picks the right illustration
+      type:  selectedKey,
+      label: real?.label ?? exercise.label,
+      desc:  real?.desc  ?? exercise.desc,
+    };
   }
 
   if (isDone) {
@@ -356,7 +384,7 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
             who need extra time are never rushed. */}
         {transition ? (
           <ExerciseTitleCard
-            exercise={SESSION_EXERCISES[transition.nextIndex]}
+            exercise={resolveCardExercise(SESSION_EXERCISES[transition.nextIndex])}
             onReady={handleTransitionReady}
             onExit={() => navigation.goBack()}
           />

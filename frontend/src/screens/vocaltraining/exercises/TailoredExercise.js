@@ -37,7 +37,7 @@ const EXERCISE_KEY_MAP = {
  * @param {string|null} focusKey
  * @returns {string} one of the EXERCISE_KEY_MAP keys
  */
-function findWeakestKey(tiers, focusKey) {
+export function findWeakestKey(tiers, focusKey) {
   const keys    = Object.keys(EXERCISE_KEY_MAP);
   const minTier = Math.min(...keys.map(k => tiers[k] ?? 1));
 
