@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { logScreenView } from '../../utils/analytics';
+import { requestPermission as requestNotificationPermission } from '../../services/notificationService';
 import { MicIcon, SpeakerIcon } from '../../components/Icons';
 import { colors } from '../../theme';
 import { useLargeText } from '../../context/PrefsContext';
@@ -55,6 +56,12 @@ export default function SetupPermissionsScreen({ navigation }) {
   async function handleAllow() {
     const { status } = await Audio.requestPermissionsAsync();
     if (status === 'granted') {
+      // Request notification permission immediately after mic is granted.
+      // iOS requires an explicit requestPermissionsAsync call — the system prompt
+      // will show here during onboarding, which is the right UX moment.
+      // We catch and ignore failures so a denied notification permission never
+      // blocks the user from completing setup.
+      await requestNotificationPermission().catch(() => {});
       navigation.navigate('SetupAboutYou');
     } else {
       Alert.alert(

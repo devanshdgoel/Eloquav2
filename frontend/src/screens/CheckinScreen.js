@@ -265,8 +265,14 @@ export default function CheckinScreen({ navigation }) {
       if (uri) {
         const form = new FormData();
         form.append('file', { uri, type: 'audio/m4a', name: 'checkin.m4a' });
-        form.append('task_type', 'reading');
+        // Use distinct task_type values so pre/post recordings are identifiable
+        // in the voice_sessions Firestore collection (not mixed with assessment readings).
+        form.append('task_type', whichCheckRef.current === 'pre' ? 'checkin_pre' : 'checkin_post');
         form.append('audio_duration_s', String(durationS));
+        // Send the personal sentence text as the transcript so the backend can compute
+        // WPM accurately. Without this, the fluency score is pause-only (low accuracy
+        // for a short 3–20 s utterance).
+        form.append('transcript', personalSentence);
         const controller = new AbortController();
         const timeoutId  = setTimeout(() => controller.abort(), 30000);
         try {

@@ -61,10 +61,12 @@ export async function scheduleDailyReminder(hour, minute, name = '') {
       body: 'Just 5 minutes today.',
       sound: true,
     },
+    // expo-notifications v0.27+ requires explicit type from SchedulableTriggerInputTypes.
+    // The old { hour, minute, repeats: true } format is silently rejected on iOS.
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour,
       minute,
-      repeats: true,
     },
   });
 }
@@ -86,7 +88,8 @@ export async function scheduleReengagement(hour, minute) {
       title: "Your voice practice is here whenever you're ready.",
       sound: true,
     },
-    trigger: { date: fireDate },
+    // DATE trigger fires once at the given Date object.
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireDate },
   });
 }
 
@@ -103,11 +106,12 @@ export async function scheduleWeeklySummary() {
       body: 'Tap to see your weekly progress.',
       sound: true,
     },
+    // WEEKLY trigger repeats every week. weekday: 1 = Sunday (iOS convention).
     trigger: {
-      weekday: 1, // Sunday (1 = Sunday, iOS convention)
+      type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+      weekday: 1,
       hour: 18,
       minute: 0,
-      repeats: true,
     },
   });
 }

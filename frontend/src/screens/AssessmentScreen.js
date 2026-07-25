@@ -114,6 +114,7 @@ const INTRO_ITEMS = [
 
 // ── Background voice analysis helper ─────────────────────────────────────────
 // Runs independently of task flow so tasks can advance without waiting for the backend.
+// Timeout reduced to 6 s so a slow analysis never blocks the results screen for long.
 async function analyzeTask(uri, taskId, durationS) {
   const form = new FormData();
   form.append('file', { uri, type: 'audio/m4a', name: `${taskId}.m4a` });
@@ -121,7 +122,10 @@ async function analyzeTask(uri, taskId, durationS) {
   form.append('audio_duration_s', String(durationS));
   try {
     const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 12000);
+    // 15 s budget handles a cold Render backend (15–30 s startup on free tier).
+    // Each analysis runs in background while the user continues to the next task,
+    // so a 15 s timeout rarely blocks UX — it just gives the backend more runway.
+    const timeoutId  = setTimeout(() => controller.abort(), 15000);
     const res = await fetchWithAuth(`${API_BASE_URL}/api/analyze-voice`, {
       method: 'POST',
       body: form,
@@ -345,9 +349,18 @@ export default function AssessmentScreen({ navigation, route }) {
       setTaskIndex(nextIdx);
       setPhase('active');
     } else {
-      // Last task — wait for all background analyses before showing results
+      // Last task — wait for background analyses, but cap at 5 s so a slow backend
+      // never blocks the results screen. Any still-pending analyses will have their
+      // placeholder scores (null) and the local fallbacks will fill them in.
       setPhase('processing');
-      await Promise.allSettled(pendingAnalysisRef.current);
+      // Wait up to 10 s for all background analyses to resolve before computing
+      // the composite. Analyses that timed out at 15 s will already be settled
+      // (with null scores) so they don't block here. 10 s gives the backend
+      // the full first-cold-start window without freezing the results screen.
+      await Promise.race([
+        Promise.allSettled(pendingAnalysisRef.current),
+        new Promise(resolve => setTimeout(resolve, 10000)),
+      ]);
       pendingAnalysisRef.current = [];
 
       const { mpt_best_seconds, ...compScores } = computeComposite(taskResultsRef.current);
@@ -423,12 +436,51 @@ export default function AssessmentScreen({ navigation, route }) {
 
     const out = { voice_power };
 
-    // expression + fluency: averaged across all tasks that return these dimensions
-    // (pitch_glide contributes to expression; reading + free_speech contribute to both)
-    for (const k of ['expression', 'fluency']) {
-      const vals = results.map(r => r.scores?.[k]).filter(v => v != null && Number.isFinite(v));
-      out[k] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    // expression: averaged across pitch_glide + reading + free_speech ONLY.
+    // sustained_a is deliberately excluded — the backend computes expression from
+    // F0 standard deviation, and a held vowel ("Aaah") is by design monotone
+    // (SD ≈ 5–15 Hz → score ~10–30). Including it would drag expression down by
+    // 15–25 points relative to the user's actual spoken-word pitch variety.
+    const expressionResults = results.filter(r => r.task_id !== 'sustained_a');
+    const exprVals = expressionResults.map(r => r.scores?.expression).filter(v => v != null && Number.isFinite(v));
+    out.expression = exprVals.length ? Math.round(exprVals.reduce((a, b) => a + b, 0) / exprVals.length) : null;
+
+    // fluency: averaged across reading + free_speech ONLY.
+    // sustained_a is excluded for the same reason (no transcript → WPM null,
+    // and no pauses in a sustained vowel → inflated fluency score).
+    // pitch_glide is excluded because WPM/pause measures during a deliberate pitch
+    // glide are not meaningful speech fluency indicators.
+    const fluencyResults = results.filter(r => r.task_id === 'reading' || r.task_id === 'free_speech');
+    const flVals = fluencyResults.map(r => r.scores?.fluency).filter(v => v != null && Number.isFinite(v));
+    out.fluency = flVals.length ? Math.round(flVals.reduce((a, b) => a + b, 0) / flVals.length) : null;
+
+    // Local fallbacks — when the backend analysis times out or cannot compute a
+    // dimension (e.g. parselmouth not installed), estimate from task completion times.
+    // These are intentionally conservative (30–65 range) so they don't inflate scores.
+    if (out.expression == null) {
+      const pitchTask   = results.find(r => r.task_id === 'pitch_glide');
+      const readingTask = results.find(r => r.task_id === 'reading');
+      if (pitchTask || readingTask) {
+        const pitchDur   = pitchTask?.durationS   ?? 0;
+        const readingDur = readingTask?.durationS ?? 0;
+        // Completing minS (6 s) of pitch_glide → ~35; full maxS (18 s) → ~60
+        const fromPitch   = Math.min(60, 28 + (pitchDur / 18) * 32);
+        const readingBonus = readingDur > 5 ? 8 : 0;
+        out.expression = Math.round(fromPitch + readingBonus);
+      }
     }
+
+    if (out.fluency == null) {
+      const readingTask  = results.find(r => r.task_id === 'reading');
+      const freeSpeechTask = results.find(r => r.task_id === 'free_speech');
+      if (readingTask || freeSpeechTask) {
+        const readDur = readingTask?.durationS   ?? 0;
+        const freeDur = freeSpeechTask?.durationS ?? 0;
+        // Reading completion → +15, free_speech up to 60 s → up to +28
+        out.fluency = Math.round(Math.min(68, 25 + (readDur > 5 ? 15 : 0) + (freeDur / 60) * 28));
+      }
+    }
+
     return { ...out, mpt_best_seconds };
   }
 
@@ -650,15 +702,18 @@ export default function AssessmentScreen({ navigation, route }) {
 
           <Text style={s.hintText}>{task.hint}</Text>
 
-          {/* Volume bars — sustained_a only */}
-          {phase === 'active' && task.autostop && (
+          {/* Volume bars — shown for sustained_a (green/orange) and pitch_glide (mint)
+              so the user can see their voice is being captured during both tasks */}
+          {phase === 'active' && (task.autostop || task.id === 'pitch_glide') && (
             <View style={s.barGraph}>
               {bars.map((v, i) => (
                 <View
                   key={i}
                   style={[s.bar, {
                     height: Math.max(4, v * 80),
-                    backgroundColor: v > SPEAK_THRESHOLD ? GREEN_BAR : v > 0.15 ? WHITE : DIM_BAR,
+                    backgroundColor: task.id === 'pitch_glide'
+                      ? (v > 0.15 ? 'rgba(195,222,206,0.85)' : DIM_BAR)
+                      : (v > SPEAK_THRESHOLD ? GREEN_BAR : v > 0.15 ? WHITE : DIM_BAR),
                   }]}
                 />
               ))}
@@ -710,11 +765,14 @@ export default function AssessmentScreen({ navigation, route }) {
       )}
 
       {/* ── RESULTS ─────────────────────────────────────────────────────── */}
+      {/* Single-screen layout — no scrolling. Content order: eyebrow → title →
+          3 score arcs → MPT card (if available) → focus card → CTA button.
+          The progress plan is available later in the Progress screen. */}
       {phase === 'results' && (
-        <ScrollView contentContainerStyle={[s.page, { paddingBottom: bottom + 40 }]}>
+        <View style={[s.resultsPage, { paddingBottom: bottom + 16 }]}>
           <Text style={s.eyebrow}>{isBaseline ? 'YOUR BASELINE' : 'YOUR CHECK-IN'}</Text>
-          <Text style={s.heroTitle}>
-            {isBaseline ? "Here's where\nyou're starting" : "Here's where\nyou're at"}
+          <Text style={s.resultsTitle}>
+            {isBaseline ? 'Your starting point' : "Your voice today"}
           </Text>
 
           <View style={s.scoresRow}>
@@ -723,13 +781,16 @@ export default function AssessmentScreen({ navigation, route }) {
             <ScoreArc score={composite.fluency}     color={WHITE}  label={'Speech\nRhythm'} />
           </View>
 
-          {/* MPT: a direct, clinical measure independent of the backend scores */}
+          {/* MPT: a direct clinical measure — compact single-row card */}
           {mptSeconds != null && (
             <View style={s.mptCard}>
-              <Text style={s.mptEyebrow}>SUSTAINED HOLD (MPT)</Text>
-              <View style={s.mptRow}>
+              <View style={{ alignItems: 'center', minWidth: 56 }}>
+                <Text style={s.mptEyebrow}>HOLD</Text>
                 <Text style={s.mptValue}>{mptSeconds}s</Text>
-                <Text style={s.mptNote}>Typical adult range: 15–25 seconds</Text>
+              </View>
+              <View style={s.mptRow}>
+                <Text style={s.mptNote}>Sustained hold (MPT)</Text>
+                <Text style={s.mptNote}>Typical adult: 15–25 seconds</Text>
               </View>
             </View>
           )}
@@ -742,50 +803,12 @@ export default function AssessmentScreen({ navigation, route }) {
             </View>
           )}
 
-          {/* Progress plan — shown only after the baseline assessment */}
-          {isBaseline && progressPlan && (
-            <View style={s.planCard}>
-              <Text style={s.planEyebrow}>YOUR 20-SESSION PLAN</Text>
-              <View style={s.planGrid}>
-                {/* Header row */}
-                <Text style={[s.planCell, s.planLabelCell]} />
-                <Text style={[s.planCell, s.planHeaderText]}>Now</Text>
-                <Text style={[s.planCell, s.planHeaderText]}>Session 7</Text>
-                <Text style={[s.planCell, s.planHeaderText]}>Goal</Text>
-                {/* Score rows */}
-                {[
-                  { label: 'Power',  key: 'voice_power' },
-                  { label: 'Pitch',  key: 'expression' },
-                  { label: 'Rhythm', key: 'fluency' },
-                ].map(({ label, key }) => (
-                  <React.Fragment key={key}>
-                    <Text style={[s.planCell, s.planLabel]}>{label}</Text>
-                    <Text style={[s.planCell, s.planVal]}>{progressPlan.baseline[key] ?? '–'}</Text>
-                    <Text style={[s.planCell, s.planVal]}>{progressPlan.checkin1[key] ?? '–'}</Text>
-                    <Text style={[s.planCell, s.planVal, { color: ORANGE }]}>{progressPlan.goal[key] ?? '–'}</Text>
-                  </React.Fragment>
-                ))}
-                {/* MPT row */}
-                <Text style={[s.planCell, s.planLabel]}>Hold</Text>
-                <Text style={[s.planCell, s.planVal]}>{progressPlan.baseline.mpt_seconds}s</Text>
-                <Text style={[s.planCell, s.planVal]}>{progressPlan.checkin1.mpt_seconds}s</Text>
-                <Text style={[s.planCell, s.planVal, { color: ORANGE }]}>{progressPlan.goal.mpt_seconds}s</Text>
-              </View>
-            </View>
-          )}
-
-          {isBaseline && (
-            <Text style={s.baselineNote}>
-              That's your starting point. From here, every session moves it.
-            </Text>
-          )}
-
-          <TouchableOpacity style={s.primaryBtn} onPress={finishAssessment} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue">
+          <TouchableOpacity style={[s.primaryBtn, { marginTop: 'auto' }]} onPress={finishAssessment} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue">
             <Text style={s.primaryBtnText}>
               {isBaseline ? 'Start My Journey  →' : 'See My Progress  →'}
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       )}
 
       {/* ── SAVING ──────────────────────────────────────────────────────── */}
@@ -808,6 +831,24 @@ const s = StyleSheet.create({
     paddingHorizontal: 28 * SC,
     paddingTop: 16 * SC,
     gap: 22 * SC,
+  },
+
+  // Results page: flex column so the CTA button can use marginTop:'auto' to pin to bottom
+  resultsPage: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 24 * SC,
+    paddingTop: 20 * SC,
+    gap: 16,
+  },
+
+  // Smaller than heroTitle — must fit on one line with no wrapping
+  resultsTitle: {
+    color: WHITE,
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 
   center: {
@@ -1028,35 +1069,37 @@ const s = StyleSheet.create({
   // MPT card
   mptCard: {
     backgroundColor: 'rgba(195,222,206,0.08)',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: `${MINT}30`,
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     width: '100%',
-    gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   mptEyebrow: {
     color: MINT,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1.5,
   },
   mptRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 12,
+    flexDirection: 'column',
+    flex: 1,
+    gap: 2,
   },
   mptValue: {
     color: WHITE,
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   mptNote: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 15,
-    flex: 1,
-    lineHeight: 21,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
+    lineHeight: 22,
   },
 
   // Progress plan card

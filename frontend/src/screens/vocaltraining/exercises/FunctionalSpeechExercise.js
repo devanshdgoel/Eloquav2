@@ -27,7 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
-import { MicIcon } from '../../../components/Icons';
+import { MicIcon, SpeakerIcon } from '../../../components/Icons';
 import { API_BASE_URL } from '../../../config/env';
 import { fetchWithAuth } from '../../../utils/authHeaders';
 import { useLargeText } from '../../../context/PrefsContext';
@@ -190,6 +190,41 @@ function MicBlob({ pulsing }) {
   );
 }
 
+// ── Title screen (shown once on first visit, before instructions) ──────────────
+const SPEECH_TITLE_TEXT =
+  "Functional Speech. Listen to a word or phrase, then repeat it out loud. Your voice is checked automatically.";
+
+function TitleScreen({ onNext, onExit }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <StatusBar barStyle="light-content" />
+      <ScreenHeader
+        navigation={null}
+        title="Functional Speech"
+        backIcon="✕"
+        backLabel="Exit exercise"
+        onBack={onExit}
+        rightAction={<SpeakerButton text={SPEECH_TITLE_TEXT} />}
+      />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 20 }}>
+        <Text style={fsts.title} numberOfLines={2} adjustsFontSizeToFit>{'Functional\nSpeech'}</Text>
+        <View style={{ marginTop: 28, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 44, padding: 24 }}>
+          <MicIcon size={52} color={C.orange} />
+        </View>
+      </View>
+      <TouchableOpacity style={fsts.arrowBtn} onPress={onNext} activeOpacity={0.82} accessibilityRole="button" accessibilityLabel="Continue to instructions">
+        <Text style={fsts.arrowText}>→</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const fsts = StyleSheet.create({
+  title:    { color: C.white, fontSize: 60, fontWeight: '800', letterSpacing: 2.5, textAlign: 'center', lineHeight: 70, paddingHorizontal: 24 },
+  arrowBtn: { alignSelf: 'center', width: 76, height: 64, borderRadius: 14, backgroundColor: C.teal, justifyContent: 'center', alignItems: 'center', marginBottom: 86 },
+  arrowText:{ color: C.white, fontSize: 26, fontWeight: '700', includeFontPadding: false, lineHeight: 26, textAlign: 'center' },
+});
+
 // ── Intro screen (card format with numbered steps) ─────────────────────────────
 const SPEECH_INSTR_STEPS = [
   { step: '1', text: 'Listen to the word or phrase played for you.' },
@@ -248,6 +283,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   const phaseRef          = useRef('hear');
   const itemIdxRef        = useRef(0);
+  const retryCountRef     = useRef(0); // incremented each time wrong drawer fires
   const recordingRef      = useRef(null);
   const holdTimerRef      = useRef(null);
   const hearTimerRef      = useRef(null);
@@ -501,6 +537,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     clearTimeout(hearTimerRef.current);
     phaseRef.current = 'wrong';
     setPhase('wrong');
+    retryCountRef.current += 1; // penalise each wrong-drawer trigger
     stopRecording();
     showDrawer();
   }
@@ -508,8 +545,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   function advance() {
     const next = itemIdxRef.current + 1;
     if (next >= TOTAL) {
-      // V2: score is always 100 — exercise only completes when all items spoken
-      onComplete(100);
+      // Score penalises each wrong-drawer retry by 10 pts, floored at 40.
+      // 0 retries → 100 (fluent); 6+ retries → 40 (completed but struggled).
+      // This feeds adaptive difficulty so tier adjusts correctly over sessions.
+      const score = Math.max(40, 100 - retryCountRef.current * 10);
+      onComplete(score);
       return;
     }
     itemIdxRef.current = next;
@@ -625,7 +665,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         accessibilityRole="button"
         accessibilityLabel="Tap to hear the word"
       >
-        <Text style={styles.speakerIcon}>🔊</Text>
+        <SpeakerIcon size={Math.round(52 * SC)} color={C.white} />
       </TouchableOpacity>
 
       {/* ── Word in quotes ── */}
@@ -727,30 +767,47 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   );
 }
 
+// ── Step constants ─────────────────────────────────────────────────────────────
+const STEP_TITLE    = 0;
+const STEP_INTRO    = 1;
+const STEP_EXERCISE = 2;
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function FunctionalSpeechExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
-  const [showIntro, setShowIntro] = useState(null);
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the title.
+  // First visit: STEP_TITLE → STEP_INTRO → STEP_EXERCISE.
+  // Returning:   AsyncStorage key set → skip straight to STEP_EXERCISE.
+  const [step, setStep] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   useEffect(() => {
     AsyncStorage.getItem(INTRO_KEY)
-      .then(val => setShowIntro(!val))
-      .catch(() => setShowIntro(false));
+      .then(val => setStep(val ? STEP_EXERCISE : STEP_TITLE))
+      .catch(() => setStep(STEP_TITLE));
   }, []);
 
-  if (showIntro === null) return null;
-  return showIntro
-    ? <IntroScreen
-        onStart={() => {
-          // Mark the intro as seen so future sessions skip straight to the exercise.
-          AsyncStorage.setItem(INTRO_KEY, '1').catch(() => {});
-          setShowIntro(false);
-        }}
-        onExit={onExit}
-        progress={sessionFill}
-      />
-    : <ExerciseScreen onComplete={onComplete} onExit={onExit} onShowDemo={() => setShowIntro(true)} onSkip={onSkip ?? onComplete} tier={tier} />;
+  if (step === null) return null;
+  if (step === STEP_TITLE) return <TitleScreen onNext={() => setStep(STEP_INTRO)} onExit={onExit} />;
+  if (step === STEP_INTRO) return (
+    <IntroScreen
+      onStart={() => {
+        // Mark the intro seen so future sessions bypass both title and intro.
+        AsyncStorage.setItem(INTRO_KEY, '1').catch(() => {});
+        setStep(STEP_EXERCISE);
+      }}
+      onExit={() => setStep(STEP_TITLE)}
+      progress={sessionFill}
+    />
+  );
+  return (
+    <ExerciseScreen
+      onComplete={onComplete}
+      onExit={onExit}
+      onShowDemo={() => setStep(STEP_INTRO)}
+      onSkip={onSkip ?? onComplete}
+      tier={tier}
+    />
+  );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────

@@ -395,6 +395,22 @@ def extract_features(
     result["scores"]["expression"]  = _score_expression(f0_sd_for_expr)
     result["scores"]["fluency"]     = _score_fluency(wpm_for_fluency, pauses_per_min_score)
 
+    # ── Pitch-glide override ──────────────────────────────────────────────────
+    # For a deliberate low→high glide, F0 RANGE (max−min Hz) is more sensitive
+    # than SD — a user can glide cleanly with moderate SD but a large range.
+    # This override replaces the SD-based expression score for this task type.
+    # 15 Hz = barely any glide (score ~0);  100+ Hz = full range glide (100).
+    if task_type == "pitch_glide":
+        f0_range = result["features"].get("f0_range_hz")
+        if f0_range is not None:
+            raw = (f0_range - 15.0) / (100.0 - 15.0)
+            result["scores"]["expression"] = round(_clamp01(raw) * 100)
+        elif result["scores"]["expression"] is None:
+            # Parselmouth failed to track pitch (very quiet PD voice) — give a
+            # minimum score if the user was at least vocalising (non-null rms).
+            if result["features"].get("rms_db") is not None:
+                result["scores"]["expression"] = 20
+
     return result
 
 

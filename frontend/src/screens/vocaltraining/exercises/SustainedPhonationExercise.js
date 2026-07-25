@@ -520,6 +520,10 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
       msgTimer2Ref.current = setTimeout(() => { msgTimer2Ref.current = null; setMsg(seq.out); }, 4400);
     }
 
+    // After the last round there is nothing left to rest for — skip straight to completion
+    // after a brief "Well done!" moment. REST_MS (6.5 s) is only needed between rounds
+    // so the user can breathe before the next attempt.
+    const restDelay = nextRound >= TOTAL_ROUNDS ? 1500 : REST_MS;
     restTimerRef.current = setTimeout(async () => {
       restTimerRef.current = null;
       if (nextRound >= TOTAL_ROUNDS) {
@@ -527,13 +531,13 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         setMsg('Well done!');
         const exerciseScore = Math.min(100, Math.round((bestRef.current / tierConfig.targetSeconds) * 100));
         hapticSuccess(hapticEnabled);
-        setTimeout(() => onComplete(exerciseScore), 1500);
+        setTimeout(() => onComplete(exerciseScore), 1200);
       } else {
         roundRef.current = nextRound;
         setDoneRounds(nextRound);
         await startNextRound();
       }
-    }, REST_MS);
+    }, restDelay);
   }
 
   // Pause exercise and show inline instructions overlay.

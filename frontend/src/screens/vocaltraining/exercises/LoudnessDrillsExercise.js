@@ -32,8 +32,6 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
-import { fetchWithAuth } from '../../../utils/authHeaders';
-import { API_BASE_URL } from '../../../config/env';
 import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
 import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
@@ -287,6 +285,41 @@ function ProgressPills({ doneCount, totalRounds }) {
 const BG_IMAGE = require('../../../../assets/images/WhackAMoleBG.png');
 
 // ─────────────────────────────────────────────────────────────────────────────────
+// Title screen — shown once on first visit, before the instruction screen.
+// ─────────────────────────────────────────────────────────────────────────────────
+const LOUDNESS_TITLE_TEXT =
+  "Loudness Drills. Say words out loud to whack the jellyfish. Big voice needed!";
+
+function TitleScreen({ onNext, onExit }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: BG }}>
+      <StatusBar barStyle="light-content" />
+      <ScreenHeader
+        navigation={null}
+        title="Loudness Drills"
+        backIcon="✕"
+        backLabel="Exit exercise"
+        onBack={onExit}
+        rightAction={<SpeakerButton text={LOUDNESS_TITLE_TEXT} />}
+      />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={lts.title}>Loudness{'\n'}Drills</Text>
+        <Image source={JELLY_IMAGE} style={{ width: 100, height: 130, resizeMode: 'contain', marginTop: 28 }} />
+      </View>
+      <TouchableOpacity style={lts.arrowBtn} onPress={onNext} activeOpacity={0.82} accessibilityRole="button" accessibilityLabel="Continue to instructions">
+        <Text style={lts.arrowText}>→</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const lts = StyleSheet.create({
+  title:    { color: WHITE, fontSize: 60, fontWeight: '800', letterSpacing: 2.5, textAlign: 'center', lineHeight: 70 },
+  arrowBtn: { alignSelf: 'center', width: 76, height: 64, borderRadius: 14, backgroundColor: '#2D6974', justifyContent: 'center', alignItems: 'center', marginBottom: 86 },
+  arrowText:{ color: WHITE, fontSize: 26, fontWeight: '700', includeFontPadding: false, lineHeight: 26, textAlign: 'center' },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────
 // Demo (instruction) screen — single screen, same format as SustainedPhonation
 // ─────────────────────────────────────────────────────────────────────────────────
 
@@ -375,52 +408,6 @@ const ds = StyleSheet.create({
   startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
 });
 
-// ── Word verification ─────────────────────────────────────────────────────────────
-// Sends the captured drill audio to Whisper and checks whether the user said
-// the expected phrase. Returns true (pass) on any API failure so that network
-// errors never block the user from completing a round.
-//
-// Threshold (40 %): intentionally lenient because:
-//   1. Hypokinetic Dysarthria causes Whisper to mishear or drop words.
-//   2. The primary therapeutic goal is VOLUME; word accuracy is secondary.
-//   3. False rejections (telling a patient they said wrong words when they didn't)
-//      are clinically harmful and demoralising.
-async function checkWordsMatch(uri, expectedPhrase) {
-  try {
-    const form = new FormData();
-    form.append('file',        { uri, type: 'audio/m4a', name: 'drill.m4a' });
-    form.append('chunk_index', '0');
-    form.append('model',       'whisper');
-
-    const ctrl = new AbortController();
-    // 2.5 s timeout — short clips transcribe quickly; longer waits feel broken.
-    // On timeout we fall back to passing so the drill is never stuck.
-    const tid  = setTimeout(() => ctrl.abort(), 2500);
-    const res  = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
-      method: 'POST',
-      body:   form,
-      signal: ctrl.signal,
-    }).finally(() => clearTimeout(tid));
-
-    if (!res.ok) return true;
-
-    const data       = await res.json();
-    const spoken     = (data.raw_text || '').toLowerCase().trim();
-
-    // No transcription: Whisper heard nothing recognisable.
-    // Volume was sufficient so this is likely a dysarthria recognition failure — pass.
-    if (!spoken) return true;
-
-    // Fuzzy word match: strip punctuation, count how many expected words appear in
-    // the transcription. 40 % required so short function words can be dropped without
-    // causing a false rejection.
-    const expected   = expectedPhrase.toLowerCase().replace(/[,.'!?]/g, '').split(/\s+/);
-    const matchCount = expected.filter(w => spoken.includes(w)).length;
-    return (matchCount / expected.length) >= 0.40;
-  } catch {
-    return true; // timeout, network error, or auth failure → don't penalise
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // Exercise screen (main game)
@@ -446,7 +433,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [activeHoleId, setActiveHoleId] = useState(null);
   const [idleMsg, setIdleMsg]       = useState('');
   // Shown during 'checking' (neutral) and 'wrongword' (orange-tinted) phases
-  const [wordCheckMsg, setWordCheckMsg] = useState('');
   // Green flash on the WordCard when the user says the word correctly
   const [wordSuccess, setWordSuccess] = useState(false);
   // "LOUDER!" prompt shown when the user speaks but not loud enough
@@ -657,7 +643,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     cleanup(); // clears timers + stops recording (async, fire-and-forget)
     setTooSoftMsg('');
     setWordSuccess(false);
-    setWordCheckMsg('');
     setShowHelpOverlay(true);
   }
 
@@ -679,52 +664,23 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (speakRef.current)     { clearTimeout(speakRef.current);     speakRef.current     = null; }
     timerAnim.stopAnimation();
 
-    // Capture the audio URI before stopping — passed to Whisper for word verification.
+    // Stop the recording — we no longer send audio to the backend for word checking.
+    // Sustaining volume above the adaptive threshold for MIN_SPEAK_MS is already
+    // strong evidence the user attempted the phrase; adding a backend round-trip
+    // (~1–3 s) would make the game feel sluggish and can incorrectly penalise
+    // users whose dysarthric speech isn't recognised by Whisper.
     const rec = recordingRef.current;
     recordingRef.current = null;
-    let audioUri = null;
     try {
-      if (rec) {
-        await rec.stopAndUnloadAsync();
-        audioUri = rec.getURI();
-      }
+      if (rec) await rec.stopAndUnloadAsync();
     } catch (_) {}
 
-    // Enter "checking" phase — jellyfish stays risen, user sees brief feedback.
-    setPhaseS('checking');
-    setWordCheckMsg('Checking…');
-
-    // Read the current phrase from the ref (not state) to get the live value.
-    const expectedPhrase = tierConfig.rounds[roundIdxRef.current]?.word ?? '';
-
-    // Skip Whisper for single-word content — volume alone is sufficient evidence.
-    // Single words are short enough that recognition errors are common (dysarthria)
-    // and re-attempts based on word accuracy would be demoralising.
-    const isSingleWord = expectedPhrase.trim().split(/\s+/).length <= 1;
-    const wordsOk = (isSingleWord || !audioUri) ? true : await checkWordsMatch(audioUri, expectedPhrase);
-
-    setWordCheckMsg('');
-
-    if (wordsOk) {
-      // Flash the WordCard green for 300 ms so the user sees clear positive feedback
-      // before the jellyfish animation starts.
-      setWordSuccess(true);
-      setTimeout(() => {
-        setWordSuccess(false);
-        doWhack();
-      }, 300);
-    } else {
-      // Wrong words: sink the jellyfish back and prompt a retry.
-      // LSVT LOUD carryover tasks require accurate phrase production at high effort
-      // — prompting re-attempts trains the full skill, not just volume.
-      setPhaseS('wrongword');
-      setWordCheckMsg('Try reading the card aloud!');
-      Animated.timing(riseAnim, { toValue: 0, duration: SINK_MS, useNativeDriver: false }).start();
-      setTimeout(() => {
-        setWordCheckMsg('');
-        if (phaseRef.current !== 'done') startRound();
-      }, SINK_MS + 1200);
-    }
+    // Flash the WordCard green for 300 ms — immediate positive visual feedback.
+    setWordSuccess(true);
+    setTimeout(() => {
+      setWordSuccess(false);
+      doWhack();
+    }, 300);
   }
 
   function doWhack() {
@@ -831,15 +787,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           </View>
         )}
 
-        {/* Word-check feedback pill — neutral for 'checking', orange-tinted for 'wrongword' */}
-        {wordCheckMsg !== '' && (
-          <View style={[
-            ex.wordCheckPill,
-            phase === 'wrongword' && ex.wordCheckPillWrong,
-          ]}>
-            <Text style={ex.wordCheckText}>{wordCheckMsg}</Text>
-          </View>
-        )}
       </View>
 
       {/* ── Volume bar (right side) ── */}
@@ -1048,29 +995,39 @@ const exHelp = StyleSheet.create({
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────────
 
+const STEP_TITLE    = 0;
+const STEP_DEMO     = 1;
+const STEP_EXERCISE = 2;
+
 export default function LoudnessDrillsExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
-  // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
-  const [showDemo, setShowDemo] = useState(null);
+  // null = AsyncStorage check in progress; avoids a one-frame flash to the title.
+  // First visit: STEP_TITLE → STEP_DEMO → STEP_EXERCISE.
+  // Returning:   AsyncStorage key set → skip straight to STEP_EXERCISE.
+  const [step, setStep] = useState(null);
 
   useEffect(() => {
     AsyncStorage.getItem(DEMO_KEY)
-      .then(val => setShowDemo(!val))
-      .catch(() => setShowDemo(false));
+      .then(val => setStep(val ? STEP_EXERCISE : STEP_TITLE))
+      .catch(() => setStep(STEP_TITLE));
   }, []);
 
-  function finishDemo() {
-    // Mark the intro as seen so future sessions skip straight to the exercise.
-    AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
-    setShowDemo(false);
-  }
-
-  if (showDemo === null) return null;
-  if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} />;
+  if (step === null) return null;
+  if (step === STEP_TITLE) return <TitleScreen onNext={() => setStep(STEP_DEMO)} onExit={onExit} />;
+  if (step === STEP_DEMO) return (
+    <DemoScreen
+      onFinish={() => {
+        // Mark the intro seen so future sessions bypass both title and demo.
+        AsyncStorage.setItem(DEMO_KEY, '1').catch(() => {});
+        setStep(STEP_EXERCISE);
+      }}
+      onExit={() => setStep(STEP_TITLE)}
+    />
+  );
   return (
     <ExerciseScreen
       onComplete={onComplete}
       onExit={onExit}
-      onShowDemo={() => setShowDemo(true)}
+      onShowDemo={() => setStep(STEP_DEMO)}
       onSkip={onSkip ?? onComplete}
       tier={tier}
     />
