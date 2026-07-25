@@ -197,11 +197,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const [result,          setResult]         = useState(null);
   const [isPlaying,       setIsPlaying]      = useState(false);
 
-  // audioReady: true once the streaming sound is buffered and ready to play.
+  // audioReady: true once the audio file has been downloaded and loaded into expo-av.
   // false = spinner shows on play button. The button is disabled while false.
   const [audioReady,      setAudioReady]     = useState(false);
 
-  // audioFailed: true if the streaming preload threw — shows "Audio unavailable" on button.
+  // audioFailed: true if download or decode failed — shows "Audio unavailable" on button.
   const [audioFailed,     setAudioFailed]    = useState(false);
 
   const [errorMsg,        setErrorMsg]       = useState('');
@@ -585,11 +585,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
         duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
       });
 
-      // Immediately start buffering the streaming audio in the background.
+      // Start downloading the audio in the background immediately.
       // The user reads their transcript for several seconds — by the time they
-      // tap Play, the stream is already buffered and ready.
-      if (data.stream_token) {
-        preloadStreamAudio(data.stream_token);
+      // tap Play, the download is complete and playback starts instantly.
+      if (data.audio_url) {
+        preloadAudio(`${API_BASE_URL}${data.audio_url}`);
       }
 
       analyzeVoiceAsync(rawText, recordingDurationRef.current);
@@ -623,31 +623,38 @@ export default function SpeechEnhancementScreen({ navigation }) {
     }
   }
 
-  // ── Streaming audio preload ───────────────────────────────────────────────────
+  // ── Audio preload ─────────────────────────────────────────────────────────────
 
-  // Connect to the backend streaming TTS endpoint and buffer the audio via expo-av.
-  // expo-av's Sound.createAsync handles progressive buffering — it resolves once
-  // enough audio is buffered to start playback (~1–1.5 s for ElevenLabs streaming).
-  // This runs immediately after the transcript appears, so by the time the user
-  // reads and taps Play, the sound is already buffered.
-  async function preloadStreamAudio(streamToken) {
-    if (!isMountedRef.current || !streamToken) return;
+  // Download the ElevenLabs audio file to the local cache, then load it into
+  // expo-av ready to play. Downloading first is more reliable than streaming
+  // directly into createAsync, which can time out on chunked HTTP responses.
+  // Runs immediately after the transcript appears so the file is ready by the
+  // time the user finishes reading and taps Play.
+  async function preloadAudio(audioUrl) {
+    if (!isMountedRef.current || !audioUrl) return;
     const generation = sessionGenerationRef.current;
-    const streamUrl  = `${API_BASE_URL}/api/stream-tts/${streamToken}`;
 
     setAudioReady(false);
     setAudioFailed(false);
 
     try {
-      // createAsync connects to the streaming URL. expo-av buffers chunks as
-      // ElevenLabs generates them. The await resolves when enough is buffered
-      // for gapless playback (typically ~1–2 s after the request starts).
+      // Download to a session-scoped local path so concurrent sessions don't
+      // overwrite each other and the file survives for replay.
+      const localUri = `${FileSystem.cacheDirectory}enhanced_${generation}.mp3`;
+      const dlResult = await FileSystem.downloadAsync(audioUrl, localUri);
+
+      // downloadAsync resolves even on HTTP errors (it saves the error body to disk).
+      // A non-200 means the audio file is gone — Render clears temp_audio on restart.
+      if (dlResult.status !== 200) throw new Error(`Audio download failed (${dlResult.status})`);
+
+      // Discard if the component unmounted or a new session started while downloading.
+      if (!isMountedRef.current || sessionGenerationRef.current !== generation) return;
+
       const { sound } = await Audio.Sound.createAsync(
-        { uri: streamUrl },
+        { uri: localUri },
         { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 }
       );
 
-      // Discard if the component unmounted or a new recording session started.
       if (!isMountedRef.current || sessionGenerationRef.current !== generation) {
         sound.unloadAsync().catch(() => {});
         return;
@@ -656,7 +663,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       preloadedSoundRef.current = sound;
       setAudioReady(true);
     } catch (e) {
-      console.warn('[Speech] Stream audio preload failed:', e?.message);
+      console.warn('[Speech] Audio preload failed:', e?.message);
       if (isMountedRef.current && sessionGenerationRef.current === generation) {
         setAudioFailed(true);
       }
@@ -684,7 +691,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
         return;
       }
 
-      // First play: consume the preloaded streaming sound.
+      // First play: consume the preloaded sound.
       if (!preloadedSoundRef.current) return; // button should be disabled — shouldn't reach here
 
       const sound = preloadedSoundRef.current;
@@ -703,7 +710,12 @@ export default function SpeechEnhancementScreen({ navigation }) {
             setAudioReady(true);
           }
         } else if (!s.isLoaded) {
-          if (isMountedRef.current) setIsPlaying(false);
+          // expo-av fires this on decode errors or unexpected unloads.
+          // Show "Audio unavailable" rather than a stuck spinner.
+          if (isMountedRef.current) {
+            setIsPlaying(false);
+            setAudioFailed(true);
+          }
           sound.unloadAsync().catch(() => {});
           if (soundRef.current === sound) soundRef.current = null;
         }
@@ -724,7 +736,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
         setTimeout(() => { if (isMountedRef.current) setFirstPlayMsg(null); }, 4000);
       }
     } catch {
-      if (isMountedRef.current) Alert.alert('Playback Error', 'Could not play the enhanced audio.');
+      if (isMountedRef.current) {
+        setIsPlaying(false);
+        Alert.alert('Playback Error', 'Could not play the enhanced audio.');
+      }
     } finally {
       playbackLockRef.current = false;
     }
@@ -765,11 +780,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const showPending = pendingCount > 0;
 
   // ── Play button state ────────────────────────────────────────────────────────
-  // hasStreamToken: determines whether to show the play button at all.
-  const hasStreamToken = Boolean(result?.stream_token);
-  // playBtnLoading: spinner state — stream token exists but audio not ready yet.
-  const playBtnLoading = hasStreamToken && !audioReady && !audioFailed && !isPlaying;
-  // playBtnEnabled: tap allowed when audio is ready and not currently playing stop.
+  // hasAudioUrl: determines whether to show the play button at all.
+  const hasAudioUrl = Boolean(result?.audio_url);
+  // playBtnLoading: spinner state — audio URL exists but download not yet complete.
+  const playBtnLoading = hasAudioUrl && !audioReady && !audioFailed && !isPlaying;
+  // playBtnEnabled: tap allowed when audio is ready and not currently playing.
   const playBtnEnabled = audioReady || isPlaying;
 
   return (
@@ -896,8 +911,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </ScrollView>
           </View>
 
-          {/* Play button — disabled (spinner) while audio is buffering from ElevenLabs stream */}
-          {hasStreamToken && (
+          {/* Play button — disabled (spinner) while audio is downloading */}
+          {hasAudioUrl && (
             <TouchableOpacity
               style={[
                 styles.actionBtn,
@@ -915,7 +930,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
               }
             >
               {playBtnLoading ? (
-                // Spinner while ElevenLabs stream buffers (~1–2 s)
                 <ActivityIndicator size="small" color="#1A1A1A" />
               ) : audioFailed ? (
                 <Text style={[styles.actionLabel, { color: 'rgba(255,255,255,0.40)', fontSize: fs(16) }]}>

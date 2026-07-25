@@ -1,12 +1,7 @@
 import logging
-import time
-import uuid
 from typing import Optional
 
-import requests as _requests
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
 
 from config import ELEVENLABS_API_KEY, MAX_AUDIO_SIZE_MB
 from services.clarity_speech import clarity_transcript, clarity_transcript_chunked, clarity_final_pass
@@ -60,20 +55,6 @@ _VALID_SINGLE_WORDS = {
     "stop", "go", "wait", "please", "thanks", "sorry", "yeah",
     "good", "bad", "fine", "sure", "right", "left", "done",
 }
-
-# ── Streaming TTS token store ─────────────────────────────────────────────────
-# Maps short-lived tokens to TTS generation params.
-# /stream-tts/{token} uses these to pipe ElevenLabs streaming audio to the client.
-# In-memory only — tokens expire after 10 min or on server restart (fine for single-process).
-_tts_tokens: dict[str, dict] = {}
-_TOKEN_TTL_S = 600  # 10 minutes
-
-def _cleanup_tts_tokens():
-    """Remove tokens older than TTL to prevent unbounded memory growth."""
-    now = time.time()
-    expired = [t for t, d in _tts_tokens.items() if now - d['created_at'] > _TOKEN_TTL_S]
-    for t in expired:
-        _tts_tokens.pop(t, None)
 
 
 def _is_hallucination(text: str, previous_enhanced_text: str = "") -> bool:
@@ -254,83 +235,29 @@ async def enhance_text_route(
         "speed":            1.0,
     }
 
-    # Store TTS params under a one-time token so the client can stream audio
-    # directly from /stream-tts/{token} without us generating and storing a file first.
-    # This lets the client start buffering ElevenLabs audio immediately after receiving
-    # the text — cutting time-to-first-audio from ~5s to ~1.5s.
-    _cleanup_tts_tokens()
-    stream_token = None
+    # Generate the enhanced audio file via ElevenLabs and return a URL the client
+    # can download. Non-fatal: if TTS fails, the client still shows the transcript
+    # and hides the play button gracefully.
+    audio_url = None
     if ELEVENLABS_API_KEY:
-        stream_token = uuid.uuid4().hex
-        _tts_tokens[stream_token] = {
-            'text':       final_transcript,
-            'voice_id':   synthesis_voice_id,
-            'settings':   voice_settings,
-            'created_at': time.time(),
-        }
-        logger.info("enhance-text: created stream_token for user %s", user_id[:8])
+        try:
+            audio_path = generate_enhanced_speech(
+                final_transcript,
+                voice_id=synthesis_voice_id,
+                voice_settings=voice_settings,
+            )
+            audio_url = f"/api/audio/{audio_path.name}"
+            logger.info("enhance-text: generated audio for user %s", user_id[:8])
+        except SpeechEnhancementError as e:
+            logger.warning("TTS generation failed (non-fatal): %s", e)
 
     return success_response({
         "cleaned_transcript": final_transcript,
         "clarity_applied":    final_transcript != raw_transcript,
-        "audio_url":          None,
-        "stream_token":       stream_token,
+        "audio_url":          audio_url,
         "voice_profile":      {"cloned": True} if using_cloned_voice else DEFAULT_PROFILE.to_dict(),
     })
 
-
-@router.get("/stream-tts/{token}")
-def stream_tts(token: str):
-    """
-    Stream ElevenLabs TTS audio for a previously-enhanced transcript.
-
-    Tokens are created by /enhance-text and expire after 10 minutes.
-    This endpoint is intentionally unprotected — the 32-char random token
-    provides sufficient security for a ~10-minute window.
-
-    Returns audio/mpeg chunks as they arrive from ElevenLabs, allowing the
-    mobile client to start playing within ~1.5s rather than waiting for the
-    full file to be generated (~3-5s).
-    """
-    _cleanup_tts_tokens()
-    # Pop the token so it can only be used once (prevents replay).
-    data = _tts_tokens.pop(token, None)
-
-    if not data:
-        raise HTTPException(status_code=404, detail="TTS token not found or expired.")
-
-    if not ELEVENLABS_API_KEY:
-        raise HTTPException(status_code=503, detail="TTS not configured.")
-
-    voice_id = data['voice_id']
-    text     = data['text']
-    settings = data['settings']
-
-    def _generate():
-        # Call the ElevenLabs streaming endpoint — it returns audio chunks
-        # as the model generates them, so we can start yielding immediately
-        # rather than waiting for the full waveform.
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
-        headers = {
-            "xi-api-key": ELEVENLABS_API_KEY,
-            "Accept":     "audio/mpeg",
-        }
-        payload = {
-            "text":           text,
-            "model_id":       "eleven_turbo_v2_5",
-            "voice_settings": settings,
-        }
-        try:
-            resp = _requests.post(url, json=payload, headers=headers, stream=True, timeout=30)
-            resp.raise_for_status()
-            for chunk in resp.iter_content(chunk_size=4096):
-                if chunk:
-                    yield chunk
-        except Exception as e:
-            logger.error("stream-tts ElevenLabs error: %s", e)
-            # Can't send an HTTP error after streaming has started — just stop
-
-    return StreamingResponse(_generate(), media_type="audio/mpeg")
 
 
 @router.post("/process-audio")
