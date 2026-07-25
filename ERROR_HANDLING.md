@@ -153,6 +153,8 @@ This document describes how Eloqua handles failures across every layer of the st
 | PitchGlides mic denied | "Microphone unavailable" overlay | Skip exercise |
 | Baseline analysis fails (ReadingMini / PitchGlideMini) | Silent null score — user sees "Analysing…" then moves on | Continues to next exercise |
 | ElevenLabs quota exhausted | "Voice personalisation unavailable" message in VoiceSetupExercise | Skip voice setup; training continues without personalised voice |
+| LoudnessDrills STT unavailable (device lacks Web Speech API) | Silent — STT flag flips to false | Word check bypassed; volume-only gate active (exercise fully functional) |
+| LoudnessDrills wrong word spoken | "Say 'word'!" prompt for 2 s; hoop does not register | User must speak the correct word before the hoop counts |
 | Any uncaught JS crash | "Something went wrong" screen | Try Again |
 
 ---

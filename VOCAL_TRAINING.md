@@ -751,3 +751,133 @@ frontend/src/
 - **No progress plan after baseline** — `computeProgressPlan()` and `storeProgressPlan()` are not called after the new baseline session. `CheckinScreen` calls `fetchProgressPlan()` which returns null for these users. Currently handled gracefully (the "VS YOUR PLAN" comparison card is simply omitted). A future improvement would compute a lightweight plan from the exercise scores.
 - **AssessmentScreen dead code** — `AssessmentScreen.js` is still registered in the navigator but not reachable from any user flow. It could be repurposed as an "advanced check-in" or removed before App Store submission.
 - **Voice clone timing** — The user leaves the app (via StreakCelebration → BaselineResults → Home) while the voice clone upload may still be in progress on ElevenLabs servers. The first Smart Speech session may therefore fall back to the default voice. This is acceptable for V4 but a "voice clone status" indicator on HomeScreen would help.
+
+---
+
+## V5 — 2026-07-25
+
+**Theme:** LoudnessDrills STT gating, exercise session flow polish, Android hoop fix
+
+### V5.1 — LoudnessDrills STT Integration
+
+**File:** `frontend/src/screens/vocaltraining/exercises/LoudnessDrillsExercise.js`
+
+Previous behaviour: any sufficiently loud noise triggered a successful "whack". A user could clap, cough, or tap the mic and score points without speaking.
+
+New behaviour: the user must say (approximately) the target word before the hoop registers. Volume is still the primary gate — the STT check only rejects taps where the running transcript clearly doesn't contain the target word.
+
+**Architecture — hidden WebView STT:**
+
+A 1×1 px, opacity-0 `WebView` runs the browser's `SpeechRecognition` (Web Speech API) entirely on-device. Transcripts are streamed back to React Native via `postMessage` as interim results arrive (~200 ms latency). No server round-trips; no API keys.
+
+```
+┌─────────────────────────────────┐
+│  LoudnessDrillsExercise (RN)    │
+│                                 │
+│  sttWebViewRef.postMessage('start')  ──►  WebView (hidden)
+│  sttWebViewRef.postMessage('reset')  ──►    SpeechRecognition
+│  sttWebViewRef.postMessage('stop')   ──►      continuous=true
+│                                              interimResults=true
+│  handleSttMessage(event)        ◄──  {t: transcript}
+│    sttTranscriptRef.current = t          {sttOk: bool}
+│                                          {err: string}
+│  handleWhack()                           
+│    wordsMatch(targetWord, sttTranscriptRef.current, sttAvailableRef.current)
+│      → true  → register hit
+│      → false → show "Say 'word'!" prompt, do not advance
+└─────────────────────────────────┘
+```
+
+**`wordsMatch` matching rules:**
+
+| Condition | Result |
+|---|---|
+| STT not available on device | `true` (bypass — volume gate only) |
+| Transcript empty or < 2 chars | `true` (user may have just started speaking) |
+| Target word has no key words ≥3 chars | `true` (short tier-1 words like "GO") |
+| Any key word found via exact or 3-char prefix match | `true` |
+| No key word found | `false` — show "Say 'word'!" for 2 s |
+
+**Graceful fallback:** If the device lacks `SpeechRecognition` (e.g. Android WebView without Chromium), the WebView posts `{sttOk: false}`. `sttAvailableRef.current` flips to `false` and all subsequent `wordsMatch` calls return `true`, making the exercise indistinguishable from the pre-STT version.
+
+### V5.2 — Exercise Session Flow: Double Title Screen Removal
+
+**Problem:** The session container (`VocalTrainingSessionScreen`) shows an `ExerciseTitleCard` (a "next up" card) before every exercise. Both `PitchGlidesExercise` and `LoudnessDrillsExercise` also had their own internal `TitleScreen` step shown on first visit. This created two back-to-back screens announcing the same exercise.
+
+**Fix:** Removed `STEP_TITLE` from both exercises. First-visit flow now starts directly at Tutorial/Demo.
+
+Updated step constants:
+
+| File | Old constants | New constants |
+|---|---|---|
+| `PitchGlidesExercise.js` | `STEP_TITLE=0, STEP_TUTORIAL=1, STEP_EXERCISE=2` | `STEP_TUTORIAL=0, STEP_EXERCISE=1` |
+| `LoudnessDrillsExercise.js` | `STEP_TITLE=0, STEP_DEMO=1, STEP_EXERCISE=2` | `STEP_DEMO=0, STEP_EXERCISE=1` |
+
+On "exit" from the Tutorial/Demo step, `onExit()` is now called directly (previously navigated back to the removed `STEP_TITLE`).
+
+**MidpointScreen double card fix:**
+
+`MidpointScreen` is itself a pause/rest card. Showing `ExerciseTitleCard` before it produces two consecutive pause screens. Fix in `VocalTrainingSessionScreen.handleExerciseComplete()`:
+
+```js
+const upcomingType = SESSION_EXERCISES[targetIndex]?.type;
+if (upcomingType === 'midpoint') {
+  setExerciseIndex(targetIndex);  // jump straight to MidpointScreen
+  return;
+}
+setTransition({ nextIndex: targetIndex });  // all other exercises get the title card
+```
+
+### V5.3 — TailoredExercise: Real Exercise Name on Transition Card
+
+**Problem:** The `ExerciseTitleCard` before the tailored slot showed `label: "Your Exercise"` — no information about what the user was about to do.
+
+**Solution:**
+
+1. `findWeakestKey` exported from `TailoredExercise.js` (was previously a module-private function).
+2. `resolveCardExercise(exercise)` added to `VocalTrainingSessionScreen`. When the incoming exercise is `type: 'tailored'`, it calls `findWeakestKey(tiers, focusKey)` — the same logic the exercise itself uses — and returns the real exercise's descriptor:
+
+```js
+function resolveCardExercise(exercise) {
+  if (exercise.type !== 'tailored') return exercise;
+  const selectedKey = findWeakestKey(tiers, focusKey);
+  const real = SESSION_EXERCISES.find(e => e.type === selectedKey);
+  return {
+    type:  selectedKey,   // ExerciseTitleCard uses this to pick the illustration
+    label: real?.label ?? exercise.label,
+    desc:  real?.desc  ?? exercise.desc,
+  };
+}
+```
+
+The `tiers` and `focusKey` are already in state before any transition card is shown, so this requires no extra Firestore reads.
+
+### V5.4 — PitchGlides Android: Hoop Direction Bug Fix
+
+**File:** `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js`
+
+**Bug:** Android computed `targetHigh = hoopsDoneRef.current % 2 === 0`, so hoop index 0 (the first hoop) was HIGH (loud). iOS computed `% 2 === 1`, so hoop index 0 was LOW (gentle). The platforms disagreed, and Android had the clinically wrong order.
+
+Clinical intent: start LOW (builds confidence), alternate to HIGH, then LOW, then HIGH.
+
+**Fix:**
+```js
+// Before (Android — wrong):
+const targetHigh = hoopsDoneRef.current % 2 === 0;
+
+// After (Android — matches iOS and clinical intent):
+// Even index → LOW zone (gentle, builds confidence first)
+// Odd index  → HIGH zone (strong voice)
+const targetHigh = hoopsDoneRef.current % 2 === 1;
+```
+
+The file-level docstring was also updated to accurately describe the LOW→HIGH→LOW→HIGH alternation pattern.
+
+### V5 — Files Changed
+
+| File | Change |
+|---|---|
+| `exercises/LoudnessDrillsExercise.js` | STT WebView integration; STEP_TITLE removed |
+| `exercises/PitchGlidesExercise.js` | STEP_TITLE removed; Android hoop direction fixed; docstring corrected |
+| `exercises/TailoredExercise.js` | `findWeakestKey` exported |
+| `vocaltraining/VocalTrainingSessionScreen.js` | `findWeakestKey` imported; `resolveCardExercise()` helper; midpoint skip logic |

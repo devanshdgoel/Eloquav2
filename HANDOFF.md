@@ -1394,3 +1394,142 @@ eas update --branch main --message "Session 9: security, accessibility, producti
 ```
 
 Backend changed (`voice_service.py`, `voice_routes.py`) — run a new Render deploy if ElevenLabs quota handling is needed in production.
+
+---
+
+## Session 10 — 2026-07-25
+
+**Theme:** LoudnessDrills STT integration, double title screen removal, TailoredExercise card resolution, PitchGlides Android bug fix
+
+### What Was Done
+
+#### 1. LoudnessDrills — Web Speech API STT Integration
+
+**File:** `frontend/src/screens/vocaltraining/exercises/LoudnessDrillsExercise.js`
+
+Added on-device speech-to-text via a hidden 1×1 WebView running the browser's `SpeechRecognition` API. This gates the "whack" action: the user must actually say the target word (not just make any loud noise) before a hoop registers as hit.
+
+Key design decisions:
+- **Zero server round-trips** — the WebView runs entirely on-device; transcripts arrive via `postMessage` in ~200 ms.
+- **Lenient matching** (`wordsMatch`) — only checks that at least one key word (≥3 chars) appears in the transcript with a 3-char prefix match. PD patients may have slurred or quiet speech; the volume threshold is the primary gate.
+- **Graceful fallback** — if the device doesn't support `SpeechRecognition`, `sttOk:false` is posted, `sttAvailableRef` flips to false, and `wordsMatch` returns `true` unconditionally (the word check is bypassed entirely). The exercise still works.
+- **Short words bypass check** — tier-1 uses short words (e.g. "GO"). Words ≤2 chars have no key words after filtering, so `wordsMatch` returns `true` immediately.
+
+WebView message protocol:
+| Direction | Message | Meaning |
+|---|---|---|
+| RN → WebView | `'start'` | Begin listening (sent after ambient calibration) |
+| RN → WebView | `'reset'` | Clear running transcript for new word |
+| RN → WebView | `'stop'` | Stop recognition on cleanup |
+| WebView → RN | `{sttOk: bool}` | Device supports / doesn't support Web Speech API |
+| WebView → RN | `{t: string}` | Updated running transcript (interim results) |
+| WebView → RN | `{err: string}` | Recognition error (non-fatal) |
+
+The hidden WebView is rendered at position absolute, 1×1 px, opacity 0:
+```jsx
+<WebView
+  ref={sttWebViewRef}
+  source={{ html: STT_WEBVIEW_HTML, baseUrl: 'https://localhost' }}
+  style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
+  onMessage={handleSttMessage}
+  javaScriptEnabled
+  allowsInlineMediaPlayback
+  mediaPlaybackRequiresUserAction={false}
+  originWhitelist={['*']}
+/>
+```
+
+#### 2. Double Title Screen Removal
+
+**Problem:** `ExerciseTitleCard` (shown between exercises in the session flow) already announces the next exercise. Both `PitchGlidesExercise` and `LoudnessDrillsExercise` also had their own internal `TitleScreen` step that showed on first visit — creating an identical back-to-back screen.
+
+**Fix:** Removed `STEP_TITLE` from both exercise files. The flow now starts directly at Tutorial/Demo on first visit.
+
+| File | Before | After |
+|---|---|---|
+| `PitchGlidesExercise.js` | `STEP_TITLE=0, STEP_TUTORIAL=1, STEP_EXERCISE=2` | `STEP_TUTORIAL=0, STEP_EXERCISE=1` |
+| `LoudnessDrillsExercise.js` | `STEP_TITLE=0, STEP_DEMO=1, STEP_EXERCISE=2` | `STEP_DEMO=0, STEP_EXERCISE=1` |
+
+**MidpointScreen double card:** `MidpointScreen` itself is a "halfway there" rest card. Showing `ExerciseTitleCard` before it creates two identical pause screens. Fixed in `VocalTrainingSessionScreen.handleExerciseComplete()` — when the next exercise type is `'midpoint'`, jump directly to it without showing a transition card.
+
+#### 3. TailoredExercise — Real Exercise Name on Card
+
+**Problem:** The `ExerciseTitleCard` before the tailored exercise showed "Your Exercise" as the label — generic and unhelpful. Users had no idea what they were about to do.
+
+**Fix:**
+- Exported `findWeakestKey` from `TailoredExercise.js` (was previously internal).
+- Added `resolveCardExercise(exercise)` helper to `VocalTrainingSessionScreen` — when the incoming exercise type is `'tailored'`, it calls `findWeakestKey(tiers, focusKey)` to determine which exercise will actually be shown, then returns that exercise's real `type`, `label`, and `desc`.
+- The `ExerciseTitleCard` now shows the correct illustration and title (e.g. "Pitch Glides" with the pitch illustration) instead of "Your Exercise".
+
+The tiers and focusKey are already loaded into state before any transition fires, so no extra Firestore reads are needed.
+
+#### 4. PitchGlides Android — Hoop Direction Bug Fix
+
+**File:** `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js`
+
+**Bug:** Android was computing `targetHigh = hoopsDoneRef.current % 2 === 0`, which meant the first hoop (index 0) was HIGH (loud effort). iOS used `% 2 === 1`, starting with LOW (gentle). The two platforms disagreed, and Android was the wrong one — clinical intent is to build confidence with a gentle LOW first.
+
+**Fix:** Changed Android to `% 2 === 1`, matching iOS:
+```js
+// Even hoop index → LOW zone (gentle, builds confidence first)
+// Odd hoop index  → HIGH zone (strong voice)
+const targetHigh = hoopsDoneRef.current % 2 === 1;
+```
+
+Also updated the file-level docstring which said "HIGH effort → LOW effort" — now correctly says "LOW effort → HIGH effort".
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| `LoudnessDrillsExercise.js` | STT integration (WebView, wordsMatch, handleSttMessage, handleWhack gated) |
+| `LoudnessDrillsExercise.js` | STEP_TITLE removed; STEP_DEMO=0, STEP_EXERCISE=1 |
+| `PitchGlidesExercise.js` | STEP_TITLE removed; STEP_TUTORIAL=0, STEP_EXERCISE=1 |
+| `PitchGlidesExercise.js` | Android hoop direction fixed (`% 2 === 0` → `% 2 === 1`) |
+| `PitchGlidesExercise.js` | Docstring updated (flow + hoop order description) |
+| `TailoredExercise.js` | `findWeakestKey` exported |
+| `VocalTrainingSessionScreen.js` | `findWeakestKey` imported; `resolveCardExercise()` added; midpoint skip logic added |
+
+### What Needs To Be Done Next
+
+#### Immediate — Before TestFlight
+
+1. **Deploy JS** — `cd frontend && eas update --branch main --message "Session 10: STT integration, exercise flow polish, Android hoop fix"`
+2. **Deploy Firestore rules** — `firebase deploy --only firestore:rules` (requires ≥500 MB free on C:) or paste into Firebase Console manually.
+3. **ToS / Privacy Policy URLs** — `SignUpScreen.js` has dead `<Text>Terms of Service</Text>` spans.
+4. **App Store ID** — Replace `id000000000` in `SettingsScreen.js`.
+5. **Render upgrade** — Free tier sleeps after 15 min; upgrade to paid ($7/mo) before TestFlight.
+
+#### V1.5 — Before App Store Submission
+
+6. **audioCues wiring** — `useAudioCues()` exposed but not wired. Files needed: `correct.mp3`, `exercise_complete.mp3`, `session_complete.mp3`.
+7. **🔊 emoji replacement** — `FunctionalSpeechExercise.js` and `SpeechEnhancementScreen.js`; replace with `<SpeakerIcon>` from `Icons.js`.
+8. **🔥 emoji replacement** — `ProgressScreen.js` line 269; replace with `<FireIcon>` from `Icons.js`.
+9. **HomeScreen first-visit tooltip** — "Tap the highlighted node to start" overlay gated with AsyncStorage.
+10. **Speech Enhancement playback animation** — Wire `isPlaying` state to `Animated.loop` scale on play icon.
+11. **Check-in personal sentence delta** — Show pre vs. post score on patient's own sentence.
+12. **Real-time coaching trigger** — Reduce from 6 s to 3 s for first session.
+13. **Speech-to-text in CheckinScreen** — "Tap to speak" for the personal sentence TextInput.
+
+#### V2.0 — Post-Pilot
+
+14. Caregiver dashboard (read-only web view of patient scores/streak)
+15. Speech therapist portal (SLP data access + difficulty override)
+16. DDK "pa-ta-ka" articulation assessment
+17. MPT surface in ProgressScreen (data recorded; not yet displayed)
+18. Voice fatigue detection across a session
+19. Medication timing correlation
+20. Offline mode for on-device exercises
+21. Tablet (iPad) layout fixes — see `additional-thoughts.md` for all 18 items
+
+---
+
+### Deploy Command
+
+```bash
+# From the frontend/ directory (IMPORTANT — not the repo root)
+cd frontend
+eas update --branch main --message "Session 10: STT integration, exercise flow polish, Android hoop fix"
+```
+
+No backend changes in this session.
