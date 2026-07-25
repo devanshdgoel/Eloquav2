@@ -19,20 +19,25 @@ export async function getAuthHeaders(forceRefresh = false) {
 // Delay used for exponential backoff.
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// Status codes that represent transient backend unavailability.
-// 503 = Render free-tier cold start; 504 = gateway timeout.
-// These are the only codes where a short retry is likely to succeed.
-const TRANSIENT_STATUSES = new Set([503, 504]);
+// Status codes that represent transient backend unavailability worth retrying.
+// 502 = Render process restarting (proxy up, app not yet ready).
+// 503 = Render free-tier cold start.
+// 504 = gateway timeout.
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
-// Retry delays in milliseconds: 1 s then 2 s.
-// Two retries cover most Render cold-start scenarios (typically < 2 s).
-const RETRY_DELAYS = [1000, 2000];
+// Retry delays in milliseconds: 2 s then 4 s.
+// Render restarts typically resolve in 2–8 s; this covers most cases
+// without making the user wait too long if the backend is genuinely down.
+const RETRY_DELAYS = [2000, 4000];
 
 /**
  * fetch() wrapper that:
  *   1. Adds the Firebase auth token automatically.
  *   2. Refreshes the token and retries once on 401 (expired token).
- *   3. Retries up to twice with exponential backoff on 503/504 (Render cold starts).
+ *   3. Retries up to twice with backoff on 502/503/504 (Render restarts/cold starts).
+ *   4. Retries on thrown network errors ("Network request failed") that occur
+ *      during the gap between Render killing the old process and the new one
+ *      accepting TCP connections.
  *
  * Use this instead of raw fetch() for all API calls so that token expiry
  * and transient backend unavailability are handled transparently.
@@ -50,21 +55,54 @@ export async function fetchWithAuth(url, options = {}) {
   }
 
   // First attempt with the cached token.
-  let res = await attempt();
+  // A thrown error (e.g. "Network request failed") means no TCP connection —
+  // we treat that the same as a transient status and retry below.
+  let res = null;
+  let lastNetworkError = null;
+
+  try {
+    res = await attempt();
+  } catch (e) {
+    lastNetworkError = e;
+  }
 
   // Handle 401 (expired token) by force-refreshing and retrying once.
-  if (res.status === 401) {
-    res = await attempt(true);
+  if (res && res.status === 401) {
+    try {
+      res = await attempt(true);
+      lastNetworkError = null;
+    } catch (e) {
+      lastNetworkError = e;
+      res = null;
+    }
   }
 
-  // Retry transient 5xx errors with backoff so Render cold starts are invisible.
-  // We re-check 401 after each retry in case the refresh expired mid-backoff.
+  // Retry on transient HTTP errors or on a thrown network error.
+  // Re-check 401 after each retry in case the token expired mid-backoff.
   for (const delay of RETRY_DELAYS) {
-    if (!TRANSIENT_STATUSES.has(res.status)) break;
+    const shouldRetry = res === null || TRANSIENT_STATUSES.has(res.status);
+    if (!shouldRetry) break;
     await sleep(delay);
-    res = await attempt();
-    if (res.status === 401) res = await attempt(true);
+    try {
+      res = await attempt();
+      lastNetworkError = null;
+    } catch (e) {
+      lastNetworkError = e;
+      res = null;
+    }
+    if (res && res.status === 401) {
+      try {
+        res = await attempt(true);
+        lastNetworkError = null;
+      } catch (e) {
+        lastNetworkError = e;
+        res = null;
+      }
+    }
   }
 
+  // All retries exhausted with no response — rethrow so callers can surface
+  // an appropriate "no connection" message.
+  if (res === null) throw lastNetworkError;
   return res;
 }

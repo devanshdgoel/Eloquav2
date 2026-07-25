@@ -406,7 +406,7 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#1C4047' },
 
   skipZone: {
     position: 'absolute',

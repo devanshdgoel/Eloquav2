@@ -66,23 +66,6 @@ function FadeIn({ children }) {
   );
 }
 
-// ── Session progress bar (TitleScreen only) ───────────────────────────────────
-function SessionBar({ fill = 0.14 }) {
-  return (
-    <View style={sb.track}>
-      <View style={[sb.fill, { width: `${fill * 100}%` }]} />
-    </View>
-  );
-}
-const sb = StyleSheet.create({
-  track: {
-    position: 'absolute', bottom: 28, left: 47,
-    width: W - 94, height: 12, borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  fill: { height: '100%', borderRadius: 13, backgroundColor: '#FFA940' },
-});
-
 // ── Cycle progress pills ──────────────────────────────────────────────────────
 function CyclePills({ current, done, total = TOTAL_CYCLES }) {
   return (
@@ -127,7 +110,7 @@ const hb = StyleSheet.create({
 });
 
 // ── Screen 0: Title ───────────────────────────────────────────────────────────
-function TitleScreen({ onNext, onExit, sessionFill = 0.14 }) {
+function TitleScreen({ onNext, onExit }) {
   const MOTIVATIONAL_TEXT = 'Breathing. Your voice starts with your breath.';
   return (
     <FadeIn>
@@ -158,12 +141,9 @@ function TitleScreen({ onNext, onExit, sessionFill = 0.14 }) {
           </View>
         </View>
 
-        {/* Arrow button — must sit above the progress bar (bottom: 28 + 12h + 16 gap = 56) */}
         <TouchableOpacity style={ts.arrowBtn} onPress={onNext} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Continue">
           <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
-
-        <SessionBar fill={sessionFill} />
       </View>
     </FadeIn>
   );
@@ -182,7 +162,7 @@ const ts = StyleSheet.create({
   },
   bubbleWrap: { alignItems: 'center' },
   arrowBtn: {
-    alignSelf: 'center', marginBottom: 60,
+    alignSelf: 'center', marginBottom: 28,
     width: 80, height: 64, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
@@ -642,7 +622,6 @@ export default function BreathingExercise({
   // Baseline starts immediately at the simplified intro screen — no AsyncStorage needed.
   // Regular sessions: null while the AsyncStorage check is in flight.
   const [step, setStep] = useState(baseline ? STEP_BASELINE : null);
-  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   useEffect(() => {
     // Skip AsyncStorage check entirely for the baseline session.
@@ -670,7 +649,6 @@ export default function BreathingExercise({
       <TitleScreen
         onNext={() => setStep(STEP_VIDEO)}
         onExit={onExit}
-        sessionFill={sessionFill}
       />
     );
   }

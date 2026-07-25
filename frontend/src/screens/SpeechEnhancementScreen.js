@@ -215,6 +215,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // Screen-time tracking.
   useEffect(() => {
+    // Pre-warm the backend the moment the screen mounts, in case the HomeScreen
+    // tap fired too early or the user navigated here via a different route.
+    fetch(`${API_BASE_URL}/api/wake`).catch(() => {});
     const logExit = logScreenView('SpeechEnhancement');
     return logExit;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

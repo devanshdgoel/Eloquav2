@@ -86,22 +86,6 @@ function FadeIn({ children, duration = 380 }) {
   return <Animated.View style={{ flex: 1, opacity }}>{children}</Animated.View>;
 }
 
-function SessionBar({ fill }) {
-  return (
-    <View style={sb.track}>
-      <View style={[sb.fill, { width: `${Math.min(1, fill) * 100}%` }]} />
-    </View>
-  );
-}
-const sb = StyleSheet.create({
-  track: {
-    position: 'absolute', bottom: 28, left: 47,
-    width: W - 94, height: 12, borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  fill: { height: '100%', borderRadius: 13, backgroundColor: ORANGE },
-});
-
 function RoundPills({ current, done }) {
   return (
     <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center' }}>
@@ -152,7 +136,7 @@ const hb = StyleSheet.create({
 const TITLE_INSTRUCTION_TEXT =
   "Sustained Sound. Hold a steady Aah as long as you can. Three rounds — your best score counts.";
 
-function TitleScreen({ onNext, onExit, sessionFill }) {
+function TitleScreen({ onNext, onExit }) {
   return (
     <FadeIn>
       <View style={{ flex: 1, backgroundColor: BG }}>
@@ -194,7 +178,6 @@ function TitleScreen({ onNext, onExit, sessionFill }) {
           <Text style={ts.arrowText}>→</Text>
         </TouchableOpacity>
 
-        <SessionBar fill={sessionFill} />
       </View>
     </FadeIn>
   );
@@ -215,7 +198,7 @@ const ts = StyleSheet.create({
     lineHeight: 26, opacity: 0.85,
   },
   arrowBtn: {
-    alignSelf: 'center', marginBottom: 60,
+    alignSelf: 'center', marginBottom: 28,
     width: 80, height: 64, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.20)',
@@ -812,7 +795,6 @@ export default function SustainedPhonationExercise({
 }) {
   // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
   const [step, setStep] = useState(null);
-  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   useEffect(() => {
     AsyncStorage.getItem(DEMO_KEY)
@@ -827,7 +809,6 @@ export default function SustainedPhonationExercise({
       <TitleScreen
         onNext={() => setStep(1)}
         onExit={onExit}
-        sessionFill={sessionFill}
       />
     );
   }

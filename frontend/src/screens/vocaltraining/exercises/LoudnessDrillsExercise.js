@@ -301,7 +301,7 @@ const LOUDNESS_INTRO_TEXT =
   "Loudness Drills. A word appears — say it out LOUD before the timer runs out. " +
   "Loud enough and the jellyfish flies off. Complete five to finish.";
 
-function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
+function DemoScreen({ onFinish, onExit }) {
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <StatusBar barStyle="light-content" />
@@ -339,10 +339,6 @@ function DemoScreen({ onFinish, onExit, sessionFill = 0.38 }) {
         <Text style={ds.startText}>Let's Go  →</Text>
       </TouchableOpacity>
 
-      {/* Session progress bar */}
-      <View style={ds.sessionBar}>
-        <View style={[ds.sessionBarFill, { width: `${sessionFill * 100}%` }]} />
-      </View>
     </View>
   );
 }
@@ -377,12 +373,6 @@ const ds = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
-  sessionBar: {
-    position: 'absolute', bottom: 28, left: 47,
-    width: W - 94, height: 12, borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  sessionBarFill: { height: '100%', borderRadius: 13, backgroundColor: ORANGE },
 });
 
 // ── Word verification ─────────────────────────────────────────────────────────────
@@ -1061,7 +1051,6 @@ const exHelp = StyleSheet.create({
 export default function LoudnessDrillsExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
   // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
   const [showDemo, setShowDemo] = useState(null);
-  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   useEffect(() => {
     AsyncStorage.getItem(DEMO_KEY)
@@ -1076,7 +1065,7 @@ export default function LoudnessDrillsExercise({ onComplete, onExit, onSkip, tie
   }
 
   if (showDemo === null) return null;
-  if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} sessionFill={sessionFill} />;
+  if (showDemo) return <DemoScreen onFinish={finishDemo} onExit={onExit} />;
   return (
     <ExerciseScreen
       onComplete={onComplete}
