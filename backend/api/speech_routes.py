@@ -1,3 +1,4 @@
+import base64
 import logging
 from typing import Optional
 
@@ -235,10 +236,11 @@ async def enhance_text_route(
         "speed":            1.0,
     }
 
-    # Generate the enhanced audio file via ElevenLabs and return a URL the client
-    # can download. Non-fatal: if TTS fails, the client still shows the transcript
-    # and hides the play button gracefully.
-    audio_url = None
+    # Generate TTS audio via ElevenLabs and embed it as base64 in the JSON response.
+    # Embedding avoids a second round-trip and eliminates the temp-file dependency —
+    # Render clears temp_audio on every restart, so a URL-based approach can 404
+    # if the server restarts in the gap between generating and serving the file.
+    audio_b64 = None
     if ELEVENLABS_API_KEY:
         try:
             audio_path = generate_enhanced_speech(
@@ -246,15 +248,18 @@ async def enhance_text_route(
                 voice_id=synthesis_voice_id,
                 voice_settings=voice_settings,
             )
-            audio_url = f"/api/audio/{audio_path.name}"
-            logger.info("enhance-text: generated audio for user %s", user_id[:8])
+            # Read bytes immediately and delete the temp file — we no longer need it.
+            audio_b64 = base64.b64encode(audio_path.read_bytes()).decode('utf-8')
+            audio_path.unlink(missing_ok=True)
+            logger.info("enhance-text: generated audio (%d bytes b64) for user %s",
+                        len(audio_b64), user_id[:8])
         except SpeechEnhancementError as e:
             logger.warning("TTS generation failed (non-fatal): %s", e)
 
     return success_response({
         "cleaned_transcript": final_transcript,
         "clarity_applied":    final_transcript != raw_transcript,
-        "audio_url":          audio_url,
+        "audio_b64":          audio_b64,
         "voice_profile":      {"cloned": True} if using_cloned_voice else DEFAULT_PROFILE.to_dict(),
     })
 

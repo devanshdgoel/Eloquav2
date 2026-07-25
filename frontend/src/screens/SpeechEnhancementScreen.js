@@ -197,11 +197,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const [result,          setResult]         = useState(null);
   const [isPlaying,       setIsPlaying]      = useState(false);
 
-  // audioReady: true once the audio file has been downloaded and loaded into expo-av.
+  // audioReady: true once the base64 audio has been written to disk and loaded into expo-av.
   // false = spinner shows on play button. The button is disabled while false.
   const [audioReady,      setAudioReady]     = useState(false);
 
-  // audioFailed: true if download or decode failed — shows "Audio unavailable" on button.
+  // audioFailed: true if write or decode failed — shows "Audio unavailable" on button.
   const [audioFailed,     setAudioFailed]    = useState(false);
 
   const [errorMsg,        setErrorMsg]       = useState('');
@@ -585,11 +585,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
         duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
       });
 
-      // Start downloading the audio in the background immediately.
+      // Write the embedded audio to the local cache immediately.
       // The user reads their transcript for several seconds — by the time they
-      // tap Play, the download is complete and playback starts instantly.
-      if (data.audio_url) {
-        preloadAudio(`${API_BASE_URL}${data.audio_url}`);
+      // tap Play, the file is written and expo-av has it loaded.
+      if (data.audio_b64) {
+        preloadAudio(data.audio_b64);
       }
 
       analyzeVoiceAsync(rawText, recordingDurationRef.current);
@@ -625,29 +625,30 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Audio preload ─────────────────────────────────────────────────────────────
 
-  // Download the ElevenLabs audio file to the local cache, then load it into
-  // expo-av ready to play. Downloading first is more reliable than streaming
-  // directly into createAsync, which can time out on chunked HTTP responses.
-  // Runs immediately after the transcript appears so the file is ready by the
-  // time the user finishes reading and taps Play.
-  async function preloadAudio(audioUrl) {
-    if (!isMountedRef.current || !audioUrl) return;
+  // Write the base64 audio (embedded in the enhance-text JSON response) to a
+  // local cache file, then load it into expo-av ready to play.
+  //
+  // We embed audio as base64 rather than serving it via a separate URL because
+  // Render clears temp_audio on every server restart — a URL-based download can
+  // 404 in the gap between generation and retrieval, and is a second round-trip.
+  // Base64 arrives with the transcript, so by the time the user reads it the
+  // file is already written and expo-av has it loaded.
+  async function preloadAudio(audioB64) {
+    if (!isMountedRef.current || !audioB64) return;
     const generation = sessionGenerationRef.current;
 
     setAudioReady(false);
     setAudioFailed(false);
 
     try {
-      // Download to a session-scoped local path so concurrent sessions don't
-      // overwrite each other and the file survives for replay.
+      // Write to a session-scoped path so replays within the same session reuse
+      // the file without re-writing it, and a new session gets a fresh file.
       const localUri = `${FileSystem.cacheDirectory}enhanced_${generation}.mp3`;
-      const dlResult = await FileSystem.downloadAsync(audioUrl, localUri);
+      await FileSystem.writeAsStringAsync(localUri, audioB64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
-      // downloadAsync resolves even on HTTP errors (it saves the error body to disk).
-      // A non-200 means the audio file is gone — Render clears temp_audio on restart.
-      if (dlResult.status !== 200) throw new Error(`Audio download failed (${dlResult.status})`);
-
-      // Discard if the component unmounted or a new session started while downloading.
+      // Discard if the component unmounted or a new session started while writing.
       if (!isMountedRef.current || sessionGenerationRef.current !== generation) return;
 
       const { sound } = await Audio.Sound.createAsync(
@@ -780,11 +781,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const showPending = pendingCount > 0;
 
   // ── Play button state ────────────────────────────────────────────────────────
-  // hasAudioUrl: determines whether to show the play button at all.
-  const hasAudioUrl = Boolean(result?.audio_url);
-  // playBtnLoading: spinner state — audio URL exists but download not yet complete.
-  const playBtnLoading = hasAudioUrl && !audioReady && !audioFailed && !isPlaying;
-  // playBtnEnabled: tap allowed when audio is ready and not currently playing.
+  // hasAudio: show the play button only when the response included audio.
+  const hasAudio = Boolean(result?.audio_b64);
+  // playBtnLoading: spinner state — audio data exists but not yet written/loaded.
+  const playBtnLoading = hasAudio && !audioReady && !audioFailed && !isPlaying;
+  // playBtnEnabled: tap allowed when expo-av has the sound loaded and ready.
   const playBtnEnabled = audioReady || isPlaying;
 
   return (
@@ -911,8 +912,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </ScrollView>
           </View>
 
-          {/* Play button — disabled (spinner) while audio is downloading */}
-          {hasAudioUrl && (
+          {/* Play button — disabled (spinner) while audio is being written and loaded */}
+          {hasAudio && (
             <TouchableOpacity
               style={[
                 styles.actionBtn,
