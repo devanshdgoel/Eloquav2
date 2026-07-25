@@ -51,7 +51,10 @@ export default function SignInScreen({ navigation }) {
           onPress: async () => {
             try {
               await resetPassword(trimEmail);
-              Alert.alert('Email sent', 'Check your inbox for a password reset link.');
+              Alert.alert(
+                'Email sent',
+                "A password reset link has been sent to your inbox.\n\nIf you don't see it within a minute, please check your spam or junk folder.",
+              );
             } catch (error) {
               Alert.alert('Could not send email', error.message);
             }
@@ -115,7 +118,7 @@ export default function SignInScreen({ navigation }) {
               accessibilityLabel="Eloqua logo"
             />
             <Text style={[styles.wordmark, { fontSize: fs(28) }]}>Eloqua</Text>
-            <Text style={[styles.tagline, { fontSize: fs(15) }]}>Voice training for Parkinson's</Text>
+            <Text style={[styles.tagline, { fontSize: fs(15) }]}>Voice training app</Text>
           </View>
 
           <Text style={[styles.heading, { fontSize: fs(32) }]}>Welcome back</Text>

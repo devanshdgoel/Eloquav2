@@ -51,6 +51,13 @@ def health_check():
     return {"status": "ok", "message": "Eloqua backend running"}
 
 
+@app.get("/api/wake")
+def wake():
+    # Pre-warm endpoint — mobile app calls this before opening Smart Speech
+    # so the Render server is already awake by the time the user taps record.
+    return {"status": "ok"}
+
+
 app.include_router(speech_router,     prefix="/api")
 app.include_router(audio_router,      prefix="/api")
 app.include_router(voice_router,      prefix="/api")

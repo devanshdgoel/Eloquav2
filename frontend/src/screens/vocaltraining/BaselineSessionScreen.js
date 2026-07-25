@@ -37,7 +37,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { completeSession } from '../../services/progressService';
+import { tryCompleteSession } from '../../services/progressService';
 import { onSessionComplete } from '../../services/notificationService';
 import {
   EXERCISE_KEYS,
@@ -256,7 +256,7 @@ export default function BaselineSessionScreen({ navigation }) {
     setTiersFromBaselineExercises(augmentedScores, focusKey).catch(() => {});
 
     try {
-      const result  = await completeSession();
+      const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement notification clock
       const profile = await getUserProfile();
 
@@ -281,9 +281,10 @@ export default function BaselineSessionScreen({ navigation }) {
       // PitchGlideMiniExercise and ReadingMiniExercise. Both will be null only
       // if those tasks were skipped or the backend failed — BaselineResultsScreen
       // handles null gracefully by showing "Not assessed".
+      const firstName = profile?.name ? profile.name.trim().split(' ')[0] : '';
       navigation.replace('StreakCelebration', {
         streakDays:     result.streak_days,
-        userName:       profile?.name ?? '',
+        userName:       firstName,
         fromBaseline:   true,
         focusKey:       mappedFocusKey,
         focusLabel:     focus?.label ?? null,

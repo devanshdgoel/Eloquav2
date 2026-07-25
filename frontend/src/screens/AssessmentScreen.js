@@ -532,7 +532,7 @@ export default function AssessmentScreen({ navigation, route }) {
       navigation.replace('StreakCelebration', {
         fromBaseline: true,
         streakDays: 1,
-        userName: auth.currentUser?.displayName ?? '',
+        userName: (auth.currentUser?.displayName ?? '').trim().split(' ')[0],
         focusKey:   focus?.key   ?? null,
         focusLabel: focus?.label ?? null,
         focusTip:   focus?.tip   ?? null,

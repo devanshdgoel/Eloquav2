@@ -135,7 +135,7 @@ def build_doc(platform):
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub = sub_p.add_run(
         'Getting Started  -  iPhone Guide' if is_ios else
-        'Getting Started  -  Android Guide'
+        'Getting Started  -  Android Guide  (APK Install)'
     )
     sub.font.size = Pt(17)
     sub.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
@@ -163,8 +163,8 @@ def build_doc(platform):
             'The invitation email from Eloqua (check your inbox and spam folder)',
         ] if is_ios else [
             'An Android phone running Android 10 or newer',
-            'A Wi-Fi or mobile data connection',
-            'A Google account (the one you use for the Play Store on your phone)',
+            'A Wi-Fi connection for the download',
+            'The email or message from Eloqua with the download link',
         ]
     )
     for item in needs:
@@ -292,31 +292,43 @@ def build_doc(platform):
         body('Try to complete one voice session every day for the best results.')
         ss('Eloqua home screen showing the training roadmap', h=3.8)
 
-    # Android steps
+    # Android steps (APK / direct install)
     else:
 
-        step_heading(1, 'Open the Google Play Store')
-        body('Find the Play Store icon on your phone.')
-        body('It looks like a colourful triangle pointing to the right.')
-        body('Tap it to open.')
-        tip('The Play Store is usually on your home screen or in your app list.')
-        ss('Google Play Store home screen', h=3.8)
+        step_heading(1, 'Open the email or message we sent you')
+        body('We will send you a link to download the Eloqua app file.')
+        body('Open that email or message on your Android phone.')
+        body('Tap the download link.')
+        tip('If you cannot find it, check your Junk or Spam folder and search for "Eloqua".')
+        ss('Email or message showing the Eloqua download link', h=2.5)
 
-        step_heading(2, 'Search for Eloqua')
-        body('Tap the search bar at the top of the screen.')
-        body('Type  Eloqua  and tap the search key on your keyboard.')
-        body('Look for the Eloqua app in the results. It has a teal dolphin icon.')
-        body('Tap on it.')
-        ss('Play Store search results showing the Eloqua app', h=3.8)
+        step_heading(2, 'Download the app file')
+        body('Your phone will download a file called  Eloqua.apk.')
+        body('You may see a progress bar at the top or bottom of your screen while it downloads.')
+        body('Wait for it to finish — it usually takes less than a minute on Wi-Fi.')
+        tip('Stay connected to Wi-Fi during the download.')
+        ss('Android download notification showing Eloqua.apk downloading', h=2.5)
 
-        step_heading(3, 'Install the app')
+        step_heading(3, 'Allow installation from this source')
+        body('A message may appear saying your phone needs permission to install this file.')
+        body('Tap  Settings  on that message.')
+        body('Turn on  Allow from this source.')
+        body('Then go back and tap the downloaded file again.')
+        tip(
+            'This is a one-time step. It is safe to allow because the file came directly from us.\n'
+            'On some phones this screen looks slightly different — look for "Install unknown apps" or "Allow from this source".'
+        )
+        ss('Android "Allow from this source" permission screen', h=3.0)
+
+        step_heading(4, 'Install Eloqua')
+        body('A screen will appear asking if you want to install Eloqua.')
         body('Tap  Install.')
-        body('Eloqua will download to your phone. This usually takes less than a minute.')
+        body('Wait a few seconds for the install to finish.')
         body('When it is done, tap  Open.')
         tip('You can also find the Eloqua icon in your app list and tap it there.')
-        ss('Eloqua page in the Play Store with the Install button', h=3.8)
+        ss('Android install confirmation screen with the Install button', h=3.8)
 
-        step_heading(4, 'Create your account')
+        step_heading(5, 'Create your account')
         body('Tap  Sign Up.')
         body('Enter your email address.')
         body('Choose a password. Use at least 8 characters.')
@@ -324,7 +336,7 @@ def build_doc(platform):
         tip('Write your email and password down somewhere safe before continuing.')
         ss('Eloqua Sign Up screen', h=3.8)
 
-        step_heading(5, 'Allow microphone access')
+        step_heading(6, 'Allow microphone access')
         body('A message will appear asking if Eloqua can use your microphone.')
         body('Tap  Allow.')
         body('The microphone is needed so Eloqua can hear your voice during exercises.')
@@ -335,13 +347,13 @@ def build_doc(platform):
         )
         ss('Android microphone permission popup', h=2.5)
 
-        step_heading(6, 'Tell us about yourself')
+        step_heading(7, 'Tell us about yourself')
         body('Type your first name.')
         body('Enter your age.')
         body('Tap  Continue.')
         ss('Eloqua About You screen', h=3.8)
 
-        step_heading(7, 'Record your voice  (3 short sentences)')
+        step_heading(8, 'Record your voice  (3 short sentences)')
         body('You will be asked to read 3 sentences out loud.')
         body('This helps Eloqua learn to recognise your voice.')
         body('Tap the record button, read the sentence clearly, then tap stop.')
@@ -349,14 +361,14 @@ def build_doc(platform):
         tip('Find a quiet room. Hold your phone about 20 cm (8 inches) from your mouth.')
         ss('Eloqua voice recording screen showing the record button and sentence to read', h=3.8)
 
-        step_heading(8, 'Complete your first voice check')
+        step_heading(9, 'Complete your first voice check')
         body('Eloqua will guide you through a short voice assessment.')
         body('Just follow the instructions on screen. It takes about 5 minutes.')
         body('This gives Eloqua a starting score for your voice so it can track your progress.')
         tip('Sit comfortably. You can rest between tasks. There is no time pressure.')
         ss('Eloqua voice assessment screen', h=3.8)
 
-        step_heading(9, 'You are ready!')
+        step_heading(10, 'You are ready!')
         body('After the voice check, your home screen will appear.')
         body('Your Eloqua journey has started.')
         body('Try to complete one voice session every day for the best results.')
@@ -387,8 +399,10 @@ def build_doc(platform):
             ('I forgot my password.',
              'On the Sign In screen, tap "Forgot password?" and follow the steps. You will get an email.'),
         ] if is_ios else [
-            ('I cannot find Eloqua in the Play Store.',
-             'Make sure your phone is running Android 10 or newer. Try searching "Eloqua voice".'),
+            ('I cannot find the download link email.',
+             'Check your Junk or Spam folder and search your inbox for "Eloqua".'),
+            ('My phone will not let me install the app.',
+             'Go to Settings > Apps > Special app access > Install unknown apps. Find your browser or email app and turn on Allow.'),
             ('The app will not open.',
              'Turn your phone off and on again, then try opening Eloqua.'),
             ('Eloqua cannot hear my voice.',

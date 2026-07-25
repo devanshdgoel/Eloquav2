@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { completeSession } from '../../services/progressService';
+import { tryCompleteSession } from '../../services/progressService';
 import { onSessionComplete } from '../../services/notificationService';
 import {
   nudgeTiersFromRecentScores,
@@ -263,14 +263,19 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       tiers_at_start:  { ...tiersRef.current },
     });
     try {
-      const result  = await completeSession();
+      // tryCompleteSession handles offline — queues to AsyncStorage if Firestore
+      // is unreachable and returns an optimistic result so the celebration screen
+      // always shows. The queued session is flushed on next reconnect.
+      const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
+      // Extract first name only — users who entered "John Smith" should see "John".
+      const firstName = profile?.name ? profile.name.trim().split(' ')[0] : '';
       // Strong success pulse to mark the full training session completion.
       hapticSuccess(hapticEnabled);
       navigation.replace('StreakCelebration', {
         streakDays: result.streak_days,
-        userName:   profile?.name ?? '',
+        userName:   firstName,
       });
     } catch {
       setIsDone(true);

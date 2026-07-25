@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // The total number of training sessions in the programme.
 // This constant is imported by HomeScreen to size the roadmap, so any
@@ -120,4 +121,98 @@ export async function completeSession() {
   };
   await updateDoc(ref, updated);
   return updated;
+}
+
+// ── Offline session queue ─────────────────────────────────────────────────────
+// When a session completes without connectivity, we queue it in AsyncStorage
+// and flush it the next time the app is online.
+
+const OFFLINE_QUEUE_KEY = 'eloqua_offline_session_queue';
+
+/**
+ * Persist a pending session completion to AsyncStorage so it survives app restarts.
+ * Called when completeSession() throws a network error.
+ */
+async function queueOfflineSession() {
+  try {
+    const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    const queue = raw ? JSON.parse(raw) : [];
+    // Store just the timestamp — we re-run completeSession() on flush, which
+    // reads the user's current Firestore state and applies the right increment.
+    queue.push({ queued_at: new Date().toISOString() });
+    await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch (e) {
+    console.warn('[Progress] Failed to queue offline session:', e?.message);
+  }
+}
+
+/**
+ * Flush any queued offline session completions to Firestore.
+ * Call this from a NetInfo online listener (e.g. in AppNavigator).
+ * Runs silently — never throws to the caller.
+ */
+export async function flushOfflineSessions() {
+  try {
+    const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    if (!raw) return;
+    const queue = JSON.parse(raw);
+    if (!queue.length) return;
+
+    // Clear the queue first so a mid-flush crash doesn't double-count on next run.
+    await AsyncStorage.removeItem(OFFLINE_QUEUE_KEY);
+
+    for (const _pending of queue) {
+      // Each entry runs a fresh completeSession() which handles streak/node logic.
+      // If multiple sessions were queued (unlikely), each increments correctly.
+      await completeSession().catch(e =>
+        console.warn('[Progress] Offline flush partial failure:', e?.message)
+      );
+    }
+    console.log('[Progress] Flushed', queue.length, 'offline session(s)');
+  } catch (e) {
+    console.warn('[Progress] Offline flush failed:', e?.message);
+  }
+}
+
+/**
+ * Complete a session with automatic offline fallback.
+ *
+ * On network success: behaves exactly like completeSession().
+ * On network failure: queues the session in AsyncStorage and returns an
+ * optimistic result based on the last known progress so the UI can still
+ * navigate to StreakCelebration without blocking the user.
+ *
+ * @returns {Promise<{current_node, sessions_completed, streak_days, offline?: true}>}
+ */
+export async function tryCompleteSession() {
+  try {
+    return await completeSession();
+  } catch (e) {
+    const isNetworkError = (
+      e?.message?.includes('network') ||
+      e?.message?.includes('Network') ||
+      e?.message?.includes('fetch') ||
+      e?.message?.includes('FirebaseError') ||
+      e?.code === 'unavailable'
+    );
+
+    if (!isNetworkError) throw e; // rethrow auth errors etc.
+
+    console.warn('[Progress] Session complete offline — queuing for later flush');
+    await queueOfflineSession();
+
+    // Return optimistic progress so the celebration screen still shows.
+    // Fetch last known progress from Firestore cache (may still work offline).
+    try {
+      const cached = await fetchProgress();
+      return {
+        current_node:       Math.min(TOTAL_NODES - 1, cached.current_node + 1),
+        sessions_completed: cached.sessions_completed + 1,
+        streak_days:        cached.streak_days + 1,
+        offline:            true,
+      };
+    } catch {
+      return { current_node: 1, sessions_completed: 1, streak_days: 1, offline: true };
+    }
+  }
 }

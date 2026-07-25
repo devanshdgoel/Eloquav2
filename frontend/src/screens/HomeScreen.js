@@ -27,6 +27,7 @@ import { fetchProgress, TOTAL_NODES } from '../services/progressService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
 import { useLargeText } from '../context/PrefsContext';
+import { API_BASE_URL } from '../config/env';
 
 const { width: W } = Dimensions.get('window');
 
@@ -281,7 +282,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* Greeting — shown once the first session is done and no check-in is pending */}
       {!isFirstSession && !checkinDue && (
-        <Text style={[styles.greeting, { fontSize: fs(17) }]}>Good to see you.</Text>
+        <Text style={[styles.greeting, { fontSize: fs(19) }]}>Good to see you.</Text>
       )}
 
       {/* ── Check-in due banner — shown instead of greeting ─────────────── */}
@@ -305,7 +306,13 @@ export default function HomeScreen({ navigation }) {
       {/* ── Smart Speech card — distinctively styled to stand out from the map ── */}
       <TouchableOpacity
         style={styles.speechCard}
-        onPress={() => navigation.navigate('SpeechEnhancement')}
+        onPress={() => {
+          // Fire-and-forget pre-warm so the Render backend is awake by the time
+          // the user taps record. Takes ~200 ms on a warm server, 15-20 s on a
+          // cold start — doing it here hides that cold start behind the navigation.
+          fetch(`${API_BASE_URL}/api/wake`).catch(() => {});
+          navigation.navigate('SpeechEnhancement');
+        }}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel="Smart Speech — AI voice enhancement"
@@ -320,7 +327,7 @@ export default function HomeScreen({ navigation }) {
         </View>
         <View style={styles.speechTextWrap}>
           <Text style={[styles.speechTitle, { fontSize: fs(20) }]}>Smart Speech</Text>
-          <Text style={[styles.speechSub, { fontSize: fs(15) }]}>Real-time AI voice enhancement</Text>
+          <Text style={[styles.speechSub, { fontSize: fs(17) }]}>Real-time AI voice enhancement</Text>
         </View>
         {/* Orange arrow clearly signals tappability */}
         <View style={styles.speechChevron}>
@@ -460,14 +467,16 @@ export default function HomeScreen({ navigation }) {
                         r={r}
                         fill="rgba(0,0,0,0.18)"
                       />
+                      {/* Zoom in by 1.4× so the bubble graphic fills the circle
+                          (NodeIcon.png has ~15% transparent padding on each side). */}
                       <SvgImage
                         href={nodeIconUri}
-                        x={def.cx - r * 1.1}
-                        y={def.cy - r * 1.1}
-                        width={r * 2.2}
-                        height={r * 2.2}
+                        x={def.cx - r * 1.4}
+                        y={def.cy - r * 1.4}
+                        width={r * 2.8}
+                        height={r * 2.8}
                         clipPath={`url(#cp_${i})`}
-                        preserveAspectRatio="xMidYMid meet"
+                        preserveAspectRatio="xMidYMid slice"
                       />
                     </G>
                   )}
@@ -521,11 +530,11 @@ export default function HomeScreen({ navigation }) {
                   {isFuture && !isCheckin && (
                     <SvgText
                       x={def.cx}
-                      y={def.cy + 6}
+                      y={def.cy + 7}
                       textAnchor="middle"
                       fill="#1C4047"
                       fillOpacity={1}
-                      fontSize={17}
+                      fontSize={20}
                       fontWeight="800"
                     >
                       {i + 1}

@@ -110,13 +110,13 @@ export default function SignUpScreen({ navigation }) {
               accessibilityLabel="Eloqua logo"
             />
             <Text style={[styles.wordmark, { fontSize: fs(26) }]}>Eloqua</Text>
-            <Text style={[styles.tagline, { fontSize: fs(14) }]}>Voice training for Parkinson's</Text>
+            <Text style={[styles.tagline, { fontSize: fs(14) }]}>Voice training app</Text>
           </View>
 
           <Text style={[styles.heading, { fontSize: fs(28) }]}>Create your account</Text>
 
           {/* Name */}
-          <Text style={styles.fieldLabel}>Full name</Text>
+          <Text style={styles.fieldLabel}>Name</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
@@ -128,7 +128,7 @@ export default function SignUpScreen({ navigation }) {
               returnKeyType="next"
               onSubmitEditing={() => emailRef.current?.focus()}
               blurOnSubmit={false}
-              accessibilityLabel="Full name"
+              accessibilityLabel="Name"
             />
           </View>
 

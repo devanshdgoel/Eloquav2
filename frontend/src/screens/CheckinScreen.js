@@ -23,7 +23,7 @@ import { API_BASE_URL } from '../config/env';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../utils/storage';
-import { completeSession } from '../services/progressService';
+import { tryCompleteSession } from '../services/progressService';
 import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, fetchProgressPlan, fetchCheckinNumber, DEFAULT_TIERS } from '../services/difficultyService';
 import { useLargeText } from '../context/PrefsContext';
 import { colors } from '../theme';
@@ -349,12 +349,13 @@ export default function CheckinScreen({ navigation }) {
       }
 
       logFunnelEvent('checkin_completed');
-      const result  = await completeSession();
+      const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
+      const firstName = profile?.name ? profile.name.trim().split(' ')[0] : '';
       navigation.replace('StreakCelebration', {
         streakDays: result.streak_days,
-        userName: profile?.name ?? '',
+        userName: firstName,
       });
     } catch {
       setFinishing(false);

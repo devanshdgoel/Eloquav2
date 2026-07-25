@@ -18,13 +18,14 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../config/env';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { colors } from '../theme';
 import { logUsageEvent, logScreenView } from '../utils/analytics';
 import { useLargeText } from '../context/PrefsContext';
-import { MicIcon, ClipboardIcon } from '../components/Icons';
+import { MicIcon, ClipboardIcon, SpeakerIcon } from '../components/Icons';
 import ScreenHeader from '../components/ScreenHeader';
 import SpeakerButton from '../components/SpeakerButton';
 
@@ -34,15 +35,24 @@ const { width: SW } = Dimensions.get('window');
 const SC = SW / 402;
 
 // How long each audio chunk is before being sent for transcription.
-// 4 s gives ~10–20 words per chunk; first text appears ~5.5 s after
-// the user starts speaking (4 s chunk + ~1.5 s Whisper RTT).
-const CHUNK_INTERVAL_MS = 4000;
+// 2 s gives ~5–10 words per chunk; first text appears ~3.5 s after the user
+// starts speaking (2 s chunk + ~1.5 s Whisper RTT).
+const CHUNK_INTERVAL_MS = 2000;
 
 // Silence detection thresholds.
 // dBFS readings below SILENCE_DB_THRESHOLD are considered silent.
 // If >SILENCE_CHUNK_RATIO of a chunk's readings are silent, skip Whisper.
 const SILENCE_DB_THRESHOLD = -40;  // dBFS
 const SILENCE_CHUNK_RATIO  = 0.80;
+
+// If the user has been silent for this long during a chunk, trigger an early
+// rotation rather than waiting for the full CHUNK_INTERVAL_MS.
+// This avoids sending a chunk that is mostly silence after the user stops speaking.
+const SILENCE_EARLY_TRIGGER_MS = 1200;
+
+// Don't trigger early rotation in the first 600 ms of a chunk — the user may
+// just be pausing briefly between words.
+const MIN_CHUNK_MS_BEFORE_EARLY_TRIGGER = 600;
 
 // ── Screen states ────────────────────────────────────────────────────────────
 const S = {
@@ -83,7 +93,7 @@ const AMOEBA_SETS = [
 
 
 // ── Mic group ─────────────────────────────────────────────────────────────────
-function MicGroup({ onPress, scale = 1, isRecording = false }) {
+function MicGroup({ onPress, scale = 1, isRecording = false, disabled = false }) {
   const s = SC * scale;
   const gW = Math.round(291 * s);
   const gH = Math.round(307 * s);
@@ -109,11 +119,12 @@ function MicGroup({ onPress, scale = 1, isRecording = false }) {
     const circleSize = Math.round(157 * SC);
     return (
       <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.88}
-        style={{ width: circleSize, height: circleSize, alignItems: 'center', justifyContent: 'center' }}
+        onPress={disabled ? undefined : onPress}
+        activeOpacity={disabled ? 1 : 0.88}
+        style={{ width: circleSize, height: circleSize, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.4 : 1 }}
         accessibilityRole="button"
-        accessibilityLabel="Start recording"
+        accessibilityLabel={disabled ? 'Microphone unavailable offline' : 'Start recording'}
+        disabled={disabled}
       >
         <View style={{
           width: circleSize, height: circleSize,
@@ -185,8 +196,19 @@ export default function SpeechEnhancementScreen({ navigation }) {
   const [pendingCount,    setPendingCount]   = useState(0);
   const [result,          setResult]         = useState(null);
   const [isPlaying,       setIsPlaying]      = useState(false);
-  const [isLoadingAudio,  setIsLoadingAudio] = useState(false);
+
+  // audioReady: true once the streaming sound is buffered and ready to play.
+  // false = spinner shows on play button. The button is disabled while false.
+  const [audioReady,      setAudioReady]     = useState(false);
+
+  // audioFailed: true if the streaming preload threw — shows "Audio unavailable" on button.
+  const [audioFailed,     setAudioFailed]    = useState(false);
+
   const [errorMsg,        setErrorMsg]       = useState('');
+
+  // isOnline: mirrors NetInfo.isConnected. Used to disable recording when offline.
+  const [isOnline,        setIsOnline]       = useState(true);
+
   // First-play motivational message — shown the very first time enhanced audio plays.
   const [firstPlayMsg,    setFirstPlayMsg]   = useState(null);
   const FIRST_PLAY_KEY = 'eloqua_speech_first_play';
@@ -196,6 +218,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
     const logExit = logScreenView('SpeechEnhancement');
     return logExit;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Subscribe to connectivity changes so we can disable the mic when offline.
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected !== false);
+    });
+    return unsub;
+  }, []);
 
   // Transcription model preference loaded from Settings ("whisper" | "soniva")
   const transcriptionModelRef = useRef('whisper');
@@ -209,31 +239,32 @@ export default function SpeechEnhancementScreen({ navigation }) {
   }, []);
 
   // Track whether the component is still mounted so async audio-load callbacks
-  // don't fire after the user has navigated away (root cause of the delayed-play bug).
+  // don't fire after the user has navigated away.
   const isMountedRef = useRef(true);
 
   // Chunk bookkeeping — plain refs to avoid re-render storms
   const recordingRef      = useRef(null);
+  // soundRef: the current playback sound (either streaming or replaying).
   const soundRef          = useRef(null);
-  // Holds an Audio.Sound that was pre-loaded in the background as soon as results
-  // arrived. By the time the user taps Play (typically 3–10 s later), the file is
-  // already downloaded and ready — eliminates the per-tap network wait.
+  // preloadedSoundRef: streaming sound created in background, moved to soundRef on first play.
   const preloadedSoundRef = useRef(null);
-  // Incremented each time a new recording session starts. preloadAudio captures
-  // the generation at call time and discards its result if the counter has advanced,
-  // preventing a stale preload from an old session from leaking into a new one.
+  // Incremented each time a new recording session starts to discard stale preloads.
   const sessionGenerationRef = useRef(0);
-  const playbackLockRef   = useRef(false); // prevents concurrent sound creation from rapid taps
+  const playbackLockRef   = useRef(false);
   const chunkTimerRef     = useRef(null);
   const chunkIndexRef     = useRef(0);
-  // Each entry: { raw: string, enhanced: string }
   const chunksRef         = useRef({});
   const chunkPromisesRef  = useRef([]);
   const stoppingRef       = useRef(false);
-  const isRotatingRef     = useRef(false);    // true while rotateChunk is mid-execution
-  const chunkErrorsRef    = useRef(0);        // count of failed chunk requests
-  // dBFS readings collected from the active recording via status callback
+  const isRotatingRef     = useRef(false);
+  const chunkErrorsRef    = useRef(0);
   const meteringRef       = useRef([]);
+
+  // Silence-based early rotation: track when the current chunk started and
+  // the last time a non-silent metering reading was received.
+  const chunkStartMsRef   = useRef(0);
+  const lastSoundMsRef    = useRef(0);
+
   // Voice analysis: URIs of completed chunks + session timing
   const chunkUrisRef         = useRef([]);
   const recordingStartMsRef  = useRef(0);
@@ -241,8 +272,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   useEffect(() => {
     return () => {
-      // Mark as unmounted FIRST — checked by playEnhanced's async continuation
-      // to prevent the sound from playing after the user has navigated away.
       isMountedRef.current = false;
       soundRef.current?.unloadAsync();
       preloadedSoundRef.current?.unloadAsync();
@@ -275,39 +304,57 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // ── Silence detection helpers ────────────────────────────────────────────────
 
-  // Drain the metering buffer and return its contents.
-  // Clearing here means the next recording starts with an empty slate.
   function snapshotMetering() {
     const readings = [...meteringRef.current];
     meteringRef.current = [];
     return readings;
   }
 
-  // Returns true when >SILENCE_CHUNK_RATIO of readings are below SILENCE_DB_THRESHOLD.
-  // Skips the check when there are fewer than 5 readings (e.g. user stops very quickly)
-  // so we never accidentally drop a short but valid utterance.
   function isChunkSilent(readings) {
     if (readings.length < 5) return false;
     const silentCount = readings.filter(db => db < SILENCE_DB_THRESHOLD).length;
     return (silentCount / readings.length) > SILENCE_CHUNK_RATIO;
   }
 
-  // Creates an Audio.Recording with metering enabled so we can detect silence.
+  // Creates an Audio.Recording with metering enabled for both silence detection
+  // and the early-rotation trigger.
   async function createRecordingWithMetering() {
+    chunkStartMsRef.current = Date.now();
+    lastSoundMsRef.current  = Date.now(); // assume sound at chunk start
+
     const { recording } = await Audio.Recording.createAsync(
       { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true },
       (status) => {
-        if (status.isRecording && status.metering != null) {
-          meteringRef.current.push(status.metering);
+        if (!status.isRecording || status.metering == null) return;
+        meteringRef.current.push(status.metering);
+
+        const now = Date.now();
+        if (status.metering >= SILENCE_DB_THRESHOLD) {
+          // User is speaking — reset the silence clock.
+          lastSoundMsRef.current = now;
+        } else {
+          // Silent reading — check if we've hit the early-trigger threshold.
+          const silenceDuration = now - lastSoundMsRef.current;
+          const chunkAge        = now - chunkStartMsRef.current;
+
+          if (
+            silenceDuration >= SILENCE_EARLY_TRIGGER_MS &&
+            chunkAge        >= MIN_CHUNK_MS_BEFORE_EARLY_TRIGGER &&
+            !stoppingRef.current &&
+            !isRotatingRef.current
+          ) {
+            // Cancel the timer and immediately rotate — the user has stopped speaking.
+            clearTimeout(chunkTimerRef.current);
+            chunkTimerRef.current = null;
+            rotateChunk(); // intentionally not awaited — runs async
+          }
         }
       },
-      100 // status update interval in ms
+      100 // status interval in ms
     );
     return recording;
   }
 
-  // attempt=0 is the first try; attempt=1 is the single permitted retry.
-  // Healthcare context: we must not silently drop words on a transient network error.
   async function transcribeChunk(uri, index, previousRawText, previousEnhancedText, attempt = 0) {
     try {
       const form = new FormData();
@@ -318,9 +365,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
       if (previousEnhancedText) form.append('previous_enhanced_text', previousEnhancedText);
 
       const ctrl = new AbortController();
-      // 28 s gives the Render free-tier server time to wake from a cold start
-      // (typically 15–20 s) before we abort. The previous 15 s timed out before
-      // the server could respond, causing all chunks to fail simultaneously.
+      // 28 s timeout covers Render cold-start (15–20 s) before aborting.
       const tid  = setTimeout(() => ctrl.abort(), 28000);
       const res  = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
         method: 'POST',
@@ -330,7 +375,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
       if (!res.ok) {
         if (attempt === 0) {
-          // Wait longer on retry — gives a cold-starting server more time to be ready.
           await new Promise(r => setTimeout(r, 4000));
           return transcribeChunk(uri, index, previousRawText, previousEnhancedText, 1);
         }
@@ -348,7 +392,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
           raw:      rawText,
           enhanced: enhancedText || rawText,
         };
-        // Show the enhanced text live — already GPT-corrected per chunk
         setLiveTranscript(getAccumulatedEnhancedText());
       }
     } catch (e) {
@@ -373,20 +416,17 @@ export default function SpeechEnhancementScreen({ navigation }) {
     const finished             = recordingRef.current;
     recordingRef.current = null;
 
-    // Snapshot metering BEFORE stopping so we capture all readings for this chunk.
     const chunkReadings = snapshotMetering();
 
     try {
       await finished.stopAndUnloadAsync();
       const uri = finished.getURI();
 
-      // Start the next recording before sending the chunk so there's no
-      // audible gap for the user.
+      // Start the next recording before sending the chunk — no audible gap.
       if (!stoppingRef.current) {
         recordingRef.current = await createRecordingWithMetering();
       }
 
-      // Layer 1 silence gate: skip Whisper entirely for silent chunks.
       if (uri && !isChunkSilent(chunkReadings)) {
         chunkUrisRef.current.push(uri);
         setPendingCount(c => c + 1);
@@ -409,17 +449,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   async function startRecording() {
     try {
-      // Await cleanup of any preloaded sound from the previous session BEFORE
-      // changing the audio mode. On iOS, Sound.unloadAsync() deactivates the audio
-      // session when it's the last active sound object. If unloadAsync runs AFTER
-      // setAudioModeAsync({ allowsRecordingIOS: true }), it can silently deactivate
-      // the session mid-setup and cause the new recording to capture only silence.
       if (preloadedSoundRef.current) {
         await preloadedSoundRef.current.unloadAsync().catch(() => {});
         preloadedSoundRef.current = null;
       }
-      // Advance the session generation so any still-running preloadAudio from the
-      // previous session discards its result rather than overwriting the cleared ref.
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync().catch(() => {});
+        soundRef.current = null;
+      }
       sessionGenerationRef.current += 1;
 
       const { status } = await Audio.requestPermissionsAsync();
@@ -439,6 +476,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
       setLiveTranscript('');
       setPendingCount(0);
       setResult(null);
+      setAudioReady(false);
+      setAudioFailed(false);
 
       meteringRef.current = [];
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
@@ -455,18 +494,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
     clearTimeout(chunkTimerRef.current);
     chunkTimerRef.current = null;
 
-    // If rotateChunk is mid-execution (it has nulled recordingRef and is
-    // awaiting stopAndUnloadAsync or createAsync), wait for it to finish
-    // before we proceed — otherwise we'd race on recordingRef and
-    // chunkPromisesRef.
     while (isRotatingRef.current) {
       await new Promise(r => setTimeout(r, 30));
     }
 
-    // Capture session duration before async work begins.
     recordingDurationRef.current = (Date.now() - recordingStartMsRef.current) / 1000;
-
-    // Switch to ENHANCING immediately so the UI is responsive.
     setPhase(S.ENHANCING);
 
     const lastRecording = recordingRef.current;
@@ -550,13 +582,13 @@ export default function SpeechEnhancementScreen({ navigation }) {
         duration_ms: Math.round((recordingDurationRef.current ?? 0) * 1000),
       });
 
-      // Start downloading the audio in the background immediately.
-      // The user reads the transcript for several seconds, giving the download
-      // time to finish so playback is instant when they tap Play.
-      if (data.audio_url) preloadAudio(data.audio_url);
+      // Immediately start buffering the streaming audio in the background.
+      // The user reads their transcript for several seconds — by the time they
+      // tap Play, the stream is already buffered and ready.
+      if (data.stream_token) {
+        preloadStreamAudio(data.stream_token);
+      }
 
-      // Fire-and-forget: non-blocking voice analysis for progress tracking.
-      // Does NOT affect the current session's results.
       analyzeVoiceAsync(rawText, recordingDurationRef.current);
     } catch (e) {
       console.error('[Speech] enhanceText error:', e?.message);
@@ -566,9 +598,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
     }
   }
 
-  // Send a representative audio chunk + transcript to /api/analyze-voice.
-  // Picks the middle chunk (least likely to be a partial/hesitation utterance).
-  // Runs fully in the background — any failure is swallowed.
   async function analyzeVoiceAsync(transcript, durationS) {
     const uris = chunkUrisRef.current;
     if (!uris.length || !durationS) return;
@@ -591,109 +620,92 @@ export default function SpeechEnhancementScreen({ navigation }) {
     }
   }
 
-  // ── Playback ─────────────────────────────────────────────────────────────────
+  // ── Streaming audio preload ───────────────────────────────────────────────────
 
-  // Download and pre-load TTS audio as soon as results arrive.
-  //
-  // Using FileSystem.downloadAsync rather than passing a remote URI directly
-  // to Sound.createAsync because:
-  //   1. The backend JSON response no longer embeds base64 audio, so it returns
-  //      in ~2 KB instead of ~400 KB — the transcript appears on screen faster.
-  //   2. A native binary download (downloadAsync) is more efficient than the
-  //      combined download + decode path inside Sound.createAsync.
-  //   3. Sound.createAsync from a local path is consistently fast (< 500 ms).
-  //
-  // The user typically reads the transcript for 5–15 s before tapping Play —
-  // more than enough time for a 160 KB audio file to download on any 3G+ network.
-  async function preloadAudio(audioUrl) {
-    if (!isMountedRef.current || !audioUrl) return;
+  // Connect to the backend streaming TTS endpoint and buffer the audio via expo-av.
+  // expo-av's Sound.createAsync handles progressive buffering — it resolves once
+  // enough audio is buffered to start playback (~1–1.5 s for ElevenLabs streaming).
+  // This runs immediately after the transcript appears, so by the time the user
+  // reads and taps Play, the sound is already buffered.
+  async function preloadStreamAudio(streamToken) {
+    if (!isMountedRef.current || !streamToken) return;
     const generation = sessionGenerationRef.current;
+    const streamUrl  = `${API_BASE_URL}/api/stream-tts/${streamToken}`;
+
+    setAudioReady(false);
+    setAudioFailed(false);
+
     try {
-      // Download the audio file to a local cache path for this session.
-      const localPath = `${FileSystem.cacheDirectory}eloqua_enhanced_${generation}.m4a`;
-      const { uri: downloadedUri } = await FileSystem.downloadAsync(
-        `${API_BASE_URL}${audioUrl}`,
-        localPath,
-      );
-
-      // Abort if the component unmounted or a new session started while downloading.
-      if (!isMountedRef.current || sessionGenerationRef.current !== generation) return;
-
-      // Load into expo-av from the local file — fast with no network dependency.
-      // volume: 1.0 is explicit because some devices default lower after a recording session.
+      // createAsync connects to the streaming URL. expo-av buffers chunks as
+      // ElevenLabs generates them. The await resolves when enough is buffered
+      // for gapless playback (typically ~1–2 s after the request starts).
       const { sound } = await Audio.Sound.createAsync(
-        { uri: downloadedUri },
-        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 },
+        { uri: streamUrl },
+        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 }
       );
 
-      // Discard if: component unmounted, playback already started, or new session began.
-      if (!isMountedRef.current || soundRef.current || sessionGenerationRef.current !== generation) {
+      // Discard if the component unmounted or a new recording session started.
+      if (!isMountedRef.current || sessionGenerationRef.current !== generation) {
         sound.unloadAsync().catch(() => {});
         return;
       }
+
       preloadedSoundRef.current = sound;
+      setAudioReady(true);
     } catch (e) {
-      console.warn('[Speech] Audio preload failed:', e?.message);
+      console.warn('[Speech] Stream audio preload failed:', e?.message);
+      if (isMountedRef.current && sessionGenerationRef.current === generation) {
+        setAudioFailed(true);
+      }
     }
   }
 
+  // ── Playback ─────────────────────────────────────────────────────────────────
+
   async function playEnhanced() {
-    if (!result?.audio_url || playbackLockRef.current) return;
+    if (playbackLockRef.current) return;
     playbackLockRef.current = true;
 
     try {
+      // Replay path: the sound was previously played and is still loaded.
+      // Reset position to the beginning and play again.
       if (soundRef.current) {
-        await soundRef.current.stopAsync().catch(() => {});
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+        setIsPlaying(true);
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false,
+        });
+        await soundRef.current.setPositionAsync(0);
+        await soundRef.current.playAsync();
+        return;
       }
 
-      let sound;
-      if (preloadedSoundRef.current) {
-        // Happy path: audio was pre-loaded while the user read the transcript —
-        // no network wait, playback is instant.
-        sound = preloadedSoundRef.current;
-        preloadedSoundRef.current = null;
-      } else {
-        // Fallback: preload didn't finish in time (very fast tap or slow network).
-        // Download directly to local cache then load — same fast path as preload.
-        setIsLoadingAudio(true);
-        const generation = sessionGenerationRef.current;
-        const localPath  = `${FileSystem.cacheDirectory}eloqua_enhanced_${generation}_fb.m4a`;
-        const { uri: downloadedUri } = await FileSystem.downloadAsync(
-          `${API_BASE_URL}${result.audio_url}`,
-          localPath,
-        );
+      // First play: consume the preloaded streaming sound.
+      if (!preloadedSoundRef.current) return; // button should be disabled — shouldn't reach here
 
-        if (!isMountedRef.current) return;
+      const sound = preloadedSoundRef.current;
+      preloadedSoundRef.current = null;
 
-        const loaded = await Audio.Sound.createAsync(
-          { uri: downloadedUri },
-          { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 },
-        );
-        sound = loaded.sound;
-
-        if (!isMountedRef.current) {
-          sound.unloadAsync().catch(() => {});
-          return;
-        }
-      }
-
+      // audioReady will flip back to true once playback finishes (to allow replay).
+      setAudioReady(false);
       soundRef.current = sound;
-      setIsLoadingAudio(false);
       setIsPlaying(true);
 
       sound.setOnPlaybackStatusUpdate(s => {
-        if (s.didJustFinish || !s.isLoaded) {
+        if (s.didJustFinish) {
+          if (isMountedRef.current) {
+            setIsPlaying(false);
+            // Re-enable play button so the user can replay via soundRef.
+            setAudioReady(true);
+          }
+        } else if (!s.isLoaded) {
           if (isMountedRef.current) setIsPlaying(false);
           sound.unloadAsync().catch(() => {});
           if (soundRef.current === sound) soundRef.current = null;
         }
       });
 
-      // Re-assert speaker routing right before playback.
-      // Recording mode can quietly leave the audio session routed to the earpiece
-      // even after allowsRecordingIOS is set to false, making playback very quiet.
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -711,7 +723,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
     } catch {
       if (isMountedRef.current) Alert.alert('Playback Error', 'Could not play the enhanced audio.');
     } finally {
-      if (isMountedRef.current) setIsLoadingAudio(false);
       playbackLockRef.current = false;
     }
   }
@@ -719,6 +730,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
   async function stopPlayback() {
     await soundRef.current?.stopAsync();
     setIsPlaying(false);
+    // Re-enable the play button in replay mode.
+    if (soundRef.current) setAudioReady(true);
   }
 
   async function shareText() {
@@ -732,6 +745,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
     preloadedSoundRef.current?.unloadAsync();
     preloadedSoundRef.current = null;
     setIsPlaying(false);
+    setAudioReady(false);
+    setAudioFailed(false);
     setResult(null);
     setErrorMsg('');
     setLiveTranscript('');
@@ -746,6 +761,14 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   const showPending = pendingCount > 0;
 
+  // ── Play button state ────────────────────────────────────────────────────────
+  // hasStreamToken: determines whether to show the play button at all.
+  const hasStreamToken = Boolean(result?.stream_token);
+  // playBtnLoading: spinner state — stream token exists but audio not ready yet.
+  const playBtnLoading = hasStreamToken && !audioReady && !audioFailed && !isPlaying;
+  // playBtnEnabled: tap allowed when audio is ready and not currently playing stop.
+  const playBtnEnabled = audioReady || isPlaying;
+
   return (
     <LinearGradient
       colors={colors.gradients.app}
@@ -755,7 +778,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
     >
       <StatusBar barStyle="light-content" />
 
-      {/* Header — back button on top row, title centred below */}
       <ScreenHeader
         navigation={navigation}
         title="Smart Speech"
@@ -778,21 +800,28 @@ export default function SpeechEnhancementScreen({ navigation }) {
         <View style={styles.idleArea}>
           <Text style={[styles.hintText, { fontSize: fs(20) }]}>Tap the mic to begin</Text>
           <View style={{ height: 28 }} />
-          <MicGroup onPress={handleMicPress} isRecording={false} />
+          <MicGroup onPress={handleMicPress} isRecording={false} disabled={!isOnline} />
+          {/* Contextual offline message — shown when NetInfo reports no connection */}
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={[styles.offlineText, { fontSize: fs(15) }]}>
+                Smart Speech needs an internet connection to transcribe your voice.
+                Connect to Wi-Fi or mobile data to continue.
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
       {/* ── RECORDING ─────────────────────────────────────────────────────── */}
       {phase === S.RECORDING && (
         <View style={styles.recordingArea}>
-          {/* Mic lives at the top so the transcript card has room below */}
           <View style={styles.micRow}>
             <MicGroup onPress={handleMicPress} scale={0.78} isRecording />
           </View>
 
           <Text style={[styles.hintText, { fontSize: fs(20) }]}>Tap mic to finish</Text>
 
-          {/* Live transcript card — appears as soon as the first chunk lands */}
           <View style={styles.liveCard}>
             <ScrollView
               contentContainerStyle={styles.liveCardPad}
@@ -810,7 +839,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
               )}
             </ScrollView>
 
-            {/* Label strip at the bottom of the card */}
             <View style={styles.liveCardFooter}>
               <View style={styles.liveCardDot} />
               <Text style={styles.liveCardLabel}>LIVE ENHANCED</Text>
@@ -822,7 +850,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
       {/* ── ENHANCING ─────────────────────────────────────────────────────── */}
       {phase === S.ENHANCING && (
         <View style={styles.enhancingArea}>
-          {/* Centered loading card — prominent so users know the app is working */}
           <View style={styles.enhancingCard}>
             <ActivityIndicator size="large" color={ORANGE} />
             <Text style={[styles.enhancingText, { fontSize: fs(22) }]}>Polishing your words…</Text>
@@ -831,7 +858,6 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </Text>
           </View>
 
-          {/* Dimmed transcript stays visible so users can see what was captured */}
           {liveTranscript ? (
             <View style={[styles.liveCard, styles.liveCardDim]}>
               <ScrollView
@@ -867,27 +893,41 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </ScrollView>
           </View>
 
-          {/* Audio loading row — shown while the fallback download runs */}
-          {isLoadingAudio && (
-            <View style={styles.audioLoadingRow}>
-              <ActivityIndicator size="small" color={ORANGE} />
-              <Text style={styles.audioLoadingText}>Preparing audio…</Text>
-            </View>
+          {/* Play button — disabled (spinner) while audio is buffering from ElevenLabs stream */}
+          {hasStreamToken && (
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                styles.actionBtnPlay,
+                !playBtnEnabled && styles.actionBtnDisabled,
+              ]}
+              onPress={isPlaying ? stopPlayback : playEnhanced}
+              activeOpacity={playBtnEnabled ? 0.85 : 1}
+              disabled={!playBtnEnabled}
+              accessibilityRole="button"
+              accessibilityLabel={
+                playBtnLoading ? 'Preparing audio' :
+                isPlaying ? 'Stop audio' :
+                'Play enhanced audio'
+              }
+            >
+              {playBtnLoading ? (
+                // Spinner while ElevenLabs stream buffers (~1–2 s)
+                <ActivityIndicator size="small" color="#1A1A1A" />
+              ) : audioFailed ? (
+                <Text style={[styles.actionLabel, { color: 'rgba(255,255,255,0.40)', fontSize: fs(16) }]}>
+                  Audio unavailable
+                </Text>
+              ) : (
+                <>
+                  <Text style={[styles.actionLabel, { color: playBtnEnabled ? '#1A1A1A' : 'rgba(255,255,255,0.40)' }]}>
+                    {isPlaying ? 'Stop' : 'Play'}
+                  </Text>
+                  <SpeakerIcon size={22} color={playBtnEnabled ? '#1A1A1A' : 'rgba(255,255,255,0.40)'} />
+                </>
+              )}
+            </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnPlay, (!result.audio_url || isLoadingAudio) && styles.actionBtnDisabled]}
-            onPress={isPlaying ? stopPlayback : playEnhanced}
-            activeOpacity={result.audio_url && !isLoadingAudio ? 0.85 : 1}
-            disabled={!result.audio_url || isLoadingAudio}
-            accessibilityRole="button"
-            accessibilityLabel={isLoadingAudio ? 'Loading audio' : isPlaying ? 'Stop audio' : 'Play enhanced audio'}
-          >
-            <Text style={[styles.actionLabel, { color: result.audio_url && !isLoadingAudio ? '#1A1A1A' : 'rgba(255,255,255,0.40)' }]}>
-              {isPlaying ? 'Stop' : 'Play'}
-            </Text>
-            <Text style={styles.actionIcon}>🔊</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Copy transcript">
             <Text style={styles.actionLabel}>Copy text</Text>
@@ -901,7 +941,7 @@ export default function SpeechEnhancementScreen({ navigation }) {
         </View>
       )}
 
-      {/* First-play motivational overlay — fades in automatically */}
+      {/* First-play motivational overlay */}
       {firstPlayMsg ? (
         <View style={styles.firstPlayOverlay} pointerEvents="none">
           <Text style={styles.firstPlayText}>{firstPlayMsg}</Text>
@@ -912,19 +952,37 @@ export default function SpeechEnhancementScreen({ navigation }) {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-// Background gradient sourced from colors.gradients.app (imported above).
 const WHITE  = '#FFFFFF';
 const ORANGE = '#FFA940';
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Header now rendered by shared ScreenHeader component
-
   // ── IDLE ──
   idleArea: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
-    paddingTop: 60, // shifts the mic slightly below the visual centre
+    paddingTop: 60,
+    paddingHorizontal: 24,
+  },
+
+  // Offline context banner — shown in IDLE state when NetInfo reports no connection.
+  offlineBanner: {
+    marginTop: 32,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    width: '100%',
+    maxWidth: 340,
+  },
+  offlineText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 
   // ── RECORDING ──
@@ -1019,7 +1077,6 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: Math.round(20 * SC),
   },
-  // Frosted card around the spinner + text so it reads clearly over any background
   enhancingCard: {
     width: '100%',
     alignItems: 'center',
@@ -1071,29 +1128,11 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   transcriptPad: { padding: 20 },
-  transcriptLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: 'rgba(28,64,71,0.40)',
-    letterSpacing: 2,
-    marginBottom: 6,
-  },
   transcriptText: {
     fontSize: 18,
     color: '#000',
     letterSpacing: 1.2,
     lineHeight: 28,
-  },
-  rawDivider: {
-    height: 1,
-    backgroundColor: 'rgba(28,64,71,0.08)',
-    marginVertical: 14 * SC,
-  },
-  rawText: {
-    fontSize: 16,
-    color: 'rgba(0,0,0,0.40)',
-    letterSpacing: 0.5,
-    lineHeight: 24,
   },
 
   actionBtn: {
@@ -1112,27 +1151,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     shadowOpacity: 0, elevation: 0,
   },
-  audioLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 8,
-  },
-  audioLoadingText: {
-    color: 'rgba(255,255,255,0.70)',
-    fontSize: 15,
-    fontWeight: '500',
-    letterSpacing: 0.3,
-  },
   actionLabel: { color: WHITE, fontSize: 20, fontWeight: '700', letterSpacing: 1.8 },
-  actionIcon:  { fontSize: 20 },
-  actionUnavailable: {
-    color: 'rgba(255,255,255,0.60)',
-    fontSize: 14,
-    letterSpacing: 0.5,
-    marginLeft: -6,
-  },
 
   newRecordBtn: {
     backgroundColor: '#48D28C',

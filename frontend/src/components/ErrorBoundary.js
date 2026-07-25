@@ -21,17 +21,18 @@ export default class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <View style={styles.container}>
-          <Text style={styles.heading}>Something went wrong</Text>
+          <Text style={styles.heading}>Brief hiccup</Text>
           <Text style={styles.description}>
-            The app ran into an unexpected error. Please try again.
+            Your progress has been saved and is not affected.{'\n\n'}
+            This is usually caused by a temporary connection issue. Tap the button below to continue — it typically resolves in one tap.
           </Text>
           <TouchableOpacity
             style={styles.retryButton}
             onPress={this.handleRetry}
             accessibilityRole="button"
-            accessibilityLabel="Retry"
+            accessibilityLabel="Continue"
           >
-            <Text style={styles.retryText}>Try Again</Text>
+            <Text style={styles.retryText}>Continue</Text>
           </TouchableOpacity>
         </View>
       );

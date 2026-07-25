@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, View, StyleSheet, Easing } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import OfflineBanner from '../components/OfflineBanner';
 import { NavigationContainer } from '@react-navigation/native';
+import { flushOfflineSessions } from '../services/progressService';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +47,20 @@ const Stack = createStackNavigator();
 
 export default function AppNavigator() {
   const { isLoading } = useAuth();
+
+  // When the device regains connectivity, flush any session completions that were
+  // queued while offline (e.g. user finished a vocal training session without internet).
+  useEffect(() => {
+    let wasOffline = false;
+    const unsub = NetInfo.addEventListener(state => {
+      const nowOnline = state.isConnected === true;
+      if (nowOnline && wasOffline) {
+        flushOfflineSessions(); // fire-and-forget — never throws
+      }
+      wasOffline = !nowOnline;
+    });
+    return unsub;
+  }, []);
 
   if (isLoading) {
     return (
