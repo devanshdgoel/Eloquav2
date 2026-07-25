@@ -243,7 +243,7 @@ def clarity_final_pass(enhanced_text: str, examples: list[dict] | None = None) -
 
     try:
         response = _client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": _FINAL_PASS_SYSTEM_PROMPT},
                 {
@@ -296,7 +296,7 @@ def clarity_transcript_chunked(raw_text: str, context: str = "") -> str:
 
     try:
         response = _client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {
@@ -351,7 +351,7 @@ def clarity_transcript(raw_text: str, examples: list[dict] | None = None) -> str
 
     try:
         response = _client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {
