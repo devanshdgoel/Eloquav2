@@ -53,7 +53,7 @@ def generate_enhanced_speech(
 
     payload = {
         "text": text,
-        "model_id": "eleven_flash_v2_5",    # fastest model; supports cloned voices
+        "model_id": "eleven_turbo_v2_5",   # better articulation clarity
         "voice_settings": settings,
     }
 
