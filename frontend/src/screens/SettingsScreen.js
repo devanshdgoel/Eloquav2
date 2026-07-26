@@ -411,8 +411,13 @@ export default function SettingsScreen({ navigation }) {
     getUserProfile().then(p => setProfile(p));
     loadPrefs().then(p => setPrefs(p));
     hasPermission().then(setNotifPermission);
-    // Non-fatal — voice status is best-effort; null means "not yet known".
-    getVoiceStatus().then(setVoiceStatus).catch(() => {});
+    // Race the voice-status fetch against a 10 s timeout so the Row never
+    // hangs on "Checking…" when the backend is unreachable (observed in live run).
+    // On timeout setVoiceStatus to the error sentinel so the Row shows a retry label.
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000));
+    Promise.race([getVoiceStatus(), timeout])
+      .then(setVoiceStatus)
+      .catch(() => setVoiceStatus({ _error: true }));
   }, []);
 
   // Generic pref update — writes to AsyncStorage and notifies PrefsContext.
@@ -644,10 +649,20 @@ export default function SettingsScreen({ navigation }) {
               sublabel={
                 voiceStatus == null
                   ? 'Checking…'
-                  : voiceStatus.has_cloned_voice
-                    ? 'Active — your personal voice is set up'
-                    : 'No profile yet — create one in the Voice Setup exercise'
+                  : voiceStatus._error
+                    ? "Couldn't check right now — tap to retry"
+                    : voiceStatus.has_cloned_voice
+                      ? 'Active — your personal voice is set up'
+                      : 'No profile yet — create one in the Voice Setup exercise'
               }
+              // Retry fetch when the previous attempt timed out.
+              onPress={voiceStatus?._error ? () => {
+                setVoiceStatus(null);
+                const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000));
+                Promise.race([getVoiceStatus(), timeout])
+                  .then(setVoiceStatus)
+                  .catch(() => setVoiceStatus({ _error: true }));
+              } : undefined}
               isLast={!voiceStatus?.has_cloned_voice}
               right={
                 voiceStatus?.has_cloned_voice
