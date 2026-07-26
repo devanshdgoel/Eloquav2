@@ -54,7 +54,10 @@ const HEAR_DELAY_MS   = 350;    // wait before TTS fires so the card animation s
 // user always hears the full sentence before being asked to repeat it.
 // Tier ≥2 sentences take 5–15 s at rate 0.80, so a fixed 2.8 s was cutting TTS off mid-word.
 const AUTO_SPEAK_SAFETY_MS = 20000;  // safety cap if onDone never fires (e.g. interrupted TTS)
-const MAX_RECORD_MS   = 5000;  // mic timeout → wrong-answer drawer
+// Raised from 5000 ms to 10000 ms — 5 s was too short for tier-3+ sentences and
+// for users with slower speech due to Parkinson's. 10 s gives enough headroom
+// while still guaranteeing the exercise moves forward without user intervention.
+const MAX_RECORD_MS   = 10000;  // mic timeout → wrong-answer drawer
 const MIN_SPEAK_MS    = 220;
 const CALIBRATION_MS  = 1500;
 const MIN_THRESHOLD   = 0.28;
@@ -287,6 +290,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const phaseRef          = useRef('hear');
   const itemIdxRef        = useRef(0);
   const retryCountRef     = useRef(0); // incremented each time wrong drawer fires
+  // 'timeout' = mic ran out before any speech detected; 'mismatch' = STT didn't match.
+  // Each case gets different copy so the feedback is contextually appropriate.
+  const wrongReasonRef    = useRef('mismatch');
   const recordingRef      = useRef(null);
   const holdTimerRef      = useRef(null);
   const hearTimerRef      = useRef(null);
@@ -396,11 +402,16 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         80,
       );
       recordingRef.current = recording;
-      // Timeout → wrong answer drawer
+      // Timeout: mic ran out before any speech was detected.
+      // 'timeout' reason shows "Take your time" copy rather than the mismatch copy.
       maxTimerRef.current = setTimeout(() => {
-        if (phaseRef.current === 'speak') handleWrong();
+        if (phaseRef.current === 'speak') {
+          wrongReasonRef.current = 'timeout';
+          handleWrong();
+        }
       }, MAX_RECORD_MS);
     } catch (_) {
+      wrongReasonRef.current = 'timeout';
       handleWrong();
     }
   }
@@ -496,7 +507,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       if (textMatches(transcript, targetText)) {
         doAdvance();
       } else {
-        // Transcript didn't match — show wrong drawer for retry
+        // Transcript didn't match — show wrong drawer for retry.
+        // 'mismatch' reason shows "Let's try that once more" copy.
+        wrongReasonRef.current = 'mismatch';
         phaseRef.current = 'wrong';
         setPhase('wrong');
         showDrawer();
@@ -731,8 +744,14 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       {/* ── Wrong-answer drawer (Figma Type 37) ── */}
       {drawerVisible && (
         <Animated.View style={[styles.drawer, { transform: [{ translateY: drawerTranslate }] }]}>
+          {/* Two distinct cases — timeout (no speech heard) vs STT mismatch.
+              Neither uses "Doesn't sound correct" — that phrasing is discouraging.
+              Timeout: nudge them to use the speaker to hear the sentence again.
+              Mismatch: light encouragement to try once more at full volume. */}
           <Text style={styles.drawerText}>
-            Doesn't sound correct.{'\n'}Give it another try!
+            {wrongReasonRef.current === 'timeout'
+              ? 'Take your time — tap the speaker to hear it again.'
+              : "Let's try that once more — nice and loud."}
           </Text>
           <TouchableOpacity style={styles.drawerArrow} onPress={retryItem} accessibilityRole="button" accessibilityLabel="Try again">
             <Text style={styles.drawerArrowText}>→</Text>

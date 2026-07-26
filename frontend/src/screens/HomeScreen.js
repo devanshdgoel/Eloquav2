@@ -23,7 +23,7 @@ import Svg, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fetchProgress, TOTAL_NODES } from '../services/progressService';
+import { fetchProgress, TOTAL_NODES, isCheckinDue } from '../services/progressService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
 import { useLargeText } from '../context/PrefsContext';
@@ -178,10 +178,10 @@ export default function HomeScreen({ navigation }) {
     }
   }
 
-  const isFirstSession   = progress.sessions_completed === 0;
-  const checkinDue       = progress.sessions_completed > 0
-    && progress.sessions_completed % LEVELS_EVERY === 0
-    && progress.sessions_completed > progress.last_checkin_session;
+  const isFirstSession = progress.sessions_completed === 0;
+  // Delegate check-in-due logic to the shared helper so HomeScreen and
+  // ProgressScreen always agree on when a check-in is available.
+  const checkinDue     = isCheckinDue(progress);
 
   const nodeIconUri = useMemo(
     () => Image.resolveAssetSource(require('../../assets/images/NodeIcon.png')).uri, []

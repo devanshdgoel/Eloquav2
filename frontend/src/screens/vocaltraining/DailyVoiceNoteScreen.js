@@ -75,8 +75,12 @@ function getGreeting() {
   return 'Good evening';
 }
 
+// Local-time YYYY-MM-DD — matches progressService's today() so that the daily gate
+// and streak logic agree on what "today" is.  The old toISOString() version used UTC,
+// which could gate a session as "already done" one calendar day too early for users
+// in UTC+ timezones who practise in the evening.
 function todayDateString() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC-stable enough
+  return new Date().toLocaleDateString('en-CA'); // 'en-CA' locale gives YYYY-MM-DD in local time
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -152,6 +156,10 @@ export default function DailyVoiceNoteScreen({ navigation, route }) {
 
   function handleSkip() {
     stopCleanup();
+    // Write today's date so the screen doesn't re-appear if the user navigates back.
+    // The header comment says this is the gate's intent, but the original code only
+    // wrote the key in stopRecording() — skipping left the gate open all day.
+    AsyncStorage.setItem(DAILY_VOICE_KEY, todayDateString()).catch(() => {});
     goToSession();
   }
 
@@ -347,6 +355,9 @@ export default function DailyVoiceNoteScreen({ navigation, route }) {
         {isIdle && (
           <>
             <Text style={s.hint}>Speak naturally for about 20 seconds</Text>
+            <Text style={s.trackerHint}>
+              This 20-second note helps track how your voice changes over time.
+            </Text>
 
             {/* Pulsing mic button */}
             <View style={s.micOuter}>
@@ -545,6 +556,15 @@ const s = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.2,
     marginTop: -6,
+  },
+  // Secondary sentence explaining why the 20-second note matters (WCAG AA: ≥0.60)
+  trackerHint: {
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 16,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+    marginTop: 6,
+    marginHorizontal: 24,
   },
 
   micOuter: {
