@@ -48,12 +48,12 @@ import { getUserProfile } from '../../utils/storage';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
 
-import BreathingExercise      from './exercises/BreathingExercise';
-import SustainedPhonation     from './exercises/SustainedPhonationExercise';
-import LoudnessDrills         from './exercises/LoudnessDrillsExercise';
-import PitchGlideMiniExercise from './exercises/PitchGlideMiniExercise';
-import ReadingMiniExercise    from './exercises/ReadingMiniExercise';
-import VoiceSetupExercise     from './exercises/VoiceSetupExercise';
+import BreathingExercise   from './exercises/BreathingExercise';
+import SustainedPhonation  from './exercises/SustainedPhonationExercise';
+import LoudnessDrills      from './exercises/LoudnessDrillsExercise';
+import PitchGlides         from './exercises/PitchGlidesExercise';
+import ReadingMiniExercise from './exercises/ReadingMiniExercise';
+import VoiceSetupExercise  from './exercises/VoiceSetupExercise';
 
 // All scored exercises run at this tier during the baseline session.
 // Tier 2 is challenging enough to produce discriminating scores without
@@ -67,9 +67,9 @@ const PROGRESS_BAR_H = 8;
 //   PitchGlide           → Pitch Variety (expression score via backend offline analysis)
 //   Reading              → Speech Rhythm (fluency score via backend offline analysis)
 //
-// PitchGlideMiniExercise and ReadingMiniExercise use simple expo-av recording (no WebView),
-// so they work reliably in both Expo Go and TestFlight. This avoids the WebView mic issue
-// that affects the real-time PitchGlidesExercise during training sessions.
+// PitchGlides game (full dolphin component) is now used here — gives users the same
+// visual experience as training sessions. ReadingMiniExercise uses simple expo-av recording
+// for reliable cross-platform support without a WebView mic dependency.
 //
 // Breathing (1 cycle) is a warm-up only. VoiceSetup records voice clone samples.
 const SESSION_EXERCISES = [
@@ -85,7 +85,10 @@ const EXERCISE_MAP = {
   breathing:  BreathingExercise,
   phonation:  SustainedPhonation,
   loudness:   LoudnessDrills,
-  pitchGlide: PitchGlideMiniExercise,
+  // PitchGlides game replaces the old record-and-send approach — gives users the
+  // same dolphin visual experience as training sessions and avoids a backend round-trip.
+  // The hoop-completion score (0–100) maps to the expression axis in BaselineResults.
+  pitchGlide: PitchGlides,
   reading:    ReadingMiniExercise,
   voiceSetup: VoiceSetupExercise,
 };
@@ -372,7 +375,10 @@ export default function BaselineSessionScreen({ navigation }) {
             totalExercises={SESSION_EXERCISES.length}
             // Scored exercises run at BASELINE_TIER so results are discriminating.
             // Breathing and voiceSetup don't have a tier prop.
-            {...(EXERCISE_KEYS.includes(type) ? { tier: BASELINE_TIER } : {})}
+            // 'pitchGlide' is the baseline key but EXERCISE_KEYS uses 'pitchGlides'
+            // (training session key) — include pitchGlide explicitly so the dolphin
+            // game receives the correct tier instead of defaulting to 1.
+            {...((EXERCISE_KEYS.includes(type) || type === 'pitchGlide') ? { tier: BASELINE_TIER } : {})}
             // Breathing in the baseline gets a simplified 1-cycle intro instead
             // of the full 3-cycle routine with detailed instructions.
             {...(type === 'breathing' ? { baseline: true } : {})}
