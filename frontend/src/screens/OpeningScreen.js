@@ -19,12 +19,14 @@ import {
   Animated,
   Dimensions,
   Image,
+  Pressable,
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUserProfile } from '../utils/storage';
 import { colors } from '../theme';
+import { useReduceMotion } from '../context/PrefsContext';
 
 const { width: W, height: H } = Dimensions.get('window');
 // Figma reference frame: 402 × 874
@@ -49,17 +51,32 @@ function getTheme() {
 export default function OpeningScreen({ navigation }) {
   const { top: safeTop } = useSafeAreaInsets();
   const theme = useRef(getTheme()).current;
+  const reduceMotion = useReduceMotion();
 
   const [name, setName] = useState('');
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
   const exitAnim  = useRef(new Animated.Value(1)).current;
 
+  // skipToHome — navigates immediately to Home without waiting for the timer.
+  // Called both from the invisible skip Pressable and when reduceMotion is on.
+  function skipToHome() {
+    navigation.replace('Home');
+  }
+
   useEffect(() => {
-    // Load user's name from local storage
+    // Load user's name from local storage for the greeting.
     getUserProfile().then(profile => {
       setName(profile?.name ?? '');
     });
+
+    // If the OS "Reduce Motion" setting is on, skip the animated greeting
+    // and navigate to Home immediately. Vestibular disorders can make
+    // timed animated transitions uncomfortable.
+    if (reduceMotion) {
+      skipToHome();
+      return;
+    }
 
     // Fade + slide in
     Animated.parallel([
@@ -87,7 +104,7 @@ export default function OpeningScreen({ navigation }) {
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Large decorative bubble — bottom-left, partially off-screen
   // Figma: left: -71, top: 752, size: 244  (in 402×874 frame)
@@ -108,6 +125,16 @@ export default function OpeningScreen({ navigation }) {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
+
+      {/* Full-screen transparent Pressable — lets the user tap anywhere to
+          skip the greeting animation and go directly to Home.
+          Positioned above all other content (zIndex:999). */}
+      <Pressable
+        style={styles.skipOverlay}
+        onPress={skipToHome}
+        accessibilityRole="button"
+        accessibilityLabel="Skip to home"
+      />
 
       <LinearGradient
         colors={theme.gradientColors}
@@ -175,6 +202,11 @@ const styles = StyleSheet.create({
     flex: 1,
     // bgDark provides the base colour behind the LinearGradient while it loads.
     backgroundColor: colors.bgDark,
+  },
+  // Invisible full-screen tap target for skipping the greeting animation.
+  skipOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
   },
   bubble: {
     position: 'absolute',

@@ -305,8 +305,10 @@ export async function nudgeTiersFromRecentScores() {
     return { tiers: newTiers, focusKey };
   } catch (err) {
     console.warn('[difficultyService] nudgeTiersFromRecentScores failed:', err?.message);
-    // Safe fallback — still usable, just no nudge applied
-    return { tiers: { ...DEFAULT_TIERS }, focusKey: null };
+    // Return null rather than a DEFAULT_TIERS object so VocalTrainingSessionScreen
+    // keeps its existing tier state rather than overwriting it with defaults.
+    // The caller guards: `if (result) { setTiers(result.tiers); }`.
+    return null;
   }
 }
 

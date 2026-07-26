@@ -12,7 +12,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -30,6 +29,7 @@ import { colors } from '../theme';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
 import ScreenHeader from '../components/ScreenHeader';
 import SpeakerButton from '../components/SpeakerButton';
+import ConfirmSheet from '../components/ConfirmSheet';
 
 import BreathingExercise  from './vocaltraining/exercises/BreathingExercise';
 import SustainedPhonation from './vocaltraining/exercises/SustainedPhonationExercise';
@@ -127,6 +127,8 @@ export default function CheckinScreen({ navigation }) {
   const [tiers,            setTiers]            = useState(DEFAULT_TIERS);
   const [progressPlan,     setProgressPlan]     = useState(null);
   const [checkinNumber,    setCheckinNumber]    = useState(1);
+  // confirmSheet: config for ConfirmSheet; null = hidden.
+  const [confirmSheet,     setConfirmSheet]     = useState(null);
 
   const progressAnim   = useRef(new Animated.Value(0)).current;
   const recordingRef   = useRef(null);
@@ -163,18 +165,26 @@ export default function CheckinScreen({ navigation }) {
       const actionType = e.data.action.type;
       if (actionType === 'REPLACE' || actionType === 'RESET') return;
       e.preventDefault();
-      Alert.alert(
-        'Leave check-in?',
-        "Your progress won't be saved if you leave now.",
-        [
-          { text: 'Stay', style: 'cancel' },
+      // Use ConfirmSheet instead of Alert.alert for consistent styling.
+      const pendingAction = e.data.action;
+      setConfirmSheet({
+        title: 'Leave check-in?',
+        body:  "Your progress won't be saved if you leave now.",
+        actions: [
           {
-            text: 'Leave',
-            style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
+            label: 'Stay',
+            onPress: () => setConfirmSheet(null),
+          },
+          {
+            label: 'Leave',
+            destructive: true,
+            onPress: () => {
+              setConfirmSheet(null);
+              navigation.dispatch(pendingAction);
+            },
           },
         ],
-      );
+      });
     });
     return unsub;
   }, [navigation, phase]);
@@ -365,14 +375,28 @@ export default function CheckinScreen({ navigation }) {
       });
     } catch {
       setFinishing(false);
-      Alert.alert(
-        'Could not save check-in',
-        'Check your connection and try again. Your recorded audio is not lost.',
-        [
-          { text: 'Try again', onPress: handleFinish },
-          { text: 'Go home', style: 'destructive', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) },
-        ]
-      );
+      // Use ConfirmSheet instead of Alert.alert for consistent styling.
+      setConfirmSheet({
+        title: 'Could not save check-in',
+        body:  'Check your connection and try again. Your recorded audio is not lost.',
+        actions: [
+          {
+            label: 'Try again',
+            onPress: () => {
+              setConfirmSheet(null);
+              handleFinish();
+            },
+          },
+          {
+            label: 'Go home',
+            destructive: true,
+            onPress: () => {
+              setConfirmSheet(null);
+              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+            },
+          },
+        ],
+      });
     }
   }
 
@@ -468,6 +492,8 @@ export default function CheckinScreen({ navigation }) {
             }]}
           />
         </View>
+        {/* Leave-guard sheet shown when the user tries to back out during mini exercises */}
+        <ConfirmSheet config={confirmSheet} onDismiss={() => setConfirmSheet(null)} />
       </View>
     );
   }
@@ -739,6 +765,9 @@ export default function CheckinScreen({ navigation }) {
               : <Text style={s.primaryBtnText}>Finish</Text>}
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Save-error sheet shown when handleFinish fails */}
+        <ConfirmSheet config={confirmSheet} onDismiss={() => setConfirmSheet(null)} />
       </LinearGradient>
     );
   }

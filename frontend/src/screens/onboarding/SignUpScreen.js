@@ -145,6 +145,10 @@ export default function SignUpScreen({ navigation }) {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              // textContentType + autoComplete tell iOS/Android Autofill what kind of
+              // data to suggest, improving the keyboard toolbar experience.
+              textContentType="emailAddress"
+              autoComplete="email"
               returnKeyType="next"
               onSubmitEditing={() => passRef.current?.focus()}
               blurOnSubmit={false}
@@ -163,6 +167,8 @@ export default function SignUpScreen({ navigation }) {
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
+              textContentType="newPassword"
+              autoComplete="new-password"
               returnKeyType="next"
               onSubmitEditing={() => confirmRef.current?.focus()}
               blurOnSubmit={false}
@@ -205,16 +211,25 @@ export default function SignUpScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Terms & conditions — checkbox is separate from the links so each
-              can be tapped independently. Checkbox toggles agreement; links
-              open the full Policy screen without affecting the checkbox state. */}
-          <View style={styles.tcsRow}>
+          {/* Terms & conditions — the whole row is wrapped in a TouchableOpacity
+              so a tap anywhere in the row toggles the checkbox.
+              The inline Policy links still work independently because they each
+              have their own onPress and sit inside the row's Text component.
+              hitSlop on the checkbox gives an extra 12px touch target on all
+              sides to meet the WCAG 2.1 AA 44×44dp minimum. */}
+          <TouchableOpacity
+            style={styles.tcsRow}
+            onPress={() => setAgreed(!agreed)}
+            activeOpacity={0.8}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: agreed }}
+            accessibilityLabel="Agree to Terms of Service and Privacy Policy"
+          >
             <TouchableOpacity
               onPress={() => setAgreed(!agreed)}
               activeOpacity={0.8}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: agreed }}
-              accessibilityLabel="Agree to Terms of Service and Privacy Policy"
+              accessibilityRole="none"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
                 {agreed && <Text style={styles.checkmark}>✓</Text>}
@@ -240,7 +255,7 @@ export default function SignUpScreen({ navigation }) {
                 Privacy Policy
               </Text>
             </Text>
-          </View>
+          </TouchableOpacity>
 
           {/* Create account button */}
           <TouchableOpacity

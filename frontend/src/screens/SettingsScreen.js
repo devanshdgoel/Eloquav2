@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -595,7 +596,10 @@ export default function SettingsScreen({ navigation }) {
           <Row
             label="Version"
             isLast
-            right={<ValueTag label={Constants.expoConfig?.version ?? '—'} color={DIM} />}
+            {/* Application.nativeApplicationVersion reads the native CFBundleShortVersionString
+                (iOS) / versionName (Android), which matches the App Store build number.
+                Fallback to Constants.expoConfig?.version for dev/Expo Go, then '—'. */}
+            right={<ValueTag label={Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '—'} color={DIM} />}
           />
         </Section>
 
