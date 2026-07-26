@@ -31,8 +31,10 @@ import HomeScreen from '../screens/HomeScreen';
 import OpeningScreen from '../screens/OpeningScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import SpeechEnhancementScreen from '../screens/SpeechEnhancementScreen';
-import SpeechDemoScreen from '../screens/SpeechDemoScreen';
-import AssessmentScreen from '../screens/AssessmentScreen';
+// SpeechDemoScreen removed — no active navigate() call points to this screen.
+// Archived in DEAD_CODE.md at the project root.
+// AssessmentScreen removed — no active navigate() call points to this screen.
+// Baseline assessment now runs via BaselineSession. Archived in DEAD_CODE.md.
 import CheckinScreen from '../screens/CheckinScreen';
 import VocalTrainingSessionScreen from '../screens/vocaltraining/VocalTrainingSessionScreen';
 import BaselineSessionScreen from '../screens/vocaltraining/BaselineSessionScreen';
@@ -146,10 +148,8 @@ export default function AppNavigator() {
             cardStyleInterpolator: CardStyleInterpolators.forNoAnimation,
           }}
         />
-        <Stack.Screen name="Assessment" component={AssessmentScreen} />
         <Stack.Screen name="Checkin" component={CheckinScreen} />
         <Stack.Screen name="SpeechEnhancement" component={SpeechEnhancementScreen} />
-        <Stack.Screen name="SpeechDemo" component={SpeechDemoScreen} />
         <Stack.Screen name="BaselineSession" component={BaselineSessionScreen} />
         <Stack.Screen name="VocalTrainingSession" component={VocalTrainingSessionScreen} />
         <Stack.Screen name="StreakCelebration" component={StreakCelebrationScreen} />
