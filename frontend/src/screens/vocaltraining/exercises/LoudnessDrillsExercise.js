@@ -496,6 +496,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const largeText = useLargeText();
   const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const tierConfig = LOUDNESS_TIER_CONFIG[Math.max(0, Math.min(4, tier - 1))];
+
+  // Tiers 1-2 get double the countdown time — these users are early in their
+  // training and may need longer to produce a sustained loud voice.
+  // Tiers 3-5 keep the original timerMs, which is already calibrated to content length.
+  const effectiveTimerMs = tier <= 2 ? tierConfig.timerMs * 2 : tierConfig.timerMs;
+
   const TOTAL_ROUNDS = tierConfig.rounds.length;
   const [phase, setPhase]           = useState('idle');
   const [roundIdx, setRoundIdx]     = useState(0);
@@ -523,7 +529,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   const phaseRef          = useRef('idle');
   const roundIdxRef       = useRef(0);
-  const missCountRef      = useRef(0);   // V2: track missed rounds for scoring
+  const missCountRef          = useRef(0);   // V2: track missed rounds for scoring
+  // Counts consecutive misses on the current word — resets to 0 on any successful whack.
+  // After 2 consecutive misses on the same word, we show encouragement instead of
+  // staying silent, because repeated failure without feedback is demotivating.
+  const consecutiveMissRef = useRef(0);
   const recordingRef      = useRef(null);
   const speakRef          = useRef(null);
   const countdownRef      = useRef(null);
@@ -676,8 +686,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     setPhaseS('waiting');
     await startMic();
     startIdleTimer();
-    countdownRef.current = setTimeout(handleMiss, tierConfig.timerMs);
-    Animated.timing(timerAnim, { toValue: 0, duration: tierConfig.timerMs, useNativeDriver: false }).start();
+    countdownRef.current = setTimeout(handleMiss, effectiveTimerMs);
+    Animated.timing(timerAnim, { toValue: 0, duration: effectiveTimerMs, useNativeDriver: false }).start();
   }
 
   async function startMic() {
@@ -803,6 +813,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   }
 
   function doWhack() {
+    // Successful whack — reset the consecutive-miss counter for the next word.
+    consecutiveMissRef.current = 0;
     setPhaseS('whacked');
     // Medium thud feedback when the jellyfish is successfully whacked.
     hapticMedium(hapticEnabled);
@@ -818,8 +830,22 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   async function handleMiss() {
     if (phaseRef.current !== 'waiting') return;
-    missCountRef.current += 1;  // V2: count misses for score calculation
-    setTooSoftMsg('');
+    missCountRef.current      += 1;  // V2: total misses for score calculation
+    consecutiveMissRef.current += 1; // track per-word streak
+
+    // Jellyfish sinks neutrally — no failure text shown on first miss.
+    // On the second+ consecutive miss on the same word, show brief encouragement
+    // so the user knows we're with them, not marking them as failing.
+    if (consecutiveMissRef.current >= 2) {
+      const msg = IDLE_PROMPT_MESSAGES[idleMsgIdxRef.current % IDLE_PROMPT_MESSAGES.length];
+      idleMsgIdxRef.current += 1;
+      setTooSoftMsg(msg);
+      // Auto-hide after 2.5 s so it clears before the jellyfish re-rises
+      setTimeout(() => setTooSoftMsg(''), 2500);
+    } else {
+      setTooSoftMsg('');
+    }
+
     setWordSuccess(false);
     setPhaseS('sinking');
     await cleanup();
