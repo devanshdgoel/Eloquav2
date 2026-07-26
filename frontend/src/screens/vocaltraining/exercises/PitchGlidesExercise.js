@@ -856,7 +856,10 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
   }
   function closeHelp() { setShowHelpOverlay(false); inTargetRef.current = false; }
 
-  const targetHigh = hoopsDone % 2 === 0;
+  // hoopsDone % 2 === 1 matches the detection logic in onWebViewMessage and the iOS
+  // render block above — odd hoop index = HIGH target, even = LOW target.
+  // The previous % 2 === 0 was inverted, causing Android to highlight the wrong hoop.
+  const targetHigh = hoopsDone % 2 === 1;
   const llState    = phase === 'done' ? 'target' : (targetHigh ? 'dim'    : 'target');
   const urState    = phase === 'done' ? 'target' : (targetHigh ? 'target' : 'dim');
 
