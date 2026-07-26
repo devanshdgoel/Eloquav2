@@ -12,7 +12,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { logScreenView } from '../../utils/analytics';
-import { requestPermission as requestNotificationPermission } from '../../services/notificationService';
+// Notification permission is no longer requested here — it fires after the user's
+// first completed session, once they've seen the app's value (see BaselineSessionScreen
+// and VocalTrainingSessionScreen). Requesting it during cold onboarding produced
+// low accept rates and was irrelevant before the first session.
 import { MicIcon, SpeakerIcon } from '../../components/Icons';
 import { colors } from '../../theme';
 import { useLargeText } from '../../context/PrefsContext';
@@ -56,20 +59,24 @@ export default function SetupPermissionsScreen({ navigation }) {
   async function handleAllow() {
     const { status } = await Audio.requestPermissionsAsync();
     if (status === 'granted') {
-      // Request notification permission immediately after mic is granted.
-      // iOS requires an explicit requestPermissionsAsync call — the system prompt
-      // will show here during onboarding, which is the right UX moment.
-      // We catch and ignore failures so a denied notification permission never
-      // blocks the user from completing setup.
-      await requestNotificationPermission().catch(() => {});
+      // Mic granted — move on. Notification permission is requested after the
+      // user completes their first session (VocalTrainingSessionScreen / BaselineSessionScreen)
+      // so it arrives when they've already seen the app's value rather than up-front.
       navigation.navigate('SetupAboutYou');
     } else {
+      // Mic denied — still let the user proceed. All exercises degrade gracefully
+      // when the mic is unavailable (they show a skip button and call onSkip).
+      // We present Open Settings as the primary action and a clear "continue anyway"
+      // path so onboarding is never a dead end.
       Alert.alert(
         'Microphone access needed',
-        'Eloqua cannot run voice exercises or speech enhancement without the microphone. You can enable it in Settings at any time.',
+        'Eloqua works best with mic access. Without it, voice exercises and speech enhancement are unavailable. You can enable the microphone in Settings at any time.',
         [
           { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Continue without microphone',
+            onPress: () => navigation.navigate('SetupAboutYou'),
+          },
         ],
       );
     }

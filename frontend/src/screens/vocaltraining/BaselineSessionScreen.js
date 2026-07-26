@@ -37,8 +37,9 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { tryCompleteSession } from '../../services/progressService';
-import { onSessionComplete } from '../../services/notificationService';
+import { onSessionComplete, requestPermission as requestNotificationPermission } from '../../services/notificationService';
 import {
   EXERCISE_KEYS,
   saveSessionExerciseScores,
@@ -56,6 +57,19 @@ import LoudnessDrills      from './exercises/LoudnessDrillsExercise';
 import PitchGlides         from './exercises/PitchGlidesExercise';
 import ReadingMiniExercise from './exercises/ReadingMiniExercise';
 import VoiceSetupExercise  from './exercises/VoiceSetupExercise';
+
+// AsyncStorage key shared with VocalTrainingSessionScreen — whichever session
+// runs first sets this flag so notification permission is only ever requested once.
+const NOTIF_ASKED_KEY = '@eloqua_notif_asked';
+
+// Request notification permission once across all sessions.
+// Silently swallows all errors — a failed prompt must never interrupt navigation.
+async function maybeRequestNotificationPermission() {
+  const already = await AsyncStorage.getItem(NOTIF_ASKED_KEY);
+  if (already) return;
+  await AsyncStorage.setItem(NOTIF_ASKED_KEY, '1');
+  await requestNotificationPermission().catch(() => {});
+}
 
 // All scored exercises run at this tier during the baseline session.
 // Tier 2 is challenging enough to produce discriminating scores without
@@ -279,6 +293,11 @@ export default function BaselineSessionScreen({ navigation }) {
     try {
       const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement notification clock
+
+      // Request notification permission after the first completed session.
+      // The flag ensures this only fires once — VocalTrainingSessionScreen uses the
+      // same key so whichever session runs first claims the slot.
+      maybeRequestNotificationPermission().catch(() => {});
       const profile = await getUserProfile();
 
       // Both phonation and loudness map to the voice_power dimension in the 3-axis

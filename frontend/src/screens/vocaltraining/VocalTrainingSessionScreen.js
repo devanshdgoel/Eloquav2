@@ -9,8 +9,9 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { tryCompleteSession } from '../../services/progressService';
-import { onSessionComplete } from '../../services/notificationService';
+import { onSessionComplete, requestPermission as requestNotificationPermission } from '../../services/notificationService';
 import {
   nudgeTiersFromRecentScores,
   DEFAULT_TIERS,
@@ -33,6 +34,19 @@ import { useHapticFeedback } from '../../context/PrefsContext';
 import { hapticSuccess } from '../../utils/haptics';
 
 const { width: W } = Dimensions.get('window');
+
+// AsyncStorage key used to gate the one-time notification permission request.
+// Both VocalTrainingSession and BaselineSession read this flag before prompting.
+const NOTIF_ASKED_KEY = '@eloqua_notif_asked';
+
+// Request notification permission at most once across all sessions.
+// Silently swallows all errors — a failed prompt must never interrupt navigation.
+async function maybeRequestNotificationPermission() {
+  const already = await AsyncStorage.getItem(NOTIF_ASKED_KEY);
+  if (already) return;
+  await AsyncStorage.setItem(NOTIF_ASKED_KEY, '1');
+  await requestNotificationPermission().catch(() => {});
+}
 
 // The fixed sequence of exercises that make up one training session.
 // Breathing appears twice: at the start and as a mid-session reset
@@ -280,6 +294,13 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       // always shows. The queued session is flushed on next reconnect.
       const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
+
+      // Ask for notification permission after the user's first completed session —
+      // at this point they've seen the app's value, so accept rates are much higher
+      // than cold-onboarding. The flag prevents asking more than once across sessions.
+      // Non-blocking: failures and re-shows are both silently swallowed.
+      maybeRequestNotificationPermission().catch(() => {});
+
       const profile = await getUserProfile();
       // Extract first name only — users who entered "John Smith" should see "John".
       const firstName = profile?.name ? profile.name.trim().split(' ')[0] : '';
