@@ -955,22 +955,34 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </ScrollView>
           </View>
 
-          {/* Play button — disabled (spinner) while audio is being written and loaded */}
+          {/* Play button — spinner while loading, tappable error state when audio fails */}
           {hasAudio && (
             <TouchableOpacity
               style={[
                 styles.actionBtn,
                 styles.actionBtnPlay,
-                !playBtnEnabled && styles.actionBtnDisabled,
+                // Dim the button only while audio is still loading; audioFailed stays
+                // visually dimmed but is tappable so the user can get an explanation.
+                (playBtnLoading || audioFailed) && styles.actionBtnDisabled,
               ]}
-              onPress={isPlaying ? stopPlayback : playEnhanced}
-              activeOpacity={playBtnEnabled ? 0.85 : 1}
-              disabled={!playBtnEnabled}
+              onPress={
+                audioFailed
+                  ? () => Alert.alert(
+                      'Audio Unavailable',
+                      "Sorry, this is an error on our part. We'll work to fix it as soon as possible — your transcript is still available above.",
+                      [{ text: 'OK' }],
+                    )
+                  : isPlaying ? stopPlayback : playEnhanced
+              }
+              activeOpacity={playBtnLoading ? 1 : 0.85}
+              // Disable only during loading — when audioFailed the tap shows the Alert
+              disabled={playBtnLoading}
               accessibilityRole="button"
               accessibilityLabel={
-                playBtnLoading ? 'Preparing audio' :
-                isPlaying ? 'Stop audio' :
-                'Play enhanced audio'
+                playBtnLoading    ? 'Preparing audio'          :
+                audioFailed       ? 'Audio unavailable'        :
+                isPlaying         ? 'Stop audio'               :
+                                    'Play enhanced audio'
               }
             >
               {playBtnLoading ? (
