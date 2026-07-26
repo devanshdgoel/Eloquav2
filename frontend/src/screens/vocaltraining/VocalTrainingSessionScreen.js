@@ -384,8 +384,23 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     const { type } = SESSION_EXERCISES[exerciseIndex];
 
     // Only persist scores for exercises that were genuinely completed.
-    if (!wasSkipped && score !== null && Number.isFinite(score) && EXERCISE_KEYS.includes(type)) {
-      exerciseScoresRef.current[type] = Math.round(score);
+    if (!wasSkipped && score !== null && Number.isFinite(score)) {
+      if (type === 'tailored') {
+        // TailoredExercise wraps whichever real exercise was selected (phonation,
+        // pitchGlides, or speech).  Record the score under the actual exercise key
+        // so nudgeTiersFromRecentScores can update the correct tier.  If the same
+        // exercise key already has a score this session (e.g. phonation also ran
+        // standalone), keep the higher value — don't overwrite a better effort.
+        const realKey = findWeakestKey(tiers, focusKey);
+        if (EXERCISE_KEYS.includes(realKey)) {
+          const existing = exerciseScoresRef.current[realKey];
+          exerciseScoresRef.current[realKey] = existing != null
+            ? Math.max(existing, Math.round(score))
+            : Math.round(score);
+        }
+      } else if (EXERCISE_KEYS.includes(type)) {
+        exerciseScoresRef.current[type] = Math.round(score);
+      }
     }
 
     const nextIndex = exerciseIndex + 1;
