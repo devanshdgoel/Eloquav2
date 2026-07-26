@@ -79,12 +79,17 @@ export default function SplashButtons({ buttonsOpacity, orTextOpacity, waveLogoO
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Dev fresh-start — bottom-left, near-invisible to real users */}
-      <Animated.View style={[styles.devBtn, { opacity: waveLogoOpacity }]}>
-        <TouchableOpacity onPress={handleFreshStart} activeOpacity={0.6} accessibilityLabel="Developer fresh start">
-          <Text style={styles.devBtnText}>↺</Text>
-        </TouchableOpacity>
-      </Animated.View>
+      {/* Dev fresh-start — only rendered in development builds.
+          Previously shipped without __DEV__ guard; tapping the near-invisible ↺
+          at bottom-left wiped AsyncStorage and created a new anonymous Firebase UID,
+          permanently orphaning a real user's cloud progress. */}
+      {__DEV__ && (
+        <Animated.View style={[styles.devBtn, { opacity: waveLogoOpacity }]}>
+          <TouchableOpacity onPress={handleFreshStart} activeOpacity={0.6} accessibilityLabel="Developer fresh start">
+            <Text style={styles.devBtnText}>↺</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
       {/* Wave logo — tap to enter as guest */}
       <Animated.View style={[styles.waveLogo, { opacity: waveLogoOpacity }]}>
