@@ -413,7 +413,10 @@ export default function BaselineSessionScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  // Dark base colour fills the safe-area inset below the progress bar on iPhone.
+  // Without this, iOS renders the default white background below the progress bar.
+  // Using the darkest gradient stop (#0A1618) so it visually matches the exercise gradient.
+  root: { flex: 1, backgroundColor: '#0A1618' },
 
   exerciseArea: {
     flex: 1,
