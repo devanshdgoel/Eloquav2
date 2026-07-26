@@ -108,10 +108,10 @@ function getCompletedDays(streakDays) {
 function getMotivation(streakDays, userName) {
   const name = userName ? `, ${userName}` : '';
   if (streakDays === 1)  return `A streak is born${name}!\nPractice every day to help it grow.`;
-  if (streakDays < 7)   return `${streakDays} days strong${name}.\nYour voice is becoming unstoppable.`;
+  if (streakDays < 7)   return `${streakDays} days strong${name}.\nDay after day, your voice is getting stronger.`;
   if (streakDays === 7) return `A full week${name}!\nYou've built a habit. Don't stop now.`;
   if (streakDays < 14)  return `${streakDays} days${name}.\nYour commitment is paying off.`;
-  if (streakDays === 14) return `Two weeks${name}!\nYou're in the top 5% of users.`;
+  if (streakDays === 14) return `Two weeks${name}!\nTwo weeks of showing up — that's a real habit.`;
   if (streakDays < 30)  return `${streakDays} days${name}.\nYour voice is transforming.`;
   return `${streakDays} days${name}.\nYou are an inspiration.`;
 }
