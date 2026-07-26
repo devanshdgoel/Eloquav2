@@ -635,10 +635,14 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
   const llState    = isPostExercise ? 'target' : (targetHigh ? 'dim'    : 'target');
   const urState    = isPostExercise ? 'target' : (targetHigh ? 'target' : 'dim');
 
+  // hoopsDone === 0 means the user hasn't completed any hoop yet — show a
+  // gentler starting cue ("Start LOW…") rather than "Glide DOWN — back to low"
+  // which implies they've already glided somewhere and need to return.
   const promptText =
-    micError                ? 'Mic unavailable'       :
-    phase === 'calibrating' ? 'Listening to room…'    :
-    targetHigh              ? "Glide UP — low to high"  :
+    micError                ? 'Mic unavailable'                        :
+    phase === 'calibrating' ? 'Listening to room…'                    :
+    hoopsDone === 0         ? "Start LOW — say 'ahh' in a low note"   :
+    targetHigh              ? "Glide UP — low to high"                 :
                               "Glide DOWN — back to low";
 
   // Pitch result card text
@@ -892,12 +896,16 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
   const llState    = phase === 'done' ? 'target' : (targetHigh ? 'dim'    : 'target');
   const urState    = phase === 'done' ? 'target' : (targetHigh ? 'target' : 'dim');
 
+  // hoopsDone === 0 means the user hasn't completed any hoop yet — show a
+  // starting cue ("Start LOW…") before any glide direction prompt, to orient
+  // the user on where their voice should be before gliding.
   const promptText =
-    micError                ? 'Mic unavailable'           :
-    phase === 'done'        ? 'Amazing!'                  :
-    phase === 'calibrating' ? "Say 'ahh' to calibrate…"  :
-    phase === 'loading'     ? 'Starting…'                 :
-    targetHigh              ? "Higher pitch → upper hoop" :
+    micError                ? 'Mic unavailable'                        :
+    phase === 'done'        ? 'Amazing!'                               :
+    phase === 'calibrating' ? "Say 'ahh' to calibrate…"               :
+    phase === 'loading'     ? 'Starting…'                              :
+    hoopsDone === 0         ? "Start LOW — say 'ahh' in a low note"   :
+    targetHigh              ? "Higher pitch → upper hoop"              :
                               "Lower pitch → lower hoop";
 
   return (
