@@ -361,6 +361,8 @@ function DemoScreen({ onFinish, onExit }) {
             <Text style={ds.stepText}>{text}</Text>
           </View>
         ))}
+        {/* Safety reminder — warm register, no clinical jargon (M19) */}
+        <Text style={ds.safetyNote}>Big effort, never pain — stop if it hurts.</Text>
       </View>
 
       <TouchableOpacity
@@ -407,6 +409,12 @@ const ds = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   startText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
+  // Safety line below the numbered steps — warm tone, muted so it doesn't alarm
+  safetyNote: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 15, lineHeight: 22, fontStyle: 'italic',
+    paddingTop: 4,
+  },
 });
 
 
@@ -945,6 +953,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
                 <Text style={[exHelp.stepText, { fontSize: fs(17) }]}>{text}</Text>
               </View>
             ))}
+            {/* Safety reminder mirrored from the demo screen (M19) */}
+            <Text style={[exHelp.safetyNote, { fontSize: fs(15) }]}>Big effort, never pain — stop if it hurts.</Text>
           </View>
           <TouchableOpacity style={exHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
             <Text style={[exHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
@@ -1107,6 +1117,12 @@ const exHelp = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
   continueText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.4 },
+  // Safety line in the help overlay — mirrors the DemoScreen safetyNote (M19)
+  safetyNote: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 15, lineHeight: 22, fontStyle: 'italic',
+    paddingTop: 4,
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────
