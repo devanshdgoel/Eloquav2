@@ -153,28 +153,52 @@ export default function CheckinScreen({ navigation }) {
     };
   }, []);
 
-  // Guard against accidental exit during the mini-exercise phase so the
-  // pre/post score pair remains valid. Outside that phase the user can
-  // freely navigate back (they haven't committed to a check-in yet).
+  // Guard against accidental exit during the mini-exercise, post-recording, and
+  // comparison phases — all three are part of the committed check-in flow and
+  // leaving any of them discards the pre/post score pair.
+  // 'comparison' gets a different alert: the user can optionally finish early
+  // (runs handleFinish) or leave without saving (destructive).
   useEffect(() => {
-    if (phase !== 'mini') return;
+    const guarded = ['mini', 'post', 'comparison'];
+    if (!guarded.includes(phase)) return;
     const unsub = navigation.addListener('beforeRemove', (e) => {
       // Allow programmatic navigation (replace/reset) — block only user-initiated back
       const actionType = e.data.action.type;
       if (actionType === 'REPLACE' || actionType === 'RESET') return;
       e.preventDefault();
-      Alert.alert(
-        'Leave check-in?',
-        "Your progress won't be saved if you leave now.",
-        [
-          { text: 'Stay', style: 'cancel' },
-          {
-            text: 'Leave',
-            style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
-          },
-        ],
-      );
+
+      if (phase === 'comparison') {
+        // The user has already completed all exercises; offer to finish properly.
+        Alert.alert(
+          'Leave check-in?',
+          'Your results are ready. Finish to save your progress.',
+          [
+            { text: 'Stay', style: 'cancel' },
+            {
+              text: 'Finish now',
+              onPress: () => handleFinish(),
+            },
+            {
+              text: 'Leave without saving',
+              style: 'destructive',
+              onPress: () => navigation.dispatch(e.data.action),
+            },
+          ],
+        );
+      } else {
+        Alert.alert(
+          'Leave check-in?',
+          "Your progress won't be saved if you leave now.",
+          [
+            { text: 'Stay', style: 'cancel' },
+            {
+              text: 'Leave',
+              style: 'destructive',
+              onPress: () => navigation.dispatch(e.data.action),
+            },
+          ],
+        );
+      }
     });
     return unsub;
   }, [navigation, phase]);
