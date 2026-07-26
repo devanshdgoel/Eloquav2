@@ -54,6 +54,26 @@ export async function fetchProgress() {
 }
 
 /**
+ * Return true when a progress check-in is due.
+ *
+ * A check-in becomes due when:
+ *   1. The user has completed at least one session (they have a baseline).
+ *   2. sessions_completed is a multiple of 7.
+ *   3. sessions_completed is greater than last_checkin_session — guards against
+ *      showing the check-in again after the user already completed it at this
+ *      exact session count (e.g. completed CI at session 7, then sessions stays 7).
+ *
+ * Using this helper in both HomeScreen and ProgressScreen keeps the two
+ * screens in sync — both show "due" at exactly the same moment.
+ *
+ * @param {{ sessions_completed: number, last_checkin_session: number }} progress
+ */
+export function isCheckinDue(progress) {
+  const { sessions_completed: done, last_checkin_session: lastCI } = progress;
+  return done > 0 && done % 7 === 0 && done > (lastCI ?? 0);
+}
+
+/**
  * Mark that a check-in assessment has been completed at the current session count.
  * Prevents the check-in banner from re-appearing until the next 7-session interval.
  */

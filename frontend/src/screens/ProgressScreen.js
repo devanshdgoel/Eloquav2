@@ -25,7 +25,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { fetchProgress, TOTAL_NODES } from '../services/progressService';
+import { fetchProgress, TOTAL_NODES, isCheckinDue } from '../services/progressService';
 import { getUserProfile } from '../utils/storage';
 import { logScreenView } from '../utils/analytics';
 import { FireIcon, LightningIcon, StarIcon } from '../components/Icons';
@@ -165,7 +165,7 @@ const pill = StyleSheet.create({
 export default function ProgressScreen({ navigation }) {
   const { bottom } = useSafeAreaInsets();
 
-  const [prog,    setProg]    = useState({ current_node: 0, streak_days: 0, sessions_completed: 0 });
+  const [prog,    setProg]    = useState({ current_node: 0, streak_days: 0, sessions_completed: 0, last_checkin_session: 0 });
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(false);
   const [name,    setName]    = useState('');
@@ -207,8 +207,14 @@ export default function ProgressScreen({ navigation }) {
   const fraction     = Math.min(1, sessions / TOTAL_NODES);
   const pct          = Math.round(fraction * 100);
 
-  // Check-in countdown: next check-in is at session 7, 14, etc.
-  const nextCheckin  = sessions > 0 ? (Math.floor(sessions / 7) + 1) * 7 : 7;
+  // Check-in countdown: count sessions until the next 7-session milestone
+  // *after* the most recently completed check-in (last_checkin_session).
+  // Using last_checkin_session as the baseline (not sessions_completed) ensures
+  // the counter resets correctly once a check-in is done — e.g. after finishing
+  // check-in at session 7, the next target is session 14, not session 14 derived
+  // from the already-incremented sessions_completed value.
+  const lastCI       = prog.last_checkin_session ?? 0;
+  const nextCheckin  = lastCI + 7;
   const sessLeft     = Math.max(0, nextCheckin - sessions);
 
   const [heroTitle, heroSub] = motivationalText(sessions, name);
@@ -259,12 +265,12 @@ export default function ProgressScreen({ navigation }) {
               <View style={[s.barFill, { width: `${pct}%` }]} />
             </View>
             {/* Next check-in hint — keeps users engaged between milestones */}
-            {hasStarted && sessLeft > 0 && (
+            {hasStarted && sessLeft > 0 && !isCheckinDue(prog) && (
               <Text style={s.checkinHint}>
                 {sessLeft} session{sessLeft !== 1 ? 's' : ''} until your next progress check-in
               </Text>
             )}
-            {hasStarted && sessLeft === 0 && (
+            {hasStarted && isCheckinDue(prog) && (
               <Text style={[s.checkinHint, { color: ORANGE }]}>Progress check-in available!</Text>
             )}
           </View>
