@@ -97,14 +97,15 @@ const PROGRESS_BAR_H = 8;
 
 // ── Session complete screen (fallback — shown only if StreakCelebration fails)
 // Uses the session gradient to stay consistent with the training session context.
-function SessionComplete({ navigation }) {
+// title and subtitle are optional — defaults used for error-fallback (real sessions);
+// replay sessions pass different copy so the user knows no streak was changed.
+function SessionComplete({ navigation, title, subtitle }) {
   return (
     <LinearGradient colors={colors.gradients.session} style={completeStyles.root}>
       <View style={completeStyles.content}>
-        <Text style={completeStyles.title}>One session stronger.</Text>
+        <Text style={completeStyles.title}>{title ?? 'One session stronger.'}</Text>
         <Text style={completeStyles.subtitle}>
-          Your streak has been updated.{'\n'}
-          Every session adds up.
+          {subtitle ?? 'Your streak has been updated.\nEvery session adds up.'}
         </Text>
         <TouchableOpacity
           style={completeStyles.homeBtn}
@@ -155,7 +156,7 @@ const completeStyles = StyleSheet.create({
 // ── Main session container ─────────────────────────────────────────────────────
 
 export default function VocalTrainingSessionScreen({ navigation, route }) {
-  const { nodeIndex = 0 } = route.params ?? {};
+  const { nodeIndex = 0, isReplay = false } = route.params ?? {};
   const hapticEnabled = useHapticFeedback();
 
   const [exerciseIndex, setExerciseIndex] = useState(0);
@@ -250,6 +251,7 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
 
   // Navigate to StreakCelebration (or fall back to simple done screen).
   async function finishSession() {
+    // Always save exercise scores — replay sessions still feed adaptive difficulty.
     if (Object.keys(exerciseScoresRef.current).length > 0) {
       saveSessionExerciseScores(exerciseScoresRef.current).catch(() => {});
     }
@@ -262,6 +264,16 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       exercise_scores: { ...exerciseScoresRef.current },
       tiers_at_start:  { ...tiersRef.current },
     });
+
+    // Replay sessions (user tapped a completed roadmap node) must NOT call
+    // tryCompleteSession() — that would increment current_node and update the streak,
+    // silently advancing the roadmap past the user's real position.
+    if (isReplay) {
+      hapticSuccess(hapticEnabled);
+      setIsDone(true);
+      return;
+    }
+
     try {
       // tryCompleteSession handles offline — queues to AsyncStorage if Firestore
       // is unreachable and returns an optimistic result so the celebration screen
@@ -367,7 +379,11 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   }
 
   if (isDone) {
-    return <SessionComplete navigation={navigation} />;
+    // isReplay sessions use different copy — the real session text says "streak updated"
+    // which would be misleading for a replay where no progress was incremented.
+    return isReplay
+      ? <SessionComplete navigation={navigation} title="Practice session complete." subtitle={'Nice extra work!\nYour streak stays where it is — real progress next time.'} />
+      : <SessionComplete navigation={navigation} />;
   }
 
   const { type } = SESSION_EXERCISES[exerciseIndex];

@@ -167,10 +167,13 @@ export default function HomeScreen({ navigation }) {
     if (i > 0 && i % LEVELS_EVERY === 0 && i === activeNode && done > lastCI) {
       navigation.navigate('Checkin', { nodeIndex: i });
     } else {
-      // Regular training session — gate through the daily voice note first.
+      // Detect whether the user is replaying a completed node (i < activeNode).
+      // Replay sessions run the full exercise sequence but must NOT call completeSession() —
+      // that would silently advance the roadmap and change the streak count.
+      const isReplay = i < activeNode;
       navigation.navigate('DailyVoiceNote', {
         nextScreen: 'VocalTrainingSession',
-        nextParams: { nodeIndex: i },
+        nextParams: { nodeIndex: i, isReplay },
       });
     }
   }
