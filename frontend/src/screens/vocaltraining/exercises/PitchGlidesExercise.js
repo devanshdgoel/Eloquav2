@@ -676,8 +676,8 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
       </View>
 
       {/* Zone labels: LOUD (top) / quiet (bottom) on iOS */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>LOUD</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>quiet</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>LOUD</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>quiet</Text>
 
       {/* Dolphin */}
       <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>
@@ -925,8 +925,8 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
       </View>
 
       {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on Android */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>HIGH</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>LOW</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>HIGH</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>LOW</Text>
 
       {/* Dolphin */}
       <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>

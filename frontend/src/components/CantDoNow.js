@@ -149,7 +149,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   triggerText: {
-    color: 'rgba(255,255,255,0.60)',
+    // Raised opacity from 0.60→0.75 for better contrast on dark exercise backgrounds.
+    color: 'rgba(255,255,255,0.75)',
     fontSize: 15,
     fontWeight: '500',
     letterSpacing: 0.3,
