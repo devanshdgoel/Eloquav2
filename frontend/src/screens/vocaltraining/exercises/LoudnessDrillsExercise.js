@@ -954,12 +954,16 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         }]} />
         {/* Orange tick at the adaptive threshold so users can see how loud is enough.
             Positioned from the bottom; calibratedThresh=1.0 means the tick is at the
-            very top of the track, matching a 100% normalised volume reading. */}
+            very top of the track, matching a 100% normalised volume reading.
+            "Reach this line" caption shown on round 1 only so new users understand
+            the goal without permanent visual clutter. */}
         {calibratedThresh !== null && (
-          <View
-            pointerEvents="none"
-            style={[ex.volThreshTick, { bottom: `${calibratedThresh * 100}%` }]}
-          />
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: `${calibratedThresh * 100}%` }}>
+            <View style={ex.volThreshTick} />
+            {roundIdx === 0 && (
+              <Text style={ex.threshCaption}>Reach this line</Text>
+            )}
+          </View>
         )}
       </View>
 
@@ -1087,13 +1091,22 @@ const ex = StyleSheet.create({
   // Positioned absolutely from the bottom of the track using a percentage.
   // Width 20 and negative left/right so it extends 5px past each side of the 10px bar.
   volThreshTick: {
-    position: 'absolute',
     left: -5,
     width: 20,
     height: 2,
     backgroundColor: ORANGE,
     borderRadius: 1,
     opacity: 0.90,
+  },
+  // Caption shown on round 1 only; ≥16px per WCAG 2.1 AA.
+  threshCaption: {
+    position: 'absolute',
+    left: 18,
+    bottom: 4,
+    fontSize: 16,
+    color: ORANGE,
+    opacity: 0.85,
+    fontWeight: '600',
   },
   // Noisy-room notice — shown when adaptive threshold exceeds 0.65
   noisyBanner: {

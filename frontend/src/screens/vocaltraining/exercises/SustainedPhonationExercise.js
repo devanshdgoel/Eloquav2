@@ -689,15 +689,16 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           {/* Target line — drawn at the height matching adaptiveThreshRef so users
               can see exactly how loud they need to be. Only shown after calibration
               so calibratedThresh is non-null. Positioned from the bottom of the bar
-              area because bars grow upward from their flex-end baseline. */}
+              area because bars grow upward from their flex-end baseline.
+              "Reach this line" caption shown during round 1 only so new users
+              immediately understand the goal without permanent visual clutter. */}
           {calibratedThresh !== null && (
-            <View
-              pointerEvents="none"
-              style={[
-                ex.threshLine,
-                { bottom: Math.round(calibratedThresh * BAR_MAX_H) },
-              ]}
-            />
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.round(calibratedThresh * BAR_MAX_H) }}>
+              <View style={ex.threshLine} />
+              {round === 1 && (
+                <Text style={ex.threshCaption}>Reach this line</Text>
+              )}
+            </View>
           )}
         </View>
 
@@ -777,13 +778,23 @@ const ex = StyleSheet.create({
   // Horizontal dashed line at the adaptive threshold height inside the bar area.
   // Orange so it reads clearly against both green (scoring) and white (ready) bars.
   threshLine: {
-    position: 'absolute',
     left: 0,
     right: 0,
     height: 2,
     backgroundColor: ORANGE,
     opacity: 0.80,
     borderRadius: 1,
+  },
+  // Caption shown on round 1 only so first-time users understand the goal.
+  // ≥16px per WCAG 2.1 AA; positioned to the right of the bar cluster.
+  threshCaption: {
+    position: 'absolute',
+    left: 6,
+    bottom: 4,
+    fontSize: 16,
+    color: ORANGE,
+    opacity: 0.85,
+    fontWeight: '600',
   },
   // One-line noisy-room notice — dismissible, shown immediately after calibration
   noisyBanner: {
