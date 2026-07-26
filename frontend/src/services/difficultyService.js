@@ -443,9 +443,13 @@ export async function fetchCheckinNumber() {
  * @param {{ phonation?, loudness?, pitchGlides?, speech? }} exerciseScores - 0–100 each
  * @param {string|null} focusKey - exercise key with the lowest score (used by
  *   TailoredExercise for tie-breaking, stored as baseline_focus_key)
+ * @param {{ defaulted?: boolean }} options - optional flags
+ *   options.defaulted = true when one or more scores were filled in with a fallback
+ *   value (skipped exercise or backend failure). Written as baseline_defaulted=true
+ *   in Firestore so these users can be identified for follow-up analysis.
  * @returns {Promise<{ phonation, loudness, pitchGlides, speech }>}
  */
-export async function setTiersFromBaselineExercises(exerciseScores = {}, focusKey = null) {
+export async function setTiersFromBaselineExercises(exerciseScores = {}, focusKey = null, options = {}) {
   const uid = auth.currentUser?.uid;
   if (!uid) return { ...DEFAULT_TIERS };
 
@@ -465,6 +469,9 @@ export async function setTiersFromBaselineExercises(exerciseScores = {}, focusKe
 
   const payload = { difficulty_tiers: tiers };
   if (focusKey) payload.baseline_focus_key = focusKey;
+  // When baseline scores were defaulted (exercise skipped or backend failure),
+  // flag the Firestore record so these users can be identified for follow-up.
+  if (options.defaulted) payload.baseline_defaulted = true;
 
   try {
     const ref  = doc(db, 'user_progress', uid);

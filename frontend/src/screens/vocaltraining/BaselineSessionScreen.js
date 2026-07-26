@@ -298,6 +298,7 @@ export default function BaselineSessionScreen({ navigation }) {
     // task was skipped or the backend returned null (e.g. network failure / cold start).
     const pitchDefaulted  = scores.pitchGlide == null;
     const speechDefaulted = scores.reading    == null;
+
     const augmentedScores = {
       phonation:   scores.phonation   ?? null,
       loudness:    scores.loudness    ?? null,
@@ -305,15 +306,15 @@ export default function BaselineSessionScreen({ navigation }) {
       speech:      scores.reading     ?? 50,
     };
 
-    // Flag when either expression or fluency score fell back to the ?? 50 default
-    // so these users can be identified in Firestore for manual follow-up or retry.
-    if (pitchDefaulted || speechDefaulted) {
-      augmentedScores.defaulted_tiers = true;
-    }
-
     // Write difficulty tiers and baseline_focus_key to Firestore.
     // Non-blocking — session completes even if this write fails.
-    setTiersFromBaselineExercises(augmentedScores, focusKey).catch(() => {});
+    // Pass defaulted=true when any score was substituted so Firestore records
+    // which users had incomplete baselines (useful for pilot follow-up).
+    setTiersFromBaselineExercises(
+      augmentedScores,
+      focusKey,
+      { defaulted: pitchDefaulted || speechDefaulted },
+    ).catch(() => {});
 
     // Build and persist the progress plan so CheckinScreen's "VS YOUR PLAN" comparison
     // has data to work with. This was previously only called from the old AssessmentScreen
