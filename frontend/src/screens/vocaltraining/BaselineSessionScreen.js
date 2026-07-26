@@ -257,13 +257,21 @@ export default function BaselineSessionScreen({ navigation }) {
     const focus    = focusKey ? EXERCISE_FOCUS[focusKey] : null;
 
     // Use real scores where available; fall back to tier-2 midpoint (50) only if a
-    // task was skipped or the backend returned null (e.g. network failure).
+    // task was skipped or the backend returned null (e.g. network failure / cold start).
+    const pitchDefaulted  = scores.pitchGlide == null;
+    const speechDefaulted = scores.reading    == null;
     const augmentedScores = {
       phonation:   scores.phonation   ?? null,
       loudness:    scores.loudness    ?? null,
       pitchGlides: scores.pitchGlide  ?? 50,
       speech:      scores.reading     ?? 50,
     };
+
+    // Flag when either expression or fluency score fell back to the ?? 50 default
+    // so these users can be identified in Firestore for manual follow-up or retry.
+    if (pitchDefaulted || speechDefaulted) {
+      augmentedScores.defaulted_tiers = true;
+    }
 
     // Write difficulty tiers and baseline_focus_key to Firestore.
     // Non-blocking — session completes even if this write fails.
