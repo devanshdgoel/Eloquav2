@@ -329,7 +329,18 @@ export default function BaselineSessionScreen({ navigation }) {
     const scores = exerciseScoresRef.current;
 
     if (Object.keys(scores).length > 0) {
-      saveSessionExerciseScores(scores).catch(() => {});
+      // Baseline uses 'pitchGlide' and 'reading' as exercise keys (matching
+      // SESSION_EXERCISES types), but nudgeTiersFromRecentScores reads
+      // 'pitchGlides' and 'speech' (the training session keys in EXERCISE_KEYS).
+      // Normalise before saving so the rolling nudge system can use baseline data.
+      const normalised = {};
+      if (scores.phonation  != null) normalised.phonation   = scores.phonation;
+      if (scores.loudness   != null) normalised.loudness    = scores.loudness;
+      if (scores.pitchGlide != null) normalised.pitchGlides = scores.pitchGlide; // remap
+      if (scores.reading    != null) normalised.speech      = scores.reading;     // remap
+      if (Object.keys(normalised).length > 0) {
+        saveSessionExerciseScores(normalised).catch(() => {});
+      }
     }
     logFunnelEvent('assessment_baseline_completed');
 
