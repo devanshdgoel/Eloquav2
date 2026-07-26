@@ -228,10 +228,16 @@ async def enhance_text_route(
     else:
         synthesis_voice_id = DEFAULT_PROFILE.voice_id
 
+    # Lower similarity_boost from 0.85 → 0.70: high similarity forces ElevenLabs to stick
+    # too closely to the sample audio, which amplifies PD artefacts (breathiness, tremor)
+    # instead of smoothing them. 0.70 still preserves voice identity with cleaner output.
+    # Lower style from 0.20 → 0.05: the cloned voice already carries the user's natural
+    # expressiveness; extra style adds artificial emphasis that sounds uncanny.
+    # Raise stability from 0.65 → 0.75: more consistent delivery, less run-to-run variation.
     voice_settings = {
-        "stability":        0.65,
-        "similarity_boost": 0.85,
-        "style":            0.20,
+        "stability":        0.75,
+        "similarity_boost": 0.70,
+        "style":            0.05,
         "speed":            1.0,
     }
 
@@ -327,10 +333,12 @@ async def process_audio(
 
     if has_cloned_voice(user_id):
         synthesis_voice_id = get_user_voice_id(user_id)
+        # Same settings as /enhance-text: lower similarity_boost reduces uncanny valley
+        # effect from PD speech artefacts in the clone samples.
         voice_settings = {
-            "stability":        0.65,
-            "similarity_boost": 0.85,
-            "style":            0.20,
+            "stability":        0.75,
+            "similarity_boost": 0.70,
+            "style":            0.05,
             "speed":            1.0,
         }
         profile = DEFAULT_PROFILE
