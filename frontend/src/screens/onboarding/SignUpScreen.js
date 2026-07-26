@@ -214,9 +214,10 @@ export default function SignUpScreen({ navigation }) {
           {/* Terms & conditions — the whole row is wrapped in a TouchableOpacity
               so a tap anywhere in the row toggles the checkbox.
               The inline Policy links still work independently because they each
-              have their own onPress and sit inside the row's Text component.
-              hitSlop on the checkbox gives an extra 12px touch target on all
-              sides to meet the WCAG 2.1 AA 44×44dp minimum. */}
+              have their own onPress and sit inside the row's Text component;
+              React Native's event model handles both independently.
+              hitSlop on the checkbox gives an extra 8px touch target on all
+              sides on top of the 32×32 box (total ~48dp — exceeds WCAG 2.1 AA). */}
           <TouchableOpacity
             style={styles.tcsRow}
             onPress={() => setAgreed(!agreed)}
@@ -229,7 +230,7 @@ export default function SignUpScreen({ navigation }) {
               onPress={() => setAgreed(!agreed)}
               activeOpacity={0.8}
               accessibilityRole="none"
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
                 {agreed && <Text style={styles.checkmark}>✓</Text>}
@@ -408,16 +409,16 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     marginTop: 4,
   },
+  // 32×32 box (raised from 24×24) gives ~48dp effective target with hitSlop 8.
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 5,
+    width: 32,
+    height: 32,
+    borderRadius: 7,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.50)',
     backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 2,
     flexShrink: 0,
   },
   checkboxChecked: {
@@ -426,7 +427,7 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
   },
   tcsText: {
