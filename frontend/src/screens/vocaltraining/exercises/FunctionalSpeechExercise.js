@@ -4,7 +4,9 @@
  * Matches Figma "Excercise Type 33 / 36 / 37":
  *   Type 33 — Intro screen: "Functional Speech" title + speech bubbles
  *   Type 36 — Exercise:  speaker icon → word in quotes → orange mic blob
- *   Type 37 — Wrong/retry drawer: "Doesn't sound correct. Give it another try!"
+ *   Type 37 — Wrong/retry drawer: two variants —
+ *     timeout  → "Take your time — tap the speaker to hear it again."
+ *     mismatch → "Let's try that once more — nice and loud."
  *
  * The exercise plays TTS for each item, opens the mic, and checks whether the
  * user produced enough volume.  Items progress: 2 words → 2 phrases → 1 sentence.
@@ -278,6 +280,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [displayIdx, setDisplayIdx]     = useState(0);
   const [phase, setPhase]               = useState('hear'); // 'hear' | 'speak' | 'wrong' | 'success'
   const [drawerVisible, setDrawerVisible] = useState(false);
+  // 'timeout' = max-record timer fired; 'mismatch' = STT didn't match target.
+  // Drives the drawer message so we never tell the user their speech was wrong.
+  const [wrongReason, setWrongReason] = useState('timeout');
   // Controls the in-screen help overlay — shown when ? is pressed, keeps exercise alive
   const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
@@ -483,6 +488,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         doAdvance();
       } else {
         // Transcript didn't match — show wrong drawer for retry
+        setWrongReason('mismatch');
         phaseRef.current = 'wrong';
         setPhase('wrong');
         showDrawer();
@@ -535,6 +541,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (phaseRef.current === 'success' || phaseRef.current === 'wrong' || phaseRef.current === 'checking') return;
     clearIdleTimer();
     clearTimeout(hearTimerRef.current);
+    // Max-record timer fired — message should encourage without implying failure
+    setWrongReason('timeout');
     phaseRef.current = 'wrong';
     setPhase('wrong');
     retryCountRef.current += 1; // penalise each wrong-drawer trigger
@@ -715,10 +723,13 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <CantDoNow onSkip={onSkip} onEnd={onExit} style={{ marginBottom: 8 * SC }} />
 
       {/* ── Wrong-answer drawer (Figma Type 37) ── */}
+      {/* Message varies by cause: timeout encourages re-listening; mismatch prompts louder retry. */}
       {drawerVisible && (
         <Animated.View style={[styles.drawer, { transform: [{ translateY: drawerTranslate }] }]}>
           <Text style={styles.drawerText}>
-            Doesn't sound correct.{'\n'}Give it another try!
+            {wrongReason === 'timeout'
+              ? 'Take your time — tap the speaker to hear it again.'
+              : "Let's try that once more — nice and loud."}
           </Text>
           <TouchableOpacity style={styles.drawerArrow} onPress={retryItem} accessibilityRole="button" accessibilityLabel="Try again">
             <Text style={styles.drawerArrowText}>→</Text>
