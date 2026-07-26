@@ -33,6 +33,7 @@ import { usePrefsRefresh, useLargeText } from '../context/PrefsContext';
 import { getUserProfile } from '../utils/storage';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { API_BASE_URL } from '../config/env';
+import { getVoiceStatus, deleteClonedVoice } from '../services/voiceService';
 import {
   requestPermission,
   hasPermission,
@@ -391,6 +392,9 @@ export default function SettingsScreen({ navigation }) {
   const [prefs,           setPrefs]           = useState(DEFAULT_PREFS);
   const [notifPermission, setNotifPermission] = useState(false);
   const [timePickerOpen,  setTimePickerOpen]  = useState(false);
+  // null = not yet loaded; { has_cloned_voice: bool } after load
+  const [voiceStatus,     setVoiceStatus]     = useState(null);
+  const [voiceDeleting,   setVoiceDeleting]   = useState(false);
 
   useEffect(() => {
     const logExit = logScreenView('Settings');
@@ -401,6 +405,8 @@ export default function SettingsScreen({ navigation }) {
     getUserProfile().then(p => setProfile(p));
     loadPrefs().then(p => setPrefs(p));
     hasPermission().then(setNotifPermission);
+    // Non-fatal — voice status is best-effort; null means "not yet known".
+    getVoiceStatus().then(setVoiceStatus).catch(() => {});
   }, []);
 
   // Generic pref update — writes to AsyncStorage and notifies PrefsContext.
@@ -445,6 +451,34 @@ export default function SettingsScreen({ navigation }) {
       return next;
     });
   }, [profile]);
+
+  // Confirm then call the DELETE /api/voice/clone endpoint.
+  // On success the status badge updates in place; the user doesn't need to restart.
+  function handleDeleteVoiceProfile() {
+    Alert.alert(
+      'Delete voice profile?',
+      'This removes your personalised voice model from ElevenLabs. Smart Speech will use the default voice until you create a new profile.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setVoiceDeleting(true);
+            try {
+              await deleteClonedVoice();
+              setVoiceStatus({ has_cloned_voice: false });
+              Alert.alert('Voice profile deleted', 'Your voice model has been removed.');
+            } catch {
+              Alert.alert('Could not delete', 'Please try again or contact support.');
+            } finally {
+              setVoiceDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  }
 
   function handleSignOut() {
     Alert.alert(
@@ -583,6 +617,37 @@ export default function SettingsScreen({ navigation }) {
             }
           />
         </Section>
+
+        {/* ── Voice Profile — clone status + delete action ── */}
+        {/* Only shown for non-guest users; guests can't create a voice profile. */}
+        {!isGuest && (
+          <Section label="VOICE PROFILE">
+            <Row
+              label="Profile status"
+              sublabel={
+                voiceStatus == null
+                  ? 'Checking…'
+                  : voiceStatus.has_cloned_voice
+                    ? 'Active — your personal voice is set up'
+                    : 'No profile yet — create one in the Voice Setup exercise'
+              }
+              isLast={!voiceStatus?.has_cloned_voice}
+              right={
+                voiceStatus?.has_cloned_voice
+                  ? <ValueTag label="Active" color={MINT} />
+                  : null
+              }
+            />
+            {voiceStatus?.has_cloned_voice && (
+              <Row
+                label={voiceDeleting ? 'Deleting…' : 'Delete my voice profile'}
+                tintLabel={voiceDeleting ? DIM : RED}
+                onPress={voiceDeleting ? undefined : handleDeleteVoiceProfile}
+                isLast
+              />
+            )}
+          </Section>
+        )}
 
         {/* ── Help — feedback link + version ── */}
         <Section label="HELP">
