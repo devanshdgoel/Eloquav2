@@ -89,11 +89,9 @@ export default function SplashScreen({ navigation }) {
         Animated.timing(dolphinRotate, { toValue: 1, duration: 1600, useNativeDriver: true }),
       ]),
     ]).start(() => {
-      // Animation finished — remove the skip overlay so sign-in buttons are tappable.
-      setOverlayActive(false);
-
       if (alreadySignedIn) {
-        // Already logged in — show personalised opening screen, then Home.
+        // Already logged in — navigate away; overlay deactivated by skipToDestination
+        // if user tapped to skip, or just unmounts with the screen otherwise.
         navigation.replace('Opening');
         return;
       }
@@ -101,7 +99,9 @@ export default function SplashScreen({ navigation }) {
       // Auth timed out — show a banner above the sign-in buttons.
       if (authError) setShowTimeoutBanner(true);
 
-      // Phase 2 (new users only): brand reveal + buttons
+      // Phase 2 (new users only): brand reveal + buttons.
+      // The skip overlay stays active so users can still tap to skip Phase 2.
+      // It is removed only in the Phase 2 completion callback or in skipToDestination().
       Animated.sequence([
         Animated.parallel([
           Animated.timing(gradientFade, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -118,7 +118,10 @@ export default function SplashScreen({ navigation }) {
           Animated.timing(waveLogoOpacity, { toValue: 1, duration: 900, useNativeDriver: true }),
         ]),
         Animated.delay(500),
-      ]).start();
+      ]).start(() => {
+        // Phase 2 complete — buttons are fully visible and tappable. Remove overlay.
+        setOverlayActive(false);
+      });
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -196,8 +199,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   // Full-screen invisible tap target for skipping the animation.
-  // zIndex:999 places it above all animated children; pointerEvents is the
-  // default (auto) so all touches propagate normally to child views after skip.
+  // zIndex:999 places it above all animated children.
+  // Conditionally rendered (overlayActive) — removed once intro is done.
   skipOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 999,
