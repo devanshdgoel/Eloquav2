@@ -37,7 +37,6 @@ import {
   StatusBar,
   StyleSheet,
   ImageBackground,
-  ActivityIndicator,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,8 +47,6 @@ import SpeakerButton from '../../../components/SpeakerButton';
 import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
 import { hapticMedium, hapticSuccess } from '../../../utils/haptics';
 import { logUsageEvent } from '../../../utils/analytics';
-import { fetchWithAuth } from '../../../utils/authHeaders';
-import { API_BASE_URL } from '../../../config/env';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -232,13 +229,8 @@ function Jellyfish({ hole, riseAnim, scaleAnim, opacityAnim }) {
   );
 }
 
-/**
- * Pill card showing the word to say.
- * Border turns green on success.
- * isChecking shows a small ActivityIndicator overlay to signal transcription in progress —
- * the jellyfish stays visible so there's no visual jump between phases.
- */
-function WordCard({ word, timerAnim, isActive, isSuccess, isChecking }) {
+/** Pill card showing the word to say. Border turns green on success. */
+function WordCard({ word, timerAnim, isActive, isSuccess }) {
   const CARD_W = W - 100;
   const wordCount = (word || '').split(' ').length;
   // Scale card height and font for longer phrases/sentences
@@ -267,7 +259,7 @@ function WordCard({ word, timerAnim, isActive, isSuccess, isChecking }) {
           overflow: 'hidden',
           paddingHorizontal: 16,
         }}>
-          {isActive && !isSuccess && !isChecking && (
+          {isActive && !isSuccess && (
             <Animated.View style={{
               position: 'absolute', left: 0, top: 0, bottom: 0,
               width: timerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, CARD_W] }),
@@ -283,19 +275,6 @@ function WordCard({ word, timerAnim, isActive, isSuccess, isChecking }) {
             {word}
           </Text>
 
-          {/* Checking overlay — translucent so the word is still legible.
-              Shows only during the brief backend transcription wait so the user
-              knows we received their voice and are processing, not frozen. */}
-          {isChecking && (
-            <View style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(255,255,255,0.55)',
-              borderRadius: CARD_H / 2,
-              justifyContent: 'center', alignItems: 'center',
-            }}>
-              <ActivityIndicator size="small" color={WORD_COL} />
-            </View>
-          )}
         </View>
       </View>
     </View>
@@ -452,40 +431,6 @@ const ds = StyleSheet.create({
 });
 
 
-/**
- * wordsMatch — checks whether the user's transcript contains key words from the target phrase.
- *
- * Why this approach:
- *   Dysarthric speech is often mis-transcribed (dropped syllables, slurred consonants).
- *   We deliberately use a lenient prefix-match strategy so that "yeh" registers for "yes",
- *   "spee" for "speak", etc.  The gate is still real — an empty or noise-only transcript
- *   (length < 2) is treated as a mismatch, preventing any loud sound from passing.
- *
- * Key design decisions:
- *   - Keywords filtered to ≥ 2 chars so short tier-1 words like "GO" are checked.
- *   - Prefix match threshold is 3 chars (not 4) to catch more dysarthric truncations.
- *   - All-short-word phrases: default pass so we never permanently lock out a user.
- */
-function wordsMatch(targetPhrase, transcript) {
-  // Empty or very short transcript — treat as mismatch so the gate is real.
-  // (Brief transcripts can be noise artefacts, not a deliberate spoken word.)
-  if (!transcript || transcript.length < 2) return false;
-  const tgt = targetPhrase.toLowerCase().replace(/[^a-z ]/g, '').trim();
-  const txt = transcript.toLowerCase().replace(/[^a-z ]/g, '').trim();
-  const txtWords = txt.split(/\s+/);
-  // Include words ≥ 2 chars so short words like "GO" are also checked.
-  const keys = tgt.split(/\s+/).filter(w => w.length >= 2);
-  // All-short-word phrases (unlikely): pass through so we never permanently block
-  if (keys.length === 0) return true;
-  return keys.some(k =>
-    txtWords.some(w =>
-      w === k ||
-      // Prefix match for ≥ 3-char keys: handles dysarthric truncation ("yeh" for "yes")
-      (k.length >= 3 && w.startsWith(k.slice(0, Math.min(k.length, 3))))
-    )
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────────
 // Exercise screen (main game)
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -596,7 +541,11 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         const thresh = adaptiveThreshRef.current;
         // Expose threshold to render tree for the volume-bar marker.
         setCalibratedThresh(thresh);
-        if (thresh > 0.65) setNoisyRoom(true);
+        // Auto-dismiss after 4 s so the banner doesn't cover the volume bar mid-exercise.
+        if (thresh > 0.65) {
+          setNoisyRoom(true);
+          setTimeout(() => setNoisyRoom(false), 4000);
+        }
         // Log calibrated threshold for pilot tuning analysis.
         logUsageEvent({ event: 'loudness_threshold_calibrated', threshold: thresh, tier }).catch(() => {});
 
@@ -751,100 +700,20 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (phaseRef.current !== 'done') startRound();
   }
 
-  /**
-   * handleWhack — called after MIN_SPEAK_MS of sustained loud voice.
-   *
-   * Why we stop + transcribe before deciding:
-   *   We can't read a live recording URI while it's still open; the file is only
-   *   accessible after stopAndUnloadAsync().  We stop the recording immediately so
-   *   the captured audio is available, switch to 'checking' phase (which halts
-   *   the countdown and shows a spinner on the WordCard), then POST to the backend.
-   *   If transcription succeeds and the word matches → doWhack.
-   *   If the word doesn't match → restart mic + countdown and prompt the user.
-   *   If the network call fails (timeout / server error) → default pass so a bad
-   *   connection never permanently blocks a user.
-   *
-   * Why phaseRef.current = 'checking' matters:
-   *   The idle timer checks phaseRef.current === 'waiting' before firing, so setting
-   *   it to 'checking' prevents a stale idle-prompt from appearing mid-transcription.
-   *   The speakRef timeout in onMeter also guards on phaseRef === 'waiting', so no
-   *   new whack can be triggered while we await the backend.
-   */
-  async function handleWhack() {
+  // handleWhack — called after MIN_SPEAK_MS of sustained loud voice.
+  // Volume-only gate: if they're loud enough for long enough, they whack.
+  // No word verification — keeps latency zero and the game snappy.
+  function handleWhack() {
     if (phaseRef.current !== 'waiting') return;
 
-    // Silence any pending whack timer arm so we don't double-fire
     if (speakRef.current) { clearTimeout(speakRef.current); speakRef.current = null; }
-
-    // Stop the countdown while we transcribe — jellyfish stays visible
     if (countdownRef.current) { clearTimeout(countdownRef.current); countdownRef.current = null; }
     timerAnim.stopAnimation();
     clearIdleTimer();
     if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
     setTooSoftMsg('');
 
-    // Grab the recording before stopping it so we have the URI for upload
-    const rec = recordingRef.current;
-    recordingRef.current = null;
-    let uri = null;
-    try {
-      uri = rec?.getURI?.() ?? null;
-      if (rec) await rec.stopAndUnloadAsync();
-    } catch (_) {}
-
-    // Switch to 'checking' so the idle timer doesn't fire and the WordCard shows a spinner
-    phaseRef.current = 'checking';
-    setPhaseS('checking');
-
-    const currentWord = (tierConfig.rounds[roundIdxRef.current] ?? tierConfig.rounds[0]).word;
-    // Default to pass if we have no URI or if the network call fails —
-    // a bad connection should not permanently block a user from advancing.
-    let wordOk = true;
-
-    if (uri) {
-      try {
-        const form = new FormData();
-        form.append('file', { uri, type: 'audio/m4a', name: 'loudness.m4a' });
-
-        // 5 s timeout — the backend usually responds in < 2 s; 5 s covers a slow
-        // mobile connection without making the UX feel frozen.
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 5000);
-        const res = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
-          method: 'POST',
-          body: form,
-          signal: controller.signal,
-        });
-        clearTimeout(tid);
-
-        if (res.ok) {
-          const data = await res.json();
-          wordOk = wordsMatch(currentWord, data.transcript ?? '');
-        }
-        // Non-ok response (e.g. 500): default pass so server errors don't block users
-      } catch (_) {
-        // AbortError (timeout) or network error: default pass
-      }
-    }
-
-    if (!wordOk) {
-      // Wrong word spoken — reset to waiting so the round continues
-      phaseRef.current = 'waiting';
-      setPhaseS('waiting');
-      setTooSoftMsg(`Say "${currentWord}"!`);
-      // Auto-hide the prompt after 2 s to avoid lingering if the user goes quiet
-      setTimeout(() => { if (phaseRef.current === 'waiting') setTooSoftMsg(''); }, 2000);
-
-      // Restart recording and countdown so the round continues from where it was interrupted.
-      // We give a fresh full timer here rather than resuming the partial countdown —
-      // the user needs enough time to attempt the word again after reading the prompt.
-      await startMic();
-      countdownRef.current = setTimeout(handleMiss, effectiveTimerMs);
-      Animated.timing(timerAnim, { toValue: 0, duration: effectiveTimerMs, useNativeDriver: false }).start();
-      return;
-    }
-
-    // Correct word — flash green then whack
+    // Flash green briefly then animate the whack
     setWordSuccess(true);
     setTimeout(() => { setWordSuccess(false); doWhack(); }, 300);
   }
@@ -917,8 +786,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   const activeHole = activeHoleId != null ? HOLES.find(h => h.id === activeHoleId) : null;
   const isWaiting  = phase === 'waiting';
-  // 'checking' phase shows the word card (jellyfish stays up) with a spinner overlay
-  const isChecking = phase === 'checking';
   const round      = tierConfig.rounds[roundIdx] ?? tierConfig.rounds[tierConfig.rounds.length - 1];
 
   // Sort holes back→front; split active from rest for layered rendering
@@ -960,7 +827,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           timerAnim={timerAnim}
           isActive={isWaiting}
           isSuccess={wordSuccess}
-          isChecking={isChecking}
         />
         <Text style={ex.instrLine}>
           {round.word.split(' ').length <= 2
@@ -990,9 +856,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         {calibratedThresh !== null && (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: `${calibratedThresh * 100}%` }}>
             <View style={ex.volThreshTick} />
-            {roundIdx === 0 && (
-              <Text style={ex.threshCaption}>Reach this line</Text>
-            )}
           </View>
         )}
       </View>
@@ -1115,16 +978,6 @@ const ex = StyleSheet.create({
     backgroundColor: ORANGE,
     borderRadius: 1,
     opacity: 0.90,
-  },
-  // Caption shown on round 1 only; ≥16px per WCAG 2.1 AA.
-  threshCaption: {
-    position: 'absolute',
-    left: 18,
-    bottom: 4,
-    fontSize: 16,
-    color: ORANGE,
-    opacity: 0.85,
-    fontWeight: '600',
   },
   // Noisy-room notice — shown when adaptive threshold exceeds 0.65
   noisyBanner: {
