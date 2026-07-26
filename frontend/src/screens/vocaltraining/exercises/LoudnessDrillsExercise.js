@@ -956,6 +956,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
             {/* Safety reminder mirrored from the demo screen (M19) */}
             <Text style={[exHelp.safetyNote, { fontSize: fs(15) }]}>Big effort, never pain — stop if it hurts.</Text>
           </View>
+          {/* Honest restart notice so users aren't surprised the current word resets (M2) */}
+          <Text style={[exHelp.restartNote, { fontSize: fs(15) }]}>
+            Your progress so far is saved — this word will restart.
+          </Text>
           <TouchableOpacity style={exHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
             <Text style={[exHelp.continueText, { fontSize: fs(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
@@ -1122,6 +1126,12 @@ const exHelp = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     fontSize: 15, lineHeight: 22, fontStyle: 'italic',
     paddingTop: 4,
+  },
+  // Shown above the Continue button so users aren't surprised the word restarts (M2)
+  restartNote: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 15, lineHeight: 22, fontStyle: 'italic',
+    textAlign: 'center', marginHorizontal: 24, marginTop: 24,
   },
 });
 
