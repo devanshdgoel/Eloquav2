@@ -1,25 +1,29 @@
 /**
- * PitchGlidesExercise — dolphin-through-hoops pitch glide training.
+ * PitchGlidesExercise — Flappy Bird-style horizontal scrolling pitch glides game.
  *
- * Dual-platform detection:
- *   iOS:     expo-av metering drives the dolphin as a real-time proxy for vocal effort.
- *            Speaking louder/with more effort correlates with rising pitch for most PD
- *            users, so the task is framed as "glide from LOW to HIGH pitch" even though
- *            the live feedback reflects voice level (WKWebView cannot access the mic for
- *            getUserMedia on iOS).  After all hoops complete, the full recording is sent
- *            to the backend (Praat/parselmouth) for clinical f0_range_hz scoring.
- *   Android: A hidden WebView runs autocorrelation pitch detection on the mic stream
- *            in real time. Score is derived from the max–min Hz range of valid samples.
+ * MECHANIC OVERVIEW (why this design):
+ *   The original two-fixed-hoop design asked users to move the dolphin diagonally
+ *   between two static targets. This made it hard to read at a glance which hoop
+ *   was "next" and gave no sense of forward momentum. The scrolling hoop design
+ *   borrows from Flappy Bird: one hoop at a time slides in from the right, pauses
+ *   at the dolphin's X position, and the user must hold their voice in the target
+ *   zone long enough to "thread" the hoop. The kinetic approach cues the user to
+ *   prepare before the hold window opens, and the flash feedback (green = success,
+ *   orange = skipped) closes the loop without requiring text readouts.
  *
- * Flow: Tutorial → Exercise (calibrate 1.5 s → 4–6 hoops)
+ * MISS / SKIP MECHANIC (why 3 misses before skip):
+ *   A single hold failure should not count as a skip — PD users may momentarily
+ *   lose breath support and re-enter the zone within the same hoop attempt. We allow
+ *   up to MAX_HOOP_MISSES (3) entry-then-exit events per hoop before giving up and
+ *   advancing. This keeps the session moving while still rewarding genuine effort.
  *
- * Exercise mechanics:
- *   - 1.5 s calibration: ambient noise sampled → adaptive threshold set.
- *   - normVol 0–1 = how far above ambient the user is speaking.
- *   - Rounds alternate: LOW effort → HIGH effort → LOW → HIGH (TOTAL_HOOPS times).
- *     Starting LOW builds confidence before asking for a strong voice.
- *   - Hold normalised level in target zone for HOLD_MS to complete a hoop.
- *   - Vertical orange volume bar mirrors current voice level.
+ * DUAL-PLATFORM DETECTION (unchanged from original):
+ *   iOS:     expo-av metering drives pitchAnim as a vocal-effort proxy.
+ *            Real pitch range is measured post-exercise by the backend (Praat).
+ *   Android: Hidden WebView runs autocorrelation pitch detection on the mic stream
+ *            in real time. Score is computed from the Hz range of valid samples.
+ *
+ * Flow: Tutorial → Exercise (calibrate 1.5 s → TOTAL_HOOPS scrolling hoops)
  */
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -60,25 +64,28 @@ const DEMO_KEY = '@eloqua_pitchglides_demo_seen';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const CALIBRATION_MS = 1500;
-// Normalised voice-level zones (0 = silence, 1 = maximum expected phonation).
-// The dolphin moves to the lower-left hoop when in the GENTLE zone
-// and to the upper-right hoop when in the STRONG zone.
-const TARGET_LO_MIN  = 0.10; // gentle zone floor
-const TARGET_LO_MAX  = 0.44; // gentle zone ceiling
-const TARGET_HI_MIN  = 0.66; // strong zone floor (above this = top hoop)
 
-// ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
+// Normalised voice-level zones (0 = silence, 1 = maximum expected phonation).
+// These thresholds define the LOW and HIGH target bands:
+//   LOW zone: 0.10–0.44 (gentle phonation, starting point for PD users)
+//   HIGH zone: ≥0.66    (strong effort, correlates with raised pitch)
+const TARGET_LO_MIN  = 0.10;
+const TARGET_LO_MAX  = 0.44;
+const TARGET_HI_MIN  = 0.66;
+
+// Maximum number of zone entries that end early (dolphin leaves before hold
+// completes) before a hoop is skipped. 3 gives generous retry without stalling.
+const MAX_HOOP_MISSES = 3;
+
+// ── Tier configuration (difficulty_tier 1–5) ──────────────────────────────────
 // pitchRangeHz: Target glide span in Hz for post-exercise scoring.
 //               IMPORTANT: this value is NOT used by either platform's live detection.
 //               On iOS, the dolphin follows voice level (not Hz); on Android it follows
 //               live autocorrelation Hz but the WebView normalisation is independent of
-//               this field.  pitchRangeHz is the scoring target: achieving this many Hz
+//               this field. pitchRangeHz is the scoring target: achieving this many Hz
 //               of glide above the 15 Hz floor earns a score of 100 at this tier.
-//               Ranges raised significantly (was 40–120 Hz) because the old values
-//               were too narrow — a speaker could not glide enough to move the dolphin.
-//               A typical conversational male voice spans ~80–250 Hz; female ~160–260 Hz.
-// holdMs:       milliseconds the voice must stay in the target zone to complete a hoop.
-// totalHoops:   number of hoops to complete the exercise.
+// holdMs:       Milliseconds the voice must stay in the target zone to complete a hoop.
+// totalHoops:   Number of hoops to complete the exercise.
 const PITCH_TIERS = [
   { pitchRangeHz: 100, holdMs:  700, totalHoops: 4 },  // Tier 1: ±50 Hz
   { pitchRangeHz: 130, holdMs:  700, totalHoops: 4 },  // Tier 2: ±65 Hz
@@ -88,17 +95,21 @@ const PITCH_TIERS = [
 ];
 
 // ── Colours ───────────────────────────────────────────────────────────────────
-const TEAL_DARK  = '#1C4047';
-const TEAL_MID   = '#2D6974';
-const ORANGE     = '#FFA940';
-const WHITE      = '#FFFFFF';
-const GREEN_HOOP = '#45B013';
+const TEAL_DARK   = '#1C4047';
+const TEAL_MID    = '#2D6974';
+const ORANGE      = '#FFA940';
+const WHITE       = '#FFFFFF';
+const GREEN_HOOP  = '#45B013';
 
 // ── Hoop geometry ─────────────────────────────────────────────────────────────
-const HOOP_W  = fs(102);
-const HOOP_H  = fv(135);
-const HOOP_LL = { x: W * (74  / FW), y: H * (564 / FH) };
-const HOOP_UR = { x: W * (305 / FW), y: H * (362 / FH) };
+// HOOP_W/H define the ellipse size. DOLPHIN_X is the fixed left position where
+// the dolphin sits — hoops approach from the right and pause here for the hold.
+const HOOP_W    = fs(102);
+const HOOP_H    = fv(135);
+
+// Dolphin sits at 22% of screen width — left quarter, giving plenty of approach
+// runway on the right side so the user can read the incoming hoop target.
+const DOLPHIN_X = W * 0.22;
 
 // ── Volume bar geometry ───────────────────────────────────────────────────────
 const VBAR_LEFT = fs(35);
@@ -109,7 +120,6 @@ const VBAR_H    = fv(507);
 // ── Dolphin size ──────────────────────────────────────────────────────────────
 const DOLPH_W = fs(130);
 const DOLPH_H = fv(90);
-
 
 
 // ── FadeIn wrapper ────────────────────────────────────────────────────────────
@@ -140,40 +150,43 @@ function BottomWave() {
   );
 }
 
-// ── Dual-colour progress bar ──────────────────────────────────────────────────
-function DualProgressBar({ done, total }) {
-  const barLeft  = fs(81);
+// ── Dot progress bar ──────────────────────────────────────────────────────────
+// Shows filled orange dots for completed hoops out of total.
+// Using dots (not a fill bar) makes each individual hoop feel like a discrete
+// achievement, reinforcing the Flappy Bird "one hoop at a time" framing.
+function DotProgressBar({ done, total }) {
+  const barLeft = fs(81);
   const barWidth = fs(256);
-  const fillW    = barWidth * (done / total);
+
+  // Lay out dots evenly across the available width
+  const dotSize = Math.min(20, Math.floor((barWidth - (total - 1) * 8) / total));
+  const gap = total > 1 ? (barWidth - total * dotSize) / (total - 1) : 0;
+
   return (
     <View style={{
-      position: 'absolute', top: fv(192), left: barLeft,
-      width: barWidth, height: 25, borderRadius: 10,
-      backgroundColor: TEAL_MID, overflow: 'hidden', zIndex: 25,
+      position: 'absolute',
+      top: fv(192),
+      left: barLeft,
+      width: barWidth,
+      height: 25,
+      flexDirection: 'row',
+      alignItems: 'center',
+      zIndex: 25,
     }}>
-      {fillW > 0 && (
-        <View style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0,
-          width: fillW, backgroundColor: ORANGE, borderRadius: 10,
-        }} />
-      )}
+      {Array.from({ length: total }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            width: dotSize,
+            height: dotSize,
+            borderRadius: dotSize / 2,
+            // Filled (orange) if the hoop has been completed, hollow otherwise
+            backgroundColor: i < done ? ORANGE : TEAL_MID,
+            marginRight: i < total - 1 ? gap : 0,
+          }}
+        />
+      ))}
     </View>
-  );
-}
-
-// ── Hoop ellipse ──────────────────────────────────────────────────────────────
-function HoopEllipse({ state }) {
-  const w = HOOP_W, h = HOOP_H;
-  const isTarget = state === 'target';
-  return (
-    <Svg width={w} height={h}>
-      <Ellipse
-        cx={w / 2} cy={h / 2} rx={w / 2 - 3} ry={h / 2 - 3}
-        stroke={isTarget ? 'rgba(195,222,206,0.92)' : 'rgba(195,222,206,0.26)'}
-        strokeWidth={isTarget ? 3.5 : 2.5}
-        fill="none"
-      />
-    </Svg>
   );
 }
 
@@ -193,8 +206,8 @@ const bs = StyleSheet.create({
 //      requires more effort, so users achieve the glide goal even without real-time Hz feedback.
 // Android: Web Audio autocorrelation tracks actual pitch in real-time.
 const PITCH_GLIDES_INTRO_TEXT = Platform.OS === 'android'
-  ? "Pitch Glides. Say 'ahh' and glide your pitch from low to high. The dolphin follows your pitch through each hoop. Hold in the target zone to complete a hoop."
-  : "Pitch Glides. Say 'ahh' and glide your voice from a LOW pitch to a HIGH pitch. The dolphin follows your vocal effort. Your pitch range is measured automatically after you finish.";
+  ? "Pitch Glides. Hoops scroll in from the right. Glide your pitch low or high to position the dolphin inside each hoop. Hold in the zone to complete it."
+  : "Pitch Glides. Hoops scroll in from the right. Guide the dolphin through each hoop by adjusting your vocal effort — low for the bottom zone, high for the top. Your pitch range is measured automatically after you finish.";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Title screen
@@ -240,7 +253,7 @@ const tts = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tutorial screen — instruction card (replaces old 3-slide tutorial)
+// Tutorial screen — instruction card
 // ══════════════════════════════════════════════════════════════════════════════
 // Platform-specific tutorial steps.
 // iOS: the dolphin follows vocal effort as a pitch proxy — rising in pitch typically
@@ -248,17 +261,17 @@ const tts = StyleSheet.create({
 //      the clinical goal; the live feedback is an effort bar rather than an Hz readout.
 // Android: Web Audio autocorrelation gives real-time pitch tracking.
 const PITCH_INSTR_STEPS = Platform.OS === 'android' ? [
-  { step: '1', text: 'Say "ahh" continuously — your pitch moves the dolphin.' },
-  { step: '2', text: 'Glide from a LOW pitch (lower hoop) to a HIGH pitch (upper hoop).' },
-  { step: '3', text: 'Hold your pitch in the target zone to complete a hoop. Four hoops = done!' },
+  { step: '1', text: 'Say "ahh" continuously — your pitch moves the dolphin up and down.' },
+  { step: '2', text: 'Hoops scroll in from the right — LOW or HIGH. Position the dolphin inside the hoop.' },
+  { step: '3', text: 'Hold your pitch in the zone to complete the hoop. Three misses and it moves on!' },
 ] : [
-  { step: '1', text: 'Say "ahh" continuously — your voice moves the dolphin.' },
-  { step: '2', text: 'Glide from a LOW pitch for the lower hoop to a HIGH pitch for the upper hoop.' },
-  { step: '3', text: 'Hold your voice in the glowing zone to complete a hoop. Four hoops = done!' },
+  { step: '1', text: 'Say "ahh" continuously — your voice moves the dolphin up and down.' },
+  { step: '2', text: 'Hoops scroll in from the right — LOW or HIGH. Guide the dolphin inside the hoop.' },
+  { step: '3', text: 'Hold your voice in the zone to complete the hoop. Three misses and it moves on!' },
 ];
 const PITCH_INSTR_TEXT = Platform.OS === 'android'
-  ? "Pitch Glides. Say ahh continuously. Glide your pitch from low to high to guide the dolphin through each hoop. Hold in the target zone to complete a hoop."
-  : "Pitch Glides. Say ahh continuously. Glide from a low pitch for the lower hoop to a high pitch for the upper hoop. Hold in each zone to complete a hoop. Your pitch range is measured after.";
+  ? "Pitch Glides. Say ahh continuously. Hoops scroll in from the right — glide your pitch low or high to guide the dolphin through each hoop. Hold in the target zone to complete a hoop."
+  : "Pitch Glides. Say ahh continuously. Hoops scroll in from the right — guide the dolphin low or high through each hoop. Hold in each zone to complete it. Your pitch range is measured after.";
 
 function TutorialScreen({ onFinish, onExit }) {
   return (
@@ -422,6 +435,14 @@ async function analyzeGlideRecording(uri) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ExerciseScreenIOS — expo-av metering drives dolphin; audio is recorded and
 // sent to the backend after completion for real pitch range feedback.
+//
+// SCROLLING HOOP GAME LOGIC:
+//   After calibration, startNextHoop() launches the first hoop animation.
+//   Each hoop slides from the far right to DOLPHIN_X, then pauses (hoopWaiting=true).
+//   Zone detection only fires while hoopWaiting is true — this prevents false
+//   completions during the approach animation. On completeHoop or skipHoop,
+//   the hoop flashes the appropriate colour then exits left, and the next hoop
+//   is queued immediately so there is no dead time between hoops.
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, analysisFallbackScore = 100 }) {
   const { top: safeTop } = useSafeAreaInsets();
@@ -433,7 +454,19 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
   const TOTAL_HOOPS_T = tierConfig.totalHoops;
   const HOLD_MS_T     = tierConfig.holdMs;
 
+  // PLAY_TOP / PLAY_BOTTOM define the vertical corridor within which the dolphin
+  // moves. These must be computed inside the component so safeTop is available.
+  // We leave 155 px (scaled) below the UI header and 90 px above the bottom wave.
+  const PLAY_TOP    = safeTop + fv(155);
+  const PLAY_BOTTOM = H - fv(90);
+  const PLAY_H      = PLAY_BOTTOM - PLAY_TOP;
+
   const [hoopsDone,       setHoopsDone]       = useState(0);
+  const [hoopIndex,       setHoopIndex]       = useState(0);
+  // hoopColor drives the ellipse stroke colour: 'normal' | 'success' | 'skipped'
+  const [hoopColor,       setHoopColor]       = useState('normal');
+  // hoopWaiting mirrors hoopWaitingRef — used for prompt text and accessibility
+  const [hoopWaiting,     setHoopWaiting]     = useState(false);
   const [phase,           setPhase]           = useState('calibrating'); // calibrating|listening|done|analyzing|result
   const [micError,        setMicError]        = useState(false);
   const [showHelpOverlay, setShowHelpOverlay] = useState(false);
@@ -441,6 +474,9 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
   const [pitchResult,     setPitchResult]     = useState(null);
 
   const hoopsDoneRef      = useRef(0);
+  const hoopIndexRef      = useRef(0);
+  const hoopMissesRef     = useRef(0);
+  const hoopWaitingRef    = useRef(false);
   const phaseRef          = useRef('calibrating');
   const recordingRef      = useRef(null);
   const calibrateTimerRef = useRef(null);
@@ -451,27 +487,37 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
 
   const pitchAnim  = useRef(new Animated.Value(0)).current;
   const volBarAnim = useRef(new Animated.Value(0)).current;
+  // hoopXAnim controls the horizontal scroll of the current hoop.
+  // Starts at W + HOOP_W (off right edge), animates to DOLPHIN_X, then to -HOOP_W (off left).
+  const hoopXAnim  = useRef(new Animated.Value(W + HOOP_W)).current;
 
-  const dolphinX = pitchAnim.interpolate({ inputRange: [0, 1], outputRange: [HOOP_LL.x, HOOP_UR.x] });
-  const dolphinY = pitchAnim.interpolate({ inputRange: [0, 1], outputRange: [HOOP_LL.y, HOOP_UR.y] });
+  // Dolphin Y: pitchAnim=0 → bottom of play corridor, pitchAnim=1 → top.
+  // This replaces the old diagonal interpolation between HOOP_LL and HOOP_UR —
+  // now the dolphin moves purely vertically and the hoops come to it horizontally.
+  const dolphinY = pitchAnim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [PLAY_BOTTOM - DOLPH_H / 2, PLAY_TOP - DOLPH_H / 2],
+  });
 
   useEffect(() => {
     calibrateAmbient();
     return () => { cleanup(); };
   }, []);
 
+  // ── Normalise raw volume from expo-av metering ──────────────────────────────
+  // rawVol is a 0–1 linear scale from the dB metering value.
+  // normVol maps it to 0–1 relative to the ambient threshold so that
+  // ordinary speech can reach the HIGH zone (≥0.66) without shouting.
   function normVol(rawVol) {
     const thresh = adaptiveThreshRef.current;
-    const lo = thresh * 0.45; // ambient noise floor — below this counts as silence
-    // Span = the actual achievable rawVol range above the floor.
-    // The old formula used (thresh * 2.4) as the span, but that can exceed
-    // (1.0 - lo) when thresh > ~0.38, making normVol top out below 0.66 and
-    // the dolphin unable to reach the upper hoop at any volume.
-    // Using (1.0 - lo) guarantees normVol reaches 1.0 at the device's max output.
-    const span = Math.max(0.30, 1.0 - lo);
+    const lo     = thresh * 0.45;
+    // Use (1.0 - lo) as the span so normVol can always reach 1.0 at device max.
+    // The old formula (thresh * 2.4) could top out below 0.66 in quiet rooms.
+    const span   = Math.max(0.30, 1.0 - lo);
     return Math.max(0, Math.min(1, (rawVol - lo) / span));
   }
 
+  // ── Calibration: sample ambient noise for 1.5 s, then start the mic ────────
   async function calibrateAmbient() {
     ambientSamplesRef.current = [];
     try {
@@ -492,21 +538,28 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
         if (samples.length > 0) {
           const sorted = [...samples].sort((a, b) => a - b);
           const p90 = sorted[Math.floor(samples.length * 0.90)] ?? 0.35;
+          // Multiply p90 by 2.2 and add 0.10 to set a threshold comfortably above
+          // ambient so that quiet breathing does not register as a LOW zone hit.
           adaptiveThreshRef.current = Math.min(0.65, Math.max(0.26, p90 * 2.2 + 0.10));
         }
         try { await recording.stopAndUnloadAsync(); } catch (_) {}
         phaseRef.current = 'listening';
         setPhase('listening');
+        // Start the exercise mic and kick off the first scrolling hoop
         await startMic();
+        startNextHoop();
       }, CALIBRATION_MS);
     } catch (_) {
+      // If calibration itself fails, use the default threshold and proceed
       adaptiveThreshRef.current = 0.35;
       phaseRef.current = 'listening';
       setPhase('listening');
       startMic().catch(() => setMicError(true));
+      startNextHoop();
     }
   }
 
+  // ── Start the exercise microphone (metering-only, full-quality recording) ───
   async function startMic() {
     try {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
@@ -521,37 +574,154 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
     }
   }
 
+  // ── onMeter: called ~12.5 times/sec by expo-av ──────────────────────────────
+  // Drives the dolphin Y position and checks whether the dolphin is in the
+  // current hoop's target zone. Zone detection is gated behind hoopWaitingRef
+  // so early passes during the approach animation do not accidentally complete a hoop.
   function onMeter(status) {
-    // Stop processing once we leave the active listening phase
     if (!status.isRecording) return;
     const p = phaseRef.current;
     if (p === 'done' || p === 'analyzing' || p === 'result') return;
+
     const db     = status.metering ?? -160;
     const rawVol = Math.min(1, Math.max(0, (db + 70) / 60));
     const norm   = normVol(rawVol);
 
+    // Animate the dolphin vertically and the volume bar simultaneously
     Animated.timing(pitchAnim,  { toValue: norm,   duration: 100, useNativeDriver: false }).start();
     Animated.timing(volBarAnim, { toValue: rawVol, duration: 80,  useNativeDriver: false }).start();
 
     if (p !== 'listening') return;
 
-    // Even hoopsDone → target LOW (gentle voice, lower hoop) — start quiet so PD users
-    // build confidence before attempting the louder zone.
-    // Odd  hoopsDone → target HIGH (loud voice, upper hoop)
-    const targetHigh = hoopsDoneRef.current % 2 === 1;
-    const inZone = targetHigh
-      ? norm >= TARGET_HI_MIN
-      : (norm >= TARGET_LO_MIN && norm <= TARGET_LO_MAX);
+    // Only check the zone when the hoop is paused at DOLPHIN_X (waiting for hold).
+    // During the approach animation, the hoop is not yet at the dolphin — checking
+    // early would give the user credit for being in zone before the hoop arrives.
+    const targetHigh = hoopIndexRef.current % 2 !== 0;
+    const inZone = hoopWaitingRef.current && (
+      targetHigh
+        ? norm >= TARGET_HI_MIN
+        : (norm >= TARGET_LO_MIN && norm <= TARGET_LO_MAX)
+    );
 
     if (inZone && !inTargetRef.current) {
+      // Dolphin just entered the zone — start the hold countdown
       inTargetRef.current  = true;
       holdTimerRef.current = setTimeout(completeHoop, HOLD_MS_T);
     } else if (!inZone && inTargetRef.current) {
+      // Dolphin left the zone before the hold completed — count as a miss.
+      // If MAX_HOOP_MISSES is reached on this hoop, skip it so the session
+      // does not stall on a hoop the user is struggling to hold.
       inTargetRef.current = false;
-      if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      hoopMissesRef.current += 1;
+      if (hoopMissesRef.current >= MAX_HOOP_MISSES) {
+        skipHoop();
+      }
     }
   }
 
+  // ── startNextHoop: reset and animate the next hoop from right to DOLPHIN_X ──
+  // Called after calibration and after each hoop completes or is skipped.
+  // The hoop starts off-screen right so the user sees it approaching, giving
+  // them time to prepare their voice before the hold window opens.
+  function startNextHoop() {
+    // Reset per-hoop state
+    hoopMissesRef.current = 0;
+    setHoopColor('normal');
+    hoopXAnim.setValue(W + HOOP_W);
+    hoopWaitingRef.current = false;
+    setHoopWaiting(false);
+
+    // Slide hoop from off-screen right to DOLPHIN_X over 1800 ms (approach).
+    // 1800 ms gives enough runway for the user to see the incoming hoop and
+    // begin adjusting their voice before the hold window opens.
+    Animated.timing(hoopXAnim, {
+      toValue:  DOLPHIN_X,
+      duration: 1800,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        // Hoop has arrived — open the hold window
+        hoopWaitingRef.current = true;
+        setHoopWaiting(true);
+      }
+    });
+  }
+
+  // ── completeHoop: user held the zone for HOLD_MS_T ms — success! ─────────────
+  // Flash green for 400 ms, then slide the hoop off left and queue the next one.
+  function completeHoop() {
+    holdTimerRef.current   = null;
+    inTargetRef.current    = false;
+    hoopWaitingRef.current = false;
+    setHoopWaiting(false);
+
+    // Flash green to confirm success
+    setHoopColor('success');
+    hapticSuccess(hapticEnabled);
+
+    const next = hoopsDoneRef.current + 1;
+    hoopsDoneRef.current = next;
+    setHoopsDone(next);
+
+    setTimeout(() => {
+      // Slide completed hoop off the left edge (700 ms exit)
+      Animated.timing(hoopXAnim, {
+        toValue:  -HOOP_W,
+        duration: 700,
+        useNativeDriver: false,
+      }).start(() => {
+        if (next >= TOTAL_HOOPS_T) {
+          // All hoops done — proceed to backend analysis and result screen
+          finishExercise();
+        } else {
+          // Advance hoop index and immediately start the next approach
+          const nextIdx = hoopIndexRef.current + 1;
+          hoopIndexRef.current = nextIdx;
+          setHoopIndex(nextIdx);
+          startNextHoop();
+        }
+      });
+    }, 400); // 400 ms flash duration before exit
+  }
+
+  // ── skipHoop: user missed MAX_HOOP_MISSES times — advance without credit ─────
+  // Flash orange (≠ success green) so the user visually understands it moved on
+  // due to misses, not a completion. Still increments hoopsDone so progress
+  // tracks total hoops attempted (the session always finishes at TOTAL_HOOPS_T).
+  function skipHoop() {
+    clearTimeout(holdTimerRef.current);
+    holdTimerRef.current   = null;
+    inTargetRef.current    = false;
+    hoopWaitingRef.current = false;
+    setHoopWaiting(false);
+
+    setHoopColor('skipped');
+
+    const next = hoopsDoneRef.current + 1;
+    hoopsDoneRef.current = next;
+    setHoopsDone(next);
+
+    setTimeout(() => {
+      Animated.timing(hoopXAnim, {
+        toValue:  -HOOP_W,
+        duration: 700,
+        useNativeDriver: false,
+      }).start(() => {
+        if (next >= TOTAL_HOOPS_T) {
+          finishExercise();
+        } else {
+          const nextIdx = hoopIndexRef.current + 1;
+          hoopIndexRef.current = nextIdx;
+          setHoopIndex(nextIdx);
+          startNextHoop();
+        }
+      });
+    }, 400);
+  }
+
+  // ── finishExercise: all hoops complete — upload recording for pitch analysis ──
   // Called when all hoops are done. Grabs the recording URI, stops recording,
   // then sends audio to the backend for real pitch-range analysis before advancing.
   async function finishExercise() {
@@ -566,7 +736,6 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
     // baseline — avoids placing a cold-start user at pitch tier 3 they never demonstrated).
     let score = analysisFallbackScore;
     let rangeHz = null;
-    // Track whether we actually attempted backend analysis so we can log fallbacks.
     let analysisAttempted = false;
 
     if (uri) {
@@ -587,28 +756,14 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
       } catch (_) {}
     }
 
-    // When analysis was attempted but returned no Hz data (backend timeout, cold start,
-    // or Praat returned empty f0), score stays at 100 — intentionally lenient so the
-    // exercise always completes.  Log the event so we can track cold-start failure rates.
+    // Log fallback events so cold-start failure rates can be monitored
     if (analysisAttempted && rangeHz === null) {
       logUsageEvent({ event: 'pitch_analysis_fallback' }).catch(() => {});
     }
 
     setPitchResult(rangeHz != null ? Math.round(rangeHz) : null);
     setPhase('result');
-    // Show result for 2.4 s then advance to the next exercise
     setTimeout(() => onComplete(score), 2400);
-  }
-
-  function completeHoop() {
-    holdTimerRef.current = null;
-    inTargetRef.current  = false;
-    const next = hoopsDoneRef.current + 1;
-    hoopsDoneRef.current = next;
-    setHoopsDone(next);
-    if (next >= TOTAL_HOOPS_T) {
-      finishExercise();
-    }
   }
 
   function showHelp() {
@@ -630,20 +785,30 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
   }
 
   const isPostExercise = phase === 'analyzing' || phase === 'result';
-  // Mirrors onMeter logic: even hoops = LOW (quiet), odd = HIGH (loud)
-  const targetHigh = hoopsDone % 2 === 1;
-  const llState    = isPostExercise ? 'target' : (targetHigh ? 'dim'    : 'target');
-  const urState    = isPostExercise ? 'target' : (targetHigh ? 'target' : 'dim');
 
-  // hoopsDone === 0 means the user hasn't completed any hoop yet — show a
-  // gentler starting cue ("Start LOW…") rather than "Glide DOWN — back to low"
-  // which implies they've already glided somewhere and need to return.
+  // Prompt text: shows low/high instruction during approach, hold prompt once waiting.
+  // We switch to the hold version when hoopWaiting becomes true because at that
+  // moment the hoop has reached the dolphin and the actual hold window is open.
+  const targetHigh = hoopIndex % 2 !== 0;
   const promptText =
-    micError                ? 'Mic unavailable'                        :
-    phase === 'calibrating' ? 'Listening to room…'                    :
-    hoopsDone === 0         ? "Start LOW — say 'ahh' in a low note"   :
-    targetHigh              ? "Glide UP — low to high"                 :
-                              "Glide DOWN — back to low";
+    micError          ? 'Mic unavailable'       :
+    phase === 'calibrating' ? 'Listening to room…'  :
+    isPostExercise    ? ''                       :
+    hoopWaiting       ? (targetHigh ? 'Hold HIGH' : 'Hold LOW')
+                      : (targetHigh ? 'Go HIGH — loud and high' : 'Keep your voice LOW');
+
+  // Hoop stroke colour: green = completed, orange = skipped, white = in progress
+  const hoopStroke =
+    hoopColor === 'success' ? '#68D88C' :
+    hoopColor === 'skipped' ? ORANGE    :
+    'rgba(195,222,206,0.92)';
+
+  // Hoop vertical centre: even-index = LOW (76% down), odd-index = HIGH (22% down).
+  // These percentages keep the hoop targets clearly separated from each other
+  // and from the volume bar on the left.
+  const hoopTargetCenterY = hoopIndex % 2 === 0
+    ? PLAY_TOP + PLAY_H * 0.76   // LOW zone
+    : PLAY_TOP + PLAY_H * 0.22;  // HIGH zone
 
   // Pitch result card text
   const resultLabel = pitchResult != null
@@ -681,7 +846,7 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
         </View>
       )}
 
-      {/* Header */}
+      {/* Header buttons */}
       <View style={{ position: 'absolute', top: safeTop + 14, left: fs(14), zIndex: 30 }}>
         <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={bs.closeText}>✕</Text>
@@ -693,31 +858,72 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
         </TouchableOpacity>
       </View>
 
+      {/* Prompt text — hidden during post-exercise overlay */}
       {!isPostExercise && <Text style={exs.prompt}>{promptText}</Text>}
 
-      <DualProgressBar done={hoopsDone} total={TOTAL_HOOPS_T} />
+      {/* Dot progress bar — one dot per hoop */}
+      <DotProgressBar done={hoopsDone} total={TOTAL_HOOPS_T} />
 
-      {/* Hoops */}
-      <View style={{ position: 'absolute', left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2 }}>
-        <HoopEllipse state={llState} />
-      </View>
-      <View style={{ position: 'absolute', left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2 }}>
-        <HoopEllipse state={urState} />
-      </View>
+      {/* Scrolling hoop — rendered as an inline SVG on an Animated.View.
+          translateX uses Animated.subtract so the ellipse centre (not left edge)
+          aligns with hoopXAnim. translateY positions the hoop vertically. */}
+      {!isPostExercise && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            // Centre the hoop horizontally at hoopXAnim
+            transform: [
+              { translateX: Animated.subtract(hoopXAnim, HOOP_W / 2) },
+              { translateY: hoopTargetCenterY - HOOP_H / 2 },
+            ],
+            zIndex: 8,
+          }}
+        >
+          <Svg width={HOOP_W} height={HOOP_H}>
+            <Ellipse
+              cx={HOOP_W / 2}
+              cy={HOOP_H / 2}
+              rx={HOOP_W / 2 - 3}
+              ry={HOOP_H / 2 - 3}
+              stroke={hoopStroke}
+              strokeWidth={3.5}
+              fill="none"
+            />
+          </Svg>
+        </Animated.View>
+      )}
 
-      {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on iOS — matches Android.
-          0.60 dim opacity (a11y branch) for WCAG AA compliance on inactive labels. */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>HIGH</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>LOW</Text>
-
-      {/* Dolphin */}
-      <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>
-        <Image source={require('../../../../assets/images/Dolphin2.png')} style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }} />
+      {/* Dolphin — fixed at DOLPHIN_X, moves vertically with pitchAnim */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: DOLPHIN_X - DOLPH_W / 2,
+          top: 0,
+          transform: [{ translateY: dolphinY }],
+          zIndex: 10,
+        }}
+      >
+        <Image
+          source={require('../../../../assets/images/Dolphin2.png')}
+          style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }}
+        />
       </Animated.View>
 
-      {/* Volume bar */}
-      <View style={{ position: 'absolute', left: VBAR_LEFT, top: VBAR_TOP, width: VBAR_W, height: VBAR_H, borderRadius: VBAR_W / 2, backgroundColor: TEAL_MID, overflow: 'hidden', justifyContent: 'flex-end' }}>
-        <Animated.View style={{ width: '100%', height: volBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), backgroundColor: ORANGE, borderRadius: VBAR_W / 2 }} />
+      {/* Volume bar — fills from bottom based on current vocal level */}
+      <View style={{
+        position: 'absolute', left: VBAR_LEFT, top: VBAR_TOP,
+        width: VBAR_W, height: VBAR_H,
+        borderRadius: VBAR_W / 2, backgroundColor: TEAL_MID,
+        overflow: 'hidden', justifyContent: 'flex-end',
+      }}>
+        <Animated.View style={{
+          width: '100%',
+          height: volBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+          backgroundColor: ORANGE,
+          borderRadius: VBAR_W / 2,
+        }} />
       </View>
 
       {phase === 'listening' && (
@@ -755,8 +961,11 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, a
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ExerciseScreenAndroid — WebView autocorrelation provides real-time pitch Hz.
-// The dolphin position maps directly to normalised pitch (0 = baseline, 1 = high).
-// No audio recording needed — pitch is detected in real time.
+// The dolphin's Y position maps directly to normalised pitch (0 = low, 1 = high).
+// No audio recording needed — pitch is detected and scored in real time.
+//
+// SCROLLING HOOP GAME LOGIC: identical to iOS — startNextHoop / completeHoop /
+// skipHoop work the same way; only the input source (WebView vs expo-av) differs.
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 1, analysisFallbackScore = 100 }) {
   const { top: safeTop } = useSafeAreaInsets();
@@ -768,25 +977,40 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
   const TOTAL_HOOPS_T = tierConfig.totalHoops;
   const HOLD_MS_T     = tierConfig.holdMs;
 
+  // Same play corridor as iOS — computed from safeTop so it respects status bars
+  const PLAY_TOP    = safeTop + fv(155);
+  const PLAY_BOTTOM = H - fv(90);
+  const PLAY_H      = PLAY_BOTTOM - PLAY_TOP;
+
   const [hoopsDone,       setHoopsDone]       = useState(0);
+  const [hoopIndex,       setHoopIndex]       = useState(0);
+  const [hoopColor,       setHoopColor]       = useState('normal');
+  const [hoopWaiting,     setHoopWaiting]     = useState(false);
   const [phase,           setPhase]           = useState('loading'); // loading|calibrating|listening|done
   const [micError,        setMicError]        = useState(false);
   const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
-  const hoopsDoneRef = useRef(0);
-  const phaseRef     = useRef('loading');
-  const holdTimerRef = useRef(null);
-  const inTargetRef  = useRef(false);
-  const calTimerRef  = useRef(null);
-  const webViewRef   = useRef(null);
+  const hoopsDoneRef  = useRef(0);
+  const hoopIndexRef  = useRef(0);
+  const hoopMissesRef = useRef(0);
+  const hoopWaitingRef = useRef(false);
+  const phaseRef      = useRef('loading');
+  const holdTimerRef  = useRef(null);
+  const inTargetRef   = useRef(false);
+  const calTimerRef   = useRef(null);
+  const webViewRef    = useRef(null);
   // Collect valid Hz readings during the exercise to compute actual pitch range at end.
-  const hzSamplesRef = useRef([]);
+  const hzSamplesRef  = useRef([]);
 
   const pitchAnim  = useRef(new Animated.Value(0)).current;
   const volBarAnim = useRef(new Animated.Value(0)).current;
+  const hoopXAnim  = useRef(new Animated.Value(W + HOOP_W)).current;
 
-  const dolphinX = pitchAnim.interpolate({ inputRange: [0, 1], outputRange: [HOOP_LL.x, HOOP_UR.x] });
-  const dolphinY = pitchAnim.interpolate({ inputRange: [0, 1], outputRange: [HOOP_LL.y, HOOP_UR.y] });
+  // Dolphin Y: same as iOS — pitchAnim=0 → bottom, pitchAnim=1 → top
+  const dolphinY = pitchAnim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [PLAY_BOTTOM - DOLPH_H / 2, PLAY_TOP - DOLPH_H / 2],
+  });
 
   useEffect(() => {
     return () => {
@@ -796,6 +1020,9 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
     };
   }, []);
 
+  // ── Handle messages from the WebView pitch detector ────────────────────────
+  // The WebView posts: { ready } → { cal/baselineDone } → { hz, rms, norm } loop.
+  // We use the same zone check logic as iOS, gated behind hoopWaitingRef.
   function onWebViewMessage(event) {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -809,9 +1036,10 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
           try { webViewRef.current?.postMessage('finish_cal'); } catch (_) {}
         }, 1500);
       } else if (data.baselineDone) {
-        // Baseline pitch set — begin the exercise
+        // Baseline pitch set — begin the exercise and start the first hoop
         phaseRef.current = 'listening';
         setPhase('listening');
+        startNextHoop();
       } else if (data.error) {
         setMicError(true);
       } else if (data.hz !== undefined && phaseRef.current === 'listening') {
@@ -821,65 +1049,157 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
 
         // Animate dolphin only when pitch is detected (hz > 0)
         if (hz > 0) {
-          Animated.timing(pitchAnim,  { toValue: norm,              duration: 100, useNativeDriver: false }).start();
+          Animated.timing(pitchAnim,  { toValue: norm,               duration: 100, useNativeDriver: false }).start();
           // Accumulate valid Hz readings for post-exercise range scoring (70–500 Hz = human voice)
           if (hz >= 70 && hz <= 500) hzSamplesRef.current.push(hz);
         }
         Animated.timing(volBarAnim, { toValue: Math.min(1, rms * 6), duration: 80,  useNativeDriver: false }).start();
 
-        // Silence or no pitch detected → cancel hold timer
+        // No pitch or too quiet → exit zone if we were in it
         if (hz <= 0 || rms < 0.012) {
           if (inTargetRef.current) {
             inTargetRef.current = false;
-            if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+            clearTimeout(holdTimerRef.current);
+            holdTimerRef.current = null;
           }
           return;
         }
 
-        // Zone check — same alternating LOW/HIGH pattern as iOS:
-        // even hoop index → LOW (gentle, builds confidence first)
-        // odd hoop index  → HIGH (strong voice)
-        const targetHigh = hoopsDoneRef.current % 2 === 1;
-        const inZone = targetHigh
-          ? norm >= TARGET_HI_MIN
-          : (norm >= TARGET_LO_MIN && norm <= TARGET_LO_MAX);
+        // Zone check — gated behind hoopWaitingRef same as iOS.
+        // Even hoop index → LOW zone; odd → HIGH zone.
+        const targetHigh = hoopIndexRef.current % 2 !== 0;
+        const inZone = hoopWaitingRef.current && (
+          targetHigh
+            ? norm >= TARGET_HI_MIN
+            : (norm >= TARGET_LO_MIN && norm <= TARGET_LO_MAX)
+        );
 
         if (inZone && !inTargetRef.current) {
           inTargetRef.current  = true;
           holdTimerRef.current = setTimeout(completeHoop, HOLD_MS_T);
         } else if (!inZone && inTargetRef.current) {
           inTargetRef.current = false;
-          if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+          clearTimeout(holdTimerRef.current);
+          holdTimerRef.current = null;
+          hoopMissesRef.current += 1;
+          if (hoopMissesRef.current >= MAX_HOOP_MISSES) {
+            skipHoop();
+          }
         }
       }
     } catch (_) {}
   }
 
+  // ── startNextHoop: identical logic to iOS version ───────────────────────────
+  function startNextHoop() {
+    hoopMissesRef.current = 0;
+    setHoopColor('normal');
+    hoopXAnim.setValue(W + HOOP_W);
+    hoopWaitingRef.current = false;
+    setHoopWaiting(false);
+
+    Animated.timing(hoopXAnim, {
+      toValue:  DOLPHIN_X,
+      duration: 1800,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        hoopWaitingRef.current = true;
+        setHoopWaiting(true);
+      }
+    });
+  }
+
+  // ── completeHoop: user held the zone long enough — success ──────────────────
   function completeHoop() {
-    holdTimerRef.current = null;
-    inTargetRef.current  = false;
+    holdTimerRef.current   = null;
+    inTargetRef.current    = false;
+    hoopWaitingRef.current = false;
+    setHoopWaiting(false);
+
+    setHoopColor('success');
+    hapticSuccess(hapticEnabled);
+
     const next = hoopsDoneRef.current + 1;
     hoopsDoneRef.current = next;
     setHoopsDone(next);
-    if (next >= TOTAL_HOOPS_T) {
-      phaseRef.current = 'done';
-      setPhase('done');
-      hapticSuccess(hapticEnabled);
-      try { webViewRef.current?.postMessage('stop'); } catch (_) {}
 
-      // Compute score from actual pitch range achieved.
-      // 15 Hz floor = barely any glide (~0); tierConfig.pitchRangeHz = full tier-appropriate
-      // glide (100). Floor at 30 to credit completing all hoops even when range is limited.
-      // analysisFallbackScore is used when fewer than 20 pitch samples were collected
-      // (e.g. very fast completion or mic issue), matching the iOS fallback behaviour.
-      const validHz = hzSamplesRef.current;
-      let score = analysisFallbackScore;
-      if (validHz.length >= 20) {
-        const rangeHz = Math.max(...validHz) - Math.min(...validHz);
-        score = Math.max(30, Math.min(100, Math.round(Math.max(0, (rangeHz - 15) / Math.max(1, tierConfig.pitchRangeHz - 15)) * 100)));
-      }
-      setTimeout(() => onComplete(score), 1200);
-    }
+    setTimeout(() => {
+      Animated.timing(hoopXAnim, {
+        toValue:  -HOOP_W,
+        duration: 700,
+        useNativeDriver: false,
+      }).start(() => {
+        if (next >= TOTAL_HOOPS_T) {
+          // All hoops done — compute score from Hz samples and complete
+          phaseRef.current = 'done';
+          setPhase('done');
+          hapticSuccess(hapticEnabled);
+          try { webViewRef.current?.postMessage('stop'); } catch (_) {}
+
+          // Score from actual pitch range achieved during the session.
+          // 15 Hz floor = barely any glide; tierConfig.pitchRangeHz = full tier target (100).
+          // analysisFallbackScore used when fewer than 20 samples collected.
+          const validHz = hzSamplesRef.current;
+          let score = analysisFallbackScore;
+          if (validHz.length >= 20) {
+            const rangeHz = Math.max(...validHz) - Math.min(...validHz);
+            score = Math.max(30, Math.min(100, Math.round(
+              Math.max(0, (rangeHz - 15) / Math.max(1, tierConfig.pitchRangeHz - 15)) * 100
+            )));
+          }
+          setTimeout(() => onComplete(score), 1200);
+        } else {
+          const nextIdx = hoopIndexRef.current + 1;
+          hoopIndexRef.current = nextIdx;
+          setHoopIndex(nextIdx);
+          startNextHoop();
+        }
+      });
+    }, 400);
+  }
+
+  // ── skipHoop: too many misses — flash orange and advance ────────────────────
+  function skipHoop() {
+    clearTimeout(holdTimerRef.current);
+    holdTimerRef.current   = null;
+    inTargetRef.current    = false;
+    hoopWaitingRef.current = false;
+    setHoopWaiting(false);
+
+    setHoopColor('skipped');
+
+    const next = hoopsDoneRef.current + 1;
+    hoopsDoneRef.current = next;
+    setHoopsDone(next);
+
+    setTimeout(() => {
+      Animated.timing(hoopXAnim, {
+        toValue:  -HOOP_W,
+        duration: 700,
+        useNativeDriver: false,
+      }).start(() => {
+        if (next >= TOTAL_HOOPS_T) {
+          phaseRef.current = 'done';
+          setPhase('done');
+          try { webViewRef.current?.postMessage('stop'); } catch (_) {}
+          const validHz = hzSamplesRef.current;
+          let score = analysisFallbackScore;
+          if (validHz.length >= 20) {
+            const rangeHz = Math.max(...validHz) - Math.min(...validHz);
+            score = Math.max(30, Math.min(100, Math.round(
+              Math.max(0, (rangeHz - 15) / Math.max(1, tierConfig.pitchRangeHz - 15)) * 100
+            )));
+          }
+          setTimeout(() => onComplete(score), 1200);
+        } else {
+          const nextIdx = hoopIndexRef.current + 1;
+          hoopIndexRef.current = nextIdx;
+          setHoopIndex(nextIdx);
+          startNextHoop();
+        }
+      });
+    }, 400);
   }
 
   function showHelp() {
@@ -889,31 +1209,33 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
   }
   function closeHelp() { setShowHelpOverlay(false); inTargetRef.current = false; }
 
-  // hoopsDone % 2 === 1 matches the detection logic in onWebViewMessage and the iOS
-  // render block above — odd hoop index = HIGH target, even = LOW target.
-  // The previous % 2 === 0 was inverted, causing Android to highlight the wrong hoop.
-  const targetHigh = hoopsDone % 2 === 1;
-  const llState    = phase === 'done' ? 'target' : (targetHigh ? 'dim'    : 'target');
-  const urState    = phase === 'done' ? 'target' : (targetHigh ? 'target' : 'dim');
-
-  // hoopsDone === 0 means the user hasn't completed any hoop yet — show a
-  // starting cue ("Start LOW…") before any glide direction prompt, to orient
-  // the user on where their voice should be before gliding.
+  const targetHigh = hoopIndex % 2 !== 0;
   const promptText =
-    micError                ? 'Mic unavailable'                        :
-    phase === 'done'        ? 'Amazing!'                               :
-    phase === 'calibrating' ? "Say 'ahh' to calibrate…"               :
-    phase === 'loading'     ? 'Starting…'                              :
-    hoopsDone === 0         ? "Start LOW — say 'ahh' in a low note"   :
-    targetHigh              ? "Higher pitch → upper hoop"              :
-                              "Lower pitch → lower hoop";
+    micError                ? 'Mic unavailable'          :
+    phase === 'done'        ? 'Amazing!'                 :
+    phase === 'calibrating' ? "Say 'ahh' to calibrate…" :
+    phase === 'loading'     ? 'Starting…'               :
+    hoopWaiting             ? (targetHigh ? 'Hold HIGH' : 'Hold LOW')
+                            : (targetHigh ? 'Go HIGH — loud and high' : 'Keep your voice LOW');
+
+  const hoopStroke =
+    hoopColor === 'success' ? '#68D88C' :
+    hoopColor === 'skipped' ? ORANGE    :
+    'rgba(195,222,206,0.92)';
+
+  const hoopTargetCenterY = hoopIndex % 2 === 0
+    ? PLAY_TOP + PLAY_H * 0.76
+    : PLAY_TOP + PLAY_H * 0.22;
+
+  const isDone = phase === 'done';
 
   return (
     <View style={{ flex: 1, backgroundColor: TEAL_DARK }}>
       <StatusBar barStyle="light-content" />
       <BottomWave />
 
-      {/* Hidden WebView — handles mic and autocorrelation pitch detection */}
+      {/* Hidden WebView — handles mic and autocorrelation pitch detection.
+          Starts pitch detection as soon as the component mounts. */}
       <WebView
         ref={webViewRef}
         source={{ html: PITCH_WEBVIEW_HTML, baseUrl: 'https://localhost' }}
@@ -928,6 +1250,10 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
           // Grant microphone access to the WebView so getUserMedia can run
           try { e.nativeEvent.request.grant(e.nativeEvent.resources); } catch (_) {}
         }}
+        onLoad={() => {
+          // Trigger pitch detection as soon as the WebView is ready
+          try { webViewRef.current?.postMessage('start'); } catch (_) {}
+        }}
       />
 
       {/* Mic error overlay */}
@@ -941,7 +1267,7 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
         </View>
       )}
 
-      {/* Header */}
+      {/* Header buttons */}
       <View style={{ position: 'absolute', top: safeTop + 14, left: fs(14), zIndex: 30 }}>
         <TouchableOpacity style={bs.close} onPress={onExit} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={bs.closeText}>✕</Text>
@@ -954,28 +1280,65 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
       </View>
 
       <Text style={exs.prompt}>{promptText}</Text>
-      <DualProgressBar done={hoopsDone} total={TOTAL_HOOPS_T} />
+      <DotProgressBar done={hoopsDone} total={TOTAL_HOOPS_T} />
 
-      {/* Hoops */}
-      <View style={{ position: 'absolute', left: HOOP_LL.x - HOOP_W / 2, top: HOOP_LL.y - HOOP_H / 2 }}>
-        <HoopEllipse state={llState} />
-      </View>
-      <View style={{ position: 'absolute', left: HOOP_UR.x - HOOP_W / 2, top: HOOP_UR.y - HOOP_H / 2 }}>
-        <HoopEllipse state={urState} />
-      </View>
+      {/* Scrolling hoop */}
+      {!isDone && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            transform: [
+              { translateX: Animated.subtract(hoopXAnim, HOOP_W / 2) },
+              { translateY: hoopTargetCenterY - HOOP_H / 2 },
+            ],
+            zIndex: 8,
+          }}
+        >
+          <Svg width={HOOP_W} height={HOOP_H}>
+            <Ellipse
+              cx={HOOP_W / 2}
+              cy={HOOP_H / 2}
+              rx={HOOP_W / 2 - 3}
+              ry={HOOP_H / 2 - 3}
+              stroke={hoopStroke}
+              strokeWidth={3.5}
+              fill="none"
+            />
+          </Svg>
+        </Animated.View>
+      )}
 
-      {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on Android */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>HIGH</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>LOW</Text>
-
-      {/* Dolphin */}
-      <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>
-        <Image source={require('../../../../assets/images/Dolphin2.png')} style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }} />
+      {/* Dolphin — fixed at DOLPHIN_X, moves vertically */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: DOLPHIN_X - DOLPH_W / 2,
+          top: 0,
+          transform: [{ translateY: dolphinY }],
+          zIndex: 10,
+        }}
+      >
+        <Image
+          source={require('../../../../assets/images/Dolphin2.png')}
+          style={{ width: DOLPH_W, height: DOLPH_H, resizeMode: 'contain' }}
+        />
       </Animated.View>
 
       {/* Volume / activity bar */}
-      <View style={{ position: 'absolute', left: VBAR_LEFT, top: VBAR_TOP, width: VBAR_W, height: VBAR_H, borderRadius: VBAR_W / 2, backgroundColor: TEAL_MID, overflow: 'hidden', justifyContent: 'flex-end' }}>
-        <Animated.View style={{ width: '100%', height: volBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), backgroundColor: ORANGE, borderRadius: VBAR_W / 2 }} />
+      <View style={{
+        position: 'absolute', left: VBAR_LEFT, top: VBAR_TOP,
+        width: VBAR_W, height: VBAR_H,
+        borderRadius: VBAR_W / 2, backgroundColor: TEAL_MID,
+        overflow: 'hidden', justifyContent: 'flex-end',
+      }}>
+        <Animated.View style={{
+          width: '100%',
+          height: volBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+          backgroundColor: ORANGE,
+          borderRadius: VBAR_W / 2,
+        }} />
       </View>
 
       {phase === 'listening' && (
@@ -1089,10 +1452,18 @@ const xs = StyleSheet.create({
 });
 
 const exs = StyleSheet.create({
-  prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 30, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
-  promptBig: { top: fv(137), fontSize: 34, letterSpacing: 1.7 },
-  // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional zone labels.
-  zoneLabel: { position: 'absolute', fontSize: 16, fontWeight: '700', letterSpacing: 0.5, zIndex: 20 },
+  prompt: {
+    position: 'absolute',
+    top: fv(100),
+    left: 0,
+    right: 0,
+    zIndex: 25,
+    color: WHITE,
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+  },
 });
 
 // Help overlay styles
@@ -1149,22 +1520,29 @@ const pgHelp = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Root
+// Root export
 // ══════════════════════════════════════════════════════════════════════════════
 const STEP_TUTORIAL = 0;
 const STEP_EXERCISE = 1;
 
 // On Android the fallback is used when fewer than 20 pitch samples were collected
-// (very fast completion or mic issue).  100 was too generous — a user who barely
-// phonated would score perfectly.  60 is a neutral "completed but unmeasured" score
+// (very fast completion or mic issue). 100 was too generous — a user who barely
+// phonated would score perfectly. 60 is a neutral "completed but unmeasured" score
 // that lets the nudge system treat it as a mid-range result.
 // On iOS the fallback covers a backend failure after all hoops complete — 100 is
 // still appropriate there because the user demonstrably held all hoops.
 // BaselineSessionScreen always passes analysisFallbackScore=50 explicitly, overriding this default.
-export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8, analysisFallbackScore = Platform.OS === 'android' ? 60 : 100 }) {
+export default function PitchGlidesExercise({
+  onComplete,
+  onExit,
+  onSkip,
+  tier = 1,
+  exerciseIndex = 0,
+  totalExercises = 8,
+  analysisFallbackScore = Platform.OS === 'android' ? 60 : 100,
+}) {
   // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
   const [step, setStep] = useState(null);
-  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
 
   useEffect(() => {
     AsyncStorage.getItem(DEMO_KEY)
@@ -1186,6 +1564,7 @@ export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier =
       onExit={onExit}
     />
   );
+
   return (
     <ExerciseScreen
       onComplete={onComplete}
