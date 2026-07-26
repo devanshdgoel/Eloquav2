@@ -419,7 +419,11 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
 
         // Noisy-room notice: threshold > 0.65 means the room is loud enough that
         // the user will need a significantly stronger voice — warn them.
-        if (thresh > 0.65) setNoisyRoom(true);
+        // Auto-dismiss after 4 s so the banner does not cover the meter during the exercise.
+        if (thresh > 0.65) {
+          setNoisyRoom(true);
+          setTimeout(() => setNoisyRoom(false), 4000);
+        }
 
         // Log the calibrated value so thresholds can be tuned from pilot data.
         logUsageEvent({ event: 'phonation_threshold_calibrated', threshold: thresh, tier }).catch(() => {});
