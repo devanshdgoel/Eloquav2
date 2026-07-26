@@ -21,6 +21,10 @@ const { width, height } = Dimensions.get('window');
 export default function SplashScreen({ navigation }) {
   const { isSignedIn, hasCompletedOnboarding, authError } = useAuth();
   const [showTimeoutBanner, setShowTimeoutBanner] = useState(false);
+  // overlayActive keeps the skip Pressable alive during the animation sequence.
+  // We unmount it once the destination is reached (either navigation or sign-in UI visible)
+  // so the sign-in buttons can receive touches normally.
+  const [overlayActive, setOverlayActive] = useState(true);
   const reduceMotion = useReduceMotion();
 
   // Animated values for the dolphin intro sequence and brand reveal.
@@ -40,6 +44,8 @@ export default function SplashScreen({ navigation }) {
   // skipToDestination — used both by the skip Pressable (tap anywhere to skip)
   // and when reduceMotion is on (skip immediately without any animation).
   function skipToDestination() {
+    // Deactivate the overlay immediately so button taps are not blocked after skip.
+    setOverlayActive(false);
     const alreadySignedIn = isSignedIn && hasCompletedOnboarding;
     if (alreadySignedIn) {
       navigation.replace('Opening');
@@ -83,6 +89,9 @@ export default function SplashScreen({ navigation }) {
         Animated.timing(dolphinRotate, { toValue: 1, duration: 1600, useNativeDriver: true }),
       ]),
     ]).start(() => {
+      // Animation finished — remove the skip overlay so sign-in buttons are tappable.
+      setOverlayActive(false);
+
       if (alreadySignedIn) {
         // Already logged in — show personalised opening screen, then Home.
         navigation.replace('Opening');
@@ -124,14 +133,16 @@ export default function SplashScreen({ navigation }) {
 
       {/* Full-screen invisible Pressable — lets the user tap anywhere to skip
           the animation sequence and jump straight to the destination screen.
-          zIndex:999 ensures it sits above all animated layers, but it is
-          invisible so it doesn't obscure anything visually. */}
-      <Pressable
-        style={styles.skipOverlay}
-        onPress={skipToDestination}
-        accessibilityRole="button"
-        accessibilityLabel="Skip intro animation"
-      />
+          zIndex:999 ensures it sits above all animated layers. Unmounted once
+          the animation finishes so sign-in buttons receive touches normally. */}
+      {overlayActive && (
+        <Pressable
+          style={styles.skipOverlay}
+          onPress={skipToDestination}
+          accessibilityRole="button"
+          accessibilityLabel="Skip intro animation"
+        />
+      )}
 
       <LinearGradient
         colors={[colors.splash.gradientStart, colors.splash.gradientEnd]}
