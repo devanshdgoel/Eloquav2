@@ -585,6 +585,37 @@ export default function HomeScreen({ navigation }) {
                     </SvgText>
                   )}
 
+                  {/* "Progress Check-in" label — rendered to the right of every checkin node
+                      (done, active, and future). Nodes 7 and 14 both sit on the left half of
+                      the sine wave so there is always room on the right.
+                      Replaces the bottom legend key which was too small and easy to miss. */}
+                  {isCheckin && (
+                    <>
+                      <SvgText
+                        x={def.cx + r + 10}
+                        y={def.cy - 5}
+                        textAnchor="start"
+                        fill={COLORS.orange}
+                        fillOpacity={isDone ? 0.55 : 0.90}
+                        fontSize={13}
+                        fontWeight="700"
+                      >
+                        {'Progress'}
+                      </SvgText>
+                      <SvgText
+                        x={def.cx + r + 10}
+                        y={def.cy + 11}
+                        textAnchor="start"
+                        fill={COLORS.orange}
+                        fillOpacity={isDone ? 0.55 : 0.90}
+                        fontSize={13}
+                        fontWeight="700"
+                      >
+                        {'Check-in'}
+                      </SvgText>
+                    </>
+                  )}
+
                   {/* Session number — dark teal text contrasts well against the light NodeIcon */}
                   {isFuture && !isCheckin && (
                     <SvgText
@@ -670,12 +701,7 @@ export default function HomeScreen({ navigation }) {
           })}
         </Animated.View>
 
-        {/* ── Legend row — bottom-left of viewport ──────────────────────
-            Explains the ★ symbol used on check-in milestone nodes.
-            Positioned with absolute coords so it never overlaps the map content. */}
-        <View style={styles.legendRow} pointerEvents="none">
-          <Text style={styles.legendText}>★ = progress check-in</Text>
-        </View>
+        {/* Legend removed — checkin label is now rendered inline next to each node. */}
 
         {/* ── Locked node toast — briefly shown when user taps a future node ── */}
         {lockedToast && (
