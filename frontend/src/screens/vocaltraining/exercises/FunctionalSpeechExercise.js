@@ -716,24 +716,26 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
       {/* ── Phase indicator ── */}
       <Text style={[styles.phaseHint, { fontSize: fs(16) }]}>
-        {phase === 'hear'     ? 'Listen carefully…'  :
-         phase === 'speak'    ? 'Say it now, loud!'  :
-         phase === 'checking' ? 'Checking…'          :
-         phase === 'success'  ? 'Well done!'         :
+        {phase === 'hear'     ? 'Tap the mic when ready'  :
+         phase === 'speak'    ? 'Say it now, loud!'       :
+         phase === 'checking' ? 'Checking…'               :
+         phase === 'success'  ? 'Well done!'              :
                                 'Give it another try…'}
       </Text>
 
-      {/* ── Mic blob (shown during hear/speak/checking phases) ── */}
+      {/* ── Mic blob — tappable during 'hear' to start recording immediately.
+          Pulsing during 'speak' signals active recording.
+          Removed the separate "I'm ready" button so there is a single consistent
+          interaction model: tap the mic to begin, the same as all other exercises. ── */}
       {(phase === 'hear' || phase === 'speak' || phase === 'checking') && (
-        <View style={styles.blobArea}>
+        <TouchableOpacity
+          style={styles.blobArea}
+          onPress={phase === 'hear' ? openMic : undefined}
+          activeOpacity={phase === 'hear' ? 0.75 : 1}
+          accessibilityRole={phase === 'hear' ? 'button' : 'none'}
+          accessibilityLabel={phase === 'hear' ? 'Start speaking' : undefined}
+        >
           <MicBlob pulsing={phase === 'speak'} />
-        </View>
-      )}
-
-      {/* ── "Speak" tap shortcut during hear phase ── */}
-      {phase === 'hear' && (
-        <TouchableOpacity style={styles.readyBtn} onPress={openMic} accessibilityRole="button" accessibilityLabel="I'm ready to speak">
-          <Text style={[styles.readyBtnText, { fontSize: fs(17) }]}>I'm ready →</Text>
         </TouchableOpacity>
       )}
 
