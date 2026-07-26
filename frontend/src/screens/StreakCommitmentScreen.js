@@ -24,7 +24,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Polyline } from 'react-native-svg';
+import Svg, { Path, Polyline, Line } from 'react-native-svg';
 import { colors } from '../theme';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
