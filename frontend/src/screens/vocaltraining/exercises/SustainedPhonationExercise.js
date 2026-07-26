@@ -147,10 +147,11 @@ function TitleScreen({ onNext, onExit }) {
         <StatusBar barStyle="light-content" />
 
         {/* Header now rendered by shared ScreenHeader component.
-            backIcon is ✕ because this exits the exercise entirely. */}
+            title="" (empty) so the hero title below stands alone — passing
+            "Sustained Sound" here caused it to appear twice on screen. */}
         <ScreenHeader
           navigation={null}
-          title="Sustained Sound"
+          title=""
           backIcon="✕"
           backLabel="Exit exercise"
           onBack={onExit}
