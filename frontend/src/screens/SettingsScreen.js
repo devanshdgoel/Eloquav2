@@ -65,6 +65,9 @@ const DIM       = 'rgba(255,255,255,0.60)';
 const DIVIDER   = 'rgba(195,222,206,0.10)';
 const RED       = '#E05252';
 
+// TODO: replace with the real support address before launching to the App Store
+const FEEDBACK_EMAIL = 'feedback@eloqua.app';
+
 const PREFS_KEY = 'eloqua_preferences';
 
 // All fields kept so that stored prefs aren't wiped if we restore SettingsScreen_full.js.
@@ -667,7 +670,7 @@ export default function SettingsScreen({ navigation }) {
           <Row
             label="Send feedback"
             sublabel="Help us improve Eloqua"
-            onPress={() => Linking.openURL('mailto:gs2022@ic.ac.uk?subject=Eloqua%20Feedback')}
+            onPress={() => Linking.openURL(`mailto:${FEEDBACK_EMAIL}?subject=Eloqua%20Feedback`)}
             right={<ChevronRight />}
           />
           <Row
