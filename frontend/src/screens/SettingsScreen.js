@@ -395,6 +395,8 @@ export default function SettingsScreen({ navigation }) {
   // null = not yet loaded; { has_cloned_voice: bool } after load
   const [voiceStatus,     setVoiceStatus]     = useState(null);
   const [voiceDeleting,   setVoiceDeleting]   = useState(false);
+  // true while DELETE /api/account is in-flight — disables the button to prevent double-tap
+  const [accountDeleting, setAccountDeleting] = useState(false);
 
   useEffect(() => {
     const logExit = logScreenView('Settings');
@@ -519,13 +521,24 @@ export default function SettingsScreen({ navigation }) {
                   text: 'Yes, delete everything',
                   style: 'destructive',
                   onPress: async () => {
+                    setAccountDeleting(true);
                     try {
-                      await fetchWithAuth(`${API_BASE_URL}/api/account`, { method: 'DELETE' });
+                      const res = await fetchWithAuth(`${API_BASE_URL}/api/account`, { method: 'DELETE' });
+                      if (!res.ok) {
+                        // Backend rejected — do NOT sign the user out; show a retry prompt.
+                        throw new Error(`Server returned ${res.status}`);
+                      }
+                      // Only sign out after the backend confirms deletion.
+                      await signOut();
+                      navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                     } catch {
-                      // Best-effort backend deletion — proceed with local sign-out regardless.
+                      setAccountDeleting(false);
+                      Alert.alert(
+                        'Account not deleted',
+                        "We couldn't delete your account right now — please try again or email us.",
+                        [{ text: 'OK' }]
+                      );
                     }
-                    await signOut();
-                    navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                   },
                 },
               ]
@@ -680,13 +693,15 @@ export default function SettingsScreen({ navigation }) {
 
           {!isGuest && (
             <TouchableOpacity
-              style={s.deleteBtn}
-              onPress={handleDeleteAccount}
+              style={[s.deleteBtn, accountDeleting && { opacity: 0.5 }]}
+              onPress={accountDeleting ? undefined : handleDeleteAccount}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Delete account"
             >
-              <Text style={[s.deleteText, { fontSize: fs(16) }]}>Delete account</Text>
+              <Text style={[s.deleteText, { fontSize: fs(16) }]}>
+                {accountDeleting ? 'Deleting…' : 'Delete account'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
