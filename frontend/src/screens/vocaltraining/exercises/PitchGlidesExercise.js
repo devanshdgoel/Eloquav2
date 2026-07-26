@@ -1,11 +1,17 @@
 /**
- * PitchGlidesExercise — dolphin-through-hoops voice-effort training.
+ * PitchGlidesExercise — dolphin-through-hoops pitch glide training.
  *
- * Detection: expo-av metering (no WebView, no native pitch library).
- * The dolphin position maps to the user's normalised voice level:
- *   gentle voice → lower-left hoop, strong voice → upper-right hoop.
+ * Dual-platform detection:
+ *   iOS:     expo-av metering drives the dolphin as a real-time proxy for vocal effort.
+ *            Speaking louder/with more effort correlates with rising pitch for most PD
+ *            users, so the task is framed as "glide from LOW to HIGH pitch" even though
+ *            the live feedback reflects voice level (WKWebView cannot access the mic for
+ *            getUserMedia on iOS).  After all hoops complete, the full recording is sent
+ *            to the backend (Praat/parselmouth) for clinical f0_range_hz scoring.
+ *   Android: A hidden WebView runs autocorrelation pitch detection on the mic stream
+ *            in real time. Score is derived from the max–min Hz range of valid samples.
  *
- * Flow: Tutorial → Exercise (calibrate 1.5 s → 4 hoops)
+ * Flow: Tutorial → Exercise (calibrate 1.5 s → 4–6 hoops)
  *
  * Exercise mechanics:
  *   - 1.5 s calibration: ambient noise sampled → adaptive threshold set.
@@ -39,6 +45,7 @@ import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
 import { hapticSuccess } from '../../../utils/haptics';
 import { fetchWithAuth } from '../../../utils/authHeaders';
 import { API_BASE_URL } from '../../../config/env';
+import { logUsageEvent } from '../../../utils/analytics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -61,13 +68,16 @@ const TARGET_LO_MAX  = 0.44; // gentle zone ceiling
 const TARGET_HI_MIN  = 0.66; // strong zone floor (above this = top hoop)
 
 // ── Tier configuration (difficulty_tier 1–5) ───────────────────────────────────
-// pitchRangeHz: Hz span from calibrated baseline to the top of the scale.
+// pitchRangeHz: Target glide span in Hz for post-exercise scoring.
+//               IMPORTANT: this value is NOT used by either platform's live detection.
+//               On iOS, the dolphin follows voice level (not Hz); on Android it follows
+//               live autocorrelation Hz but the WebView normalisation is independent of
+//               this field.  pitchRangeHz is the scoring target: achieving this many Hz
+//               of glide above the 15 Hz floor earns a score of 100 at this tier.
 //               Ranges raised significantly (was 40–120 Hz) because the old values
 //               were too narrow — a speaker could not glide enough to move the dolphin.
 //               A typical conversational male voice spans ~80–250 Hz; female ~160–260 Hz.
-//               With a calibrated base of ~130 Hz, a 100 Hz span covers 130–230 Hz,
-//               which is achievable with deliberate effort at tier 1.
-// holdMs:       milliseconds the pitch must stay in the target zone.
+// holdMs:       milliseconds the voice must stay in the target zone to complete a hoop.
 // totalHoops:   number of hoops to complete the exercise.
 const PITCH_TIERS = [
   { pitchRangeHz: 100, holdMs:  700, totalHoops: 4 },  // Tier 1: ±50 Hz
@@ -179,11 +189,12 @@ const bs = StyleSheet.create({
 });
 
 // Instruction text for the title screen SpeakerButton.
-// iOS: WebView cannot access the mic in real-time so the dolphin follows vocal EFFORT (loud/soft).
+// iOS: The dolphin follows vocal effort as a proxy for pitch — rising in pitch naturally
+//      requires more effort, so users achieve the glide goal even without real-time Hz feedback.
 // Android: Web Audio autocorrelation tracks actual pitch in real-time.
 const PITCH_GLIDES_INTRO_TEXT = Platform.OS === 'android'
   ? "Pitch Glides. Say 'ahh' and glide your pitch from low to high. The dolphin follows your pitch through each hoop. Hold in the target zone to complete a hoop."
-  : "Pitch Glides. Say 'ahh' — speak SOFTLY for the lower hoop and LOUDLY for the upper hoop. The dolphin follows your voice. Your pitch range is measured automatically after you finish.";
+  : "Pitch Glides. Say 'ahh' and glide your voice from a LOW pitch to a HIGH pitch. The dolphin follows your vocal effort. Your pitch range is measured automatically after you finish.";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Title screen
@@ -232,8 +243,9 @@ const tts = StyleSheet.create({
 // Tutorial screen — instruction card (replaces old 3-slide tutorial)
 // ══════════════════════════════════════════════════════════════════════════════
 // Platform-specific tutorial steps.
-// iOS: the dolphin follows vocal EFFORT (loud/soft) because iOS WKWebView cannot
-//      access the microphone for real-time pitch.  Pitch is measured post-exercise.
+// iOS: the dolphin follows vocal effort as a pitch proxy — rising in pitch typically
+//      requires more effort. Instructions are framed as a pitch task because that is
+//      the clinical goal; the live feedback is an effort bar rather than an Hz readout.
 // Android: Web Audio autocorrelation gives real-time pitch tracking.
 const PITCH_INSTR_STEPS = Platform.OS === 'android' ? [
   { step: '1', text: 'Say "ahh" continuously — your pitch moves the dolphin.' },
@@ -241,12 +253,12 @@ const PITCH_INSTR_STEPS = Platform.OS === 'android' ? [
   { step: '3', text: 'Hold your pitch in the target zone to complete a hoop. Four hoops = done!' },
 ] : [
   { step: '1', text: 'Say "ahh" continuously — your voice moves the dolphin.' },
-  { step: '2', text: 'Speak SOFTLY for the lower hoop — LOUDLY for the upper hoop.' },
+  { step: '2', text: 'Glide from a LOW pitch for the lower hoop to a HIGH pitch for the upper hoop.' },
   { step: '3', text: 'Hold your voice in the glowing zone to complete a hoop. Four hoops = done!' },
 ];
 const PITCH_INSTR_TEXT = Platform.OS === 'android'
   ? "Pitch Glides. Say ahh continuously. Glide your pitch from low to high to guide the dolphin through each hoop. Hold in the target zone to complete a hoop."
-  : "Pitch Glides. Say ahh continuously. Speak softly for the lower hoop and loudly for the upper hoop. Hold in each zone to complete a hoop. Your pitch range is measured after.";
+  : "Pitch Glides. Say ahh continuously. Glide from a low pitch for the lower hoop to a high pitch for the upper hoop. Hold in each zone to complete a hoop. Your pitch range is measured after.";
 
 function TutorialScreen({ onFinish, onExit }) {
   return (
@@ -552,8 +564,11 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
 
     let score = 100;
     let rangeHz = null;
+    // Track whether we actually attempted backend analysis so we can log fallbacks.
+    let analysisAttempted = false;
 
     if (uri) {
+      analysisAttempted = true;
       try {
         // Cap backend wait at 6 s so we never block the user for too long
         const data = await Promise.race([
@@ -562,10 +577,19 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
         ]);
         rangeHz = data?.features?.f0_range_hz ?? null;
         if (rangeHz != null) {
-          // 15 Hz floor → score ~0;  100+ Hz full glide → score 100
-          score = Math.min(100, Math.round(Math.max(0, (rangeHz - 15) / 85) * 100));
+          // Scale against this tier's pitchRangeHz target: achieving that many Hz earns 100.
+          // 15 Hz is the floor below which the glide is too small to be clinically meaningful.
+          const target = tierConfig.pitchRangeHz;
+          score = Math.min(100, Math.round(Math.max(0, (rangeHz - 15) / Math.max(1, target - 15)) * 100));
         }
       } catch (_) {}
+    }
+
+    // When analysis was attempted but returned no Hz data (backend timeout, cold start,
+    // or Praat returned empty f0), score stays at 100 — intentionally lenient so the
+    // exercise always completes.  Log the event so we can track cold-start failure rates.
+    if (analysisAttempted && rangeHz === null) {
+      logUsageEvent({ event: 'pitch_analysis_fallback' }).catch(() => {});
     }
 
     setPitchResult(rangeHz != null ? Math.round(rangeHz) : null);
@@ -612,8 +636,8 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
   const promptText =
     micError                ? 'Mic unavailable'       :
     phase === 'calibrating' ? 'Listening to room…'    :
-    targetHigh              ? "Say 'ahh' — LOUD"      :
-                              "Say 'ahh' — softly";
+    targetHigh              ? "Glide UP — low to high"  :
+                              "Glide DOWN — back to low";
 
   // Pitch result card text
   const resultLabel = pitchResult != null
@@ -675,9 +699,9 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
         <HoopEllipse state={urState} />
       </View>
 
-      {/* Zone labels: LOUD (top) / quiet (bottom) on iOS */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>LOUD</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>quiet</Text>
+      {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on iOS — matches Android */}
+      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>HIGH</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>LOW</Text>
 
       {/* Dolphin */}
       <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>
@@ -836,14 +860,14 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
       hapticSuccess(hapticEnabled);
       try { webViewRef.current?.postMessage('stop'); } catch (_) {}
 
-      // Compute score from actual pitch range achieved — same formula as iOS backend:
-      // 15 Hz floor = barely any glide (~0); 100+ Hz = full deliberate glide (100).
-      // Floor at 30 to credit completing all hoops even when range is limited.
+      // Compute score from actual pitch range achieved.
+      // 15 Hz floor = barely any glide (~0); tierConfig.pitchRangeHz = full tier-appropriate
+      // glide (100). Floor at 30 to credit completing all hoops even when range is limited.
       const validHz = hzSamplesRef.current;
       let score = 100;
       if (validHz.length >= 20) {
         const rangeHz = Math.max(...validHz) - Math.min(...validHz);
-        score = Math.max(30, Math.min(100, Math.round(Math.max(0, (rangeHz - 15) / 85) * 100)));
+        score = Math.max(30, Math.min(100, Math.round(Math.max(0, (rangeHz - 15) / Math.max(1, tierConfig.pitchRangeHz - 15)) * 100)));
       }
       setTimeout(() => onComplete(score), 1200);
     }
