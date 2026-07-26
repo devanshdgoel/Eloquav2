@@ -19,10 +19,13 @@ function uid() {
 // Log an onboarding funnel step.
 // event: 'signup_completed' | 'about_you_completed' | 'assessment_baseline_started'
 //      | 'assessment_baseline_completed' | 'home_first_visit'
+// Returns a Promise so callers can safely chain .catch() without null-checking.
 export function logFunnelEvent(event) {
   const u = uid();
-  if (!u) return;
-  addDoc(collection(db, 'users', u, 'funnel_events'), {
+  // Return a resolved Promise for no-uid so callers can safely .catch() without
+  // receiving undefined. Previously bare return; would crash any .catch() chain.
+  if (!u) return Promise.resolve();
+  return addDoc(collection(db, 'users', u, 'funnel_events'), {
     event,
     ts: serverTimestamp(),
   }).catch(() => {});
@@ -36,10 +39,13 @@ export function logFunnelEvent(event) {
 //   { started_at, abandoned_at, duration_s, node_index, completed: false,
 //     abandoned_at_exercise_index, abandoned_at_exercise_type,
 //     exercise_scores_partial }
+// Returns a Promise so callers can safely chain .catch() without null-checking.
 export function logSessionEvent(data) {
   const u = uid();
-  if (!u) return;
-  addDoc(collection(db, 'users', u, 'session_logs'), {
+  // Return a resolved Promise for no-uid so callers can safely .catch() without
+  // receiving undefined. Previously bare return; would crash any .catch() chain.
+  if (!u) return Promise.resolve();
+  return addDoc(collection(db, 'users', u, 'session_logs'), {
     ...data,
     ts: serverTimestamp(),
   }).catch(() => {});
