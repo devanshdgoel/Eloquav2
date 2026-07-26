@@ -22,7 +22,7 @@ import { API_BASE_URL } from '../config/env';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../utils/storage';
-import { tryCompleteSession } from '../services/progressService';
+import { tryCompleteSession, recordCheckin } from '../services/progressService';
 import { fetchDifficultyTiers, fetchProgressPlan, fetchCheckinNumber, DEFAULT_TIERS, saveSessionExerciseScores } from '../services/difficultyService';
 import { useLargeText } from '../context/PrefsContext';
 import { colors } from '../theme';
@@ -417,6 +417,12 @@ export default function CheckinScreen({ navigation }) {
       }
 
       logFunnelEvent('checkin_completed');
+      // Record that a check-in has been completed at the current session count.
+      // This stamps last_checkin_session in Firestore so fetchCheckinNumber() returns
+      // 2 on the next check-in and isCheckinDue() doesn't re-trigger immediately.
+      // Must run before tryCompleteSession() so the stamp is always written even if
+      // completeSession fails (network blip) — the check-in has been completed regardless.
+      await recordCheckin();
       const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement clock (non-fatal)
       const profile = await getUserProfile();
