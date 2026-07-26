@@ -24,7 +24,7 @@ import { fetchWithAuth } from '../utils/authHeaders';
 import { onSessionComplete } from '../services/notificationService';
 import { getPersonalSentence, savePersonalSentence, getUserProfile } from '../utils/storage';
 import { tryCompleteSession } from '../services/progressService';
-import { adjustDifficultyAfterCheckin, fetchDifficultyTiers, fetchProgressPlan, fetchCheckinNumber, DEFAULT_TIERS } from '../services/difficultyService';
+import { fetchDifficultyTiers, fetchProgressPlan, fetchCheckinNumber, DEFAULT_TIERS, saveSessionExerciseScores } from '../services/difficultyService';
 import { useLargeText } from '../context/PrefsContext';
 import { colors } from '../theme';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
@@ -136,6 +136,9 @@ export default function CheckinScreen({ navigation }) {
   const volumeRef      = useRef(0);
   const startMsRef     = useRef(0);
   const whichCheckRef  = useRef('pre');
+  // Accumulates per-exercise scores across the mini phase — saved to Firestore
+  // at finish so the rolling nudge system has up-to-date data to work with.
+  const miniScoresRef  = useRef({});
 
   useEffect(() => {
     const logExit = logScreenView('Checkin');
@@ -334,7 +337,14 @@ export default function CheckinScreen({ navigation }) {
 
   // ── Mini exercises ─────────────────────────────────────────────────────────
 
-  function handleMiniComplete() {
+  // score: 0–100 | null — collect for saveSessionExerciseScores at finish.
+  // exerciseType key must match EXERCISE_KEYS in difficultyService.
+  function handleMiniComplete(score) {
+    const { type } = MINI_EXERCISES[miniExIndex];
+    if (score != null && Number.isFinite(score) && score > 0) {
+      miniScoresRef.current[type] = Math.round(score);
+    }
+
     const next = miniExIndex + 1;
     Animated.timing(progressAnim, {
       toValue: next / MINI_EXERCISES.length,
@@ -354,9 +364,15 @@ export default function CheckinScreen({ navigation }) {
   async function handleFinish() {
     setFinishing(true);
     try {
-      // Adjust difficulty tiers based on per-dimension pre/post score deltas (V2)
-      if (preScores && postScores) {
-        await adjustDifficultyAfterCheckin(preScores, postScores);
+      // Tiers are now managed exclusively by the rolling nudge system
+      // (nudgeTiersFromRecentScores at session start) — adjustDifficultyAfterCheckin
+      // is no longer called here to avoid double-adjusting. Pre/post scores are kept
+      // for the comparison display but do not drive tier changes directly (M8).
+
+      // Persist mini exercise scores so the rolling nudge system has fresh data.
+      // Non-fatal — a failed write does not block the user from completing the check-in.
+      if (Object.keys(miniScoresRef.current).length > 0) {
+        saveSessionExerciseScores(miniScoresRef.current).catch(() => {});
       }
 
       // Save post-session scores as a check-in entry so ProgressScreen sparklines update.
@@ -594,27 +610,9 @@ export default function CheckinScreen({ navigation }) {
     const totalPost = SCORE_KEYS.reduce((a, k) => a + (postScores?.[k] ?? 0), 0);
     const improved  = totalPost >= totalPre;
 
-    // V2: compute per-dimension deltas matching TIER_SCORE_MAP in difficultyService
-    // so tier change pills appear immediately, before the user taps Finish.
-    const vpDelta = (postScores?.voice_power ?? 50) - (preScores?.voice_power ?? 50);
-    const exDelta = (postScores?.expression  ?? 50) - (preScores?.expression  ?? 50);
-    const flDelta = (postScores?.fluency     ?? 50) - (preScores?.fluency     ?? 50);
-
-    const _dimDir = (delta) => delta > 5 ? 'up' : delta < -5 ? 'down' : 'flat';
-
-    // per-exercise predicted changes
-    const predictedTierChanges = {
-      phonation:   _dimDir(vpDelta),
-      loudness:    _dimDir(vpDelta),
-      pitchGlides: _dimDir(exDelta),
-      speech:      _dimDir(flDelta),
-    };
-    const EXERCISE_LABELS = {
-      phonation: 'Phonation', loudness: 'Loudness',
-      pitchGlides: 'Pitch', speech: 'Speech',
-    };
-    const anyUp   = Object.values(predictedTierChanges).some(d => d === 'up');
-    const anyDown = Object.values(predictedTierChanges).some(d => d === 'down');
+    // Tier changes now come from rolling averages (nudgeTiersFromRecentScores at
+    // session start) — predicting them from a single check-in delta was unreliable.
+    // Removed: predictedTierChanges, anyUp, anyDown, tier pill row (M8).
 
     // Canonical session gradient — same as all other Checkin phases.
     // The comparison phase has no back button — the user must finish or use
@@ -671,33 +669,13 @@ export default function CheckinScreen({ navigation }) {
             </View>
           </View>
 
-          {/* V2: Per-exercise tier change pills — shows exactly which exercises level up/down */}
-          {(anyUp || anyDown) ? (
-            <View style={s.tierChangesSection}>
-              <Text style={s.tierChangesLabel}>
-                {anyUp && !anyDown ? 'Your training is levelling up:' :
-                 anyDown && !anyUp ? 'Adjusting your training:' :
-                 'Training updated:'}
-              </Text>
-              <View style={s.tierPillsRow}>
-                {Object.entries(predictedTierChanges).map(([key, dir]) => {
-                  if (dir === 'flat') return null;
-                  const isUp = dir === 'up';
-                  return (
-                    <View key={key} style={[s.tierPill, isUp ? s.tierPillUp : s.tierPillDown]}>
-                      <Text style={s.tierPillText}>
-                        {isUp ? '⬆' : '⬇'} {EXERCISE_LABELS[key]}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          ) : (
-            <View style={s.tierBadge}>
-              <Text style={s.tierBadgeText}>✓ Training level maintained — keep it up!</Text>
-            </View>
-          )}
+          {/* Training level note — tier changes now come from rolling averages,
+              not from a single check-in delta, so prediction pills are removed (M8). */}
+          <View style={s.tierBadge}>
+            <Text style={s.tierBadgeText}>
+              {'✓ Your training level adjusts automatically as you practise.'}
+            </Text>
+          </View>
 
           {/* Vs plan — compare postScores against the relevant milestone target */}
           {progressPlan && postScores && (() => {
