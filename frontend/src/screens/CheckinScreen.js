@@ -363,7 +363,10 @@ export default function CheckinScreen({ navigation }) {
   // exerciseType key must match EXERCISE_KEYS in difficultyService.
   function handleMiniComplete(score) {
     const { type } = MINI_EXERCISES[miniExIndex];
-    if (score != null && Number.isFinite(score) && score > 0) {
+    // Use >= 0 (not > 0) — a score of exactly 0 is valid and meaningful
+    // (e.g. user completed breathing but measured no phonation effort).
+    // Previously score > 0 silently dropped all zero scores.
+    if (score != null && Number.isFinite(score) && score >= 0) {
       miniScoresRef.current[type] = Math.round(score);
     }
 

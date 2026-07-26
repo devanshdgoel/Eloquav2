@@ -1154,7 +1154,14 @@ const pgHelp = StyleSheet.create({
 const STEP_TUTORIAL = 0;
 const STEP_EXERCISE = 1;
 
-export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8, analysisFallbackScore = 100 }) {
+// On Android the fallback is used when fewer than 20 pitch samples were collected
+// (very fast completion or mic issue).  100 was too generous — a user who barely
+// phonated would score perfectly.  60 is a neutral "completed but unmeasured" score
+// that lets the nudge system treat it as a mid-range result.
+// On iOS the fallback covers a backend failure after all hoops complete — 100 is
+// still appropriate there because the user demonstrably held all hoops.
+// BaselineSessionScreen always passes analysisFallbackScore=50 explicitly, overriding this default.
+export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8, analysisFallbackScore = Platform.OS === 'android' ? 60 : 100 }) {
   // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
   const [step, setStep] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
