@@ -41,6 +41,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SpeakerButton from '../../components/SpeakerButton';
 import { tryCompleteSession } from '../../services/progressService';
+import { auth } from '../../config/firebase';
 import { onSessionComplete, requestPermission as requestNotificationPermission } from '../../services/notificationService';
 import {
   EXERCISE_KEYS,
@@ -134,22 +135,41 @@ const EXERCISE_FOCUS = {
 // ── Fallback done screen ───────────────────────────────────────────────────────
 // Shown only if StreakCelebration navigation fails — gives users a path home.
 // Uses the session gradient to match the baseline session context.
-function SessionComplete({ navigation }) {
+// showCreateAccount: guest users — honest copy + CTA to sign up rather than
+// false claims that a training plan or streak was saved.
+function SessionComplete({ navigation, showCreateAccount = false }) {
   return (
     <LinearGradient colors={colors.gradients.session} style={fc.root}>
       <View style={fc.content}>
-        <Text style={fc.title}>Your profile is ready.</Text>
-        <Text style={fc.sub}>
-          Your training plan is set.{'\n'}Every session from here sharpens your voice.
+        <Text style={fc.title}>
+          {showCreateAccount ? 'Session complete.' : 'Your profile is ready.'}
         </Text>
+        <Text style={fc.sub}>
+          {showCreateAccount
+            ? 'Nice work! Create a free account to save your progress and streaks.'
+            : 'Your training plan is set.\nEvery session from here sharpens your voice.'}
+        </Text>
+        {showCreateAccount && (
+          <TouchableOpacity
+            style={fc.btn}
+            onPress={() => navigation.replace('SignUp')}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Create account"
+          >
+            <Text style={fc.btnText}>Create account</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
-          style={fc.btn}
+          style={showCreateAccount ? fc.ghostBtn : fc.btn}
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Home' }] })}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Start my journey"
+          accessibilityLabel={showCreateAccount ? 'Back to Home' : 'Start my journey'}
         >
-          <Text style={fc.btnText}>Start My Journey  →</Text>
+          <Text style={showCreateAccount ? fc.ghostBtnText : fc.btnText}>
+            {showCreateAccount ? 'Back to Home' : 'Start My Journey  →'}
+          </Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -172,6 +192,8 @@ const fc = StyleSheet.create({
     borderRadius: 28, paddingHorizontal: 40, paddingVertical: 20,
   },
   btnText: { color: '#1A1A1A', fontSize: 18, fontWeight: '700', letterSpacing: 0.5 },
+  ghostBtn: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 14 },
+  ghostBtnText: { color: 'rgba(255,255,255,0.65)', fontSize: 16, fontWeight: '600', textDecorationLine: 'underline' },
 });
 
 // ── Main container ─────────────────────────────────────────────────────────────
@@ -182,8 +204,10 @@ const SAFETY_TEXT =
   'If you have an existing voice or throat condition, check with your care team first.';
 
 export default function BaselineSessionScreen({ navigation }) {
-  const [exerciseIndex, setExerciseIndex] = useState(0);
-  const [isDone,        setIsDone]        = useState(false);
+  const [exerciseIndex,  setExerciseIndex]  = useState(0);
+  const [isDone,         setIsDone]         = useState(false);
+  // isGuestSession: set when user has no Firebase account — show honest copy + sign-up CTA.
+  const [isGuestSession, setIsGuestSession] = useState(false);
   // Safety card is shown once per session, before the first exercise.
   // Dismissed by tapping the CTA — does not count as an exercise index.
   const [showSafety,    setShowSafety]    = useState(true);
@@ -332,6 +356,14 @@ export default function BaselineSessionScreen({ navigation }) {
     // Fire-and-forget — a failed write should never delay navigation or break the session.
     storeProgressPlan(plan).catch(() => {});
 
+    // Guest users (no Firebase uid) cannot save progress — tryCompleteSession would throw
+    // and the fallback would falsely claim a training plan was set. Show honest guest copy.
+    if (!auth.currentUser) {
+      setIsGuestSession(true);
+      setIsDone(true);
+      return;
+    }
+
     try {
       const result  = await tryCompleteSession();
       onSessionComplete().catch(() => {}); // reset re-engagement notification clock
@@ -429,7 +461,7 @@ export default function BaselineSessionScreen({ navigation }) {
   }
 
   if (isDone) {
-    return <SessionComplete navigation={navigation} />;
+    return <SessionComplete navigation={navigation} showCreateAccount={isGuestSession} />;
   }
 
   // Safety card: shown before the first exercise on every baseline session.

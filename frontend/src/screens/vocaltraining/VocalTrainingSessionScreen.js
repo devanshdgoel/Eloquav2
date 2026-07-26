@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { tryCompleteSession } from '../../services/progressService';
+import { auth } from '../../config/firebase';
 import { onSessionComplete, requestPermission as requestNotificationPermission } from '../../services/notificationService';
 import {
   nudgeTiersFromRecentScores,
@@ -113,7 +114,8 @@ const PROGRESS_BAR_H = 8;
 // Uses the session gradient to stay consistent with the training session context.
 // title and subtitle are optional — defaults used for error-fallback (real sessions);
 // replay sessions pass different copy so the user knows no streak was changed.
-function SessionComplete({ navigation, title, subtitle }) {
+// showCreateAccount: show a "Create account" button for unauthenticated (guest) completions.
+function SessionComplete({ navigation, title, subtitle, showCreateAccount = false }) {
   return (
     <LinearGradient colors={colors.gradients.session} style={completeStyles.root}>
       <View style={completeStyles.content}>
@@ -121,14 +123,28 @@ function SessionComplete({ navigation, title, subtitle }) {
         <Text style={completeStyles.subtitle}>
           {subtitle ?? 'Your streak has been updated.\nEvery session adds up.'}
         </Text>
+        {showCreateAccount && (
+          // For guest users: invite them to sign up so future sessions are saved.
+          <TouchableOpacity
+            style={completeStyles.homeBtn}
+            onPress={() => navigation.replace('SignUp')}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Create account"
+          >
+            <Text style={completeStyles.homeBtnText}>Create account</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
-          style={completeStyles.homeBtn}
+          style={showCreateAccount ? completeStyles.ghostBtn : completeStyles.homeBtn}
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Home' }] })}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel="Back to Home"
         >
-          <Text style={completeStyles.homeBtnText}>Back to Home</Text>
+          <Text style={showCreateAccount ? completeStyles.ghostBtnText : completeStyles.homeBtnText}>
+            Back to Home
+          </Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -165,6 +181,18 @@ const completeStyles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  // Ghost variant — used for "Back to Home" when a primary CTA is also shown.
+  ghostBtn: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
+  ghostBtnText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 16,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
 });
 
 // ── Main session container ─────────────────────────────────────────────────────
@@ -173,10 +201,13 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   const { nodeIndex = 0, isReplay = false } = route.params ?? {};
   const hapticEnabled = useHapticFeedback();
 
-  const [exerciseIndex, setExerciseIndex] = useState(0);
-  const [isDone,        setIsDone]        = useState(false);
-  const [tiers,         setTiers]         = useState(DEFAULT_TIERS);
-  const [focusKey,      setFocusKey]      = useState(null);
+  const [exerciseIndex,   setExerciseIndex]   = useState(0);
+  const [isDone,          setIsDone]          = useState(false);
+  // isGuestSession: set when session completes but no Firebase user is available.
+  // Shows honest copy + Create Account CTA instead of falsely claiming streak was saved.
+  const [isGuestSession,  setIsGuestSession]  = useState(false);
+  const [tiers,           setTiers]           = useState(DEFAULT_TIERS);
+  const [focusKey,        setFocusKey]        = useState(null);
 
   // ExerciseTitleCard shown between every exercise.
   // nextIndex: which exercise comes next. null = no card showing.
@@ -297,6 +328,16 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
     // silently advancing the roadmap past the user's real position.
     if (isReplay) {
       hapticSuccess(hapticEnabled);
+      setIsDone(true);
+      return;
+    }
+
+    // Guest users (anonymous auth unavailable) have no Firebase uid — tryCompleteSession
+    // would throw and the fallback screen would claim "Your streak has been updated"
+    // which is a lie. Show honest guest copy with a Create Account CTA instead.
+    if (!auth.currentUser) {
+      hapticSuccess(hapticEnabled);
+      setIsGuestSession(true);
       setIsDone(true);
       return;
     }
@@ -423,10 +464,19 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   }
 
   if (isDone) {
+    // Guest users: no account = no saved progress. Show honest copy + Create Account CTA.
+    if (isGuestSession) {
+      return <SessionComplete
+        navigation={navigation}
+        title="Session complete."
+        subtitle={"Nice work! Create a free account to save your progress and streaks."}
+        showCreateAccount
+      />;
+    }
     // isReplay sessions use different copy — the real session text says "streak updated"
     // which would be misleading for a replay where no progress was incremented.
     return isReplay
-      ? <SessionComplete navigation={navigation} title="Practice session complete." subtitle={'Nice extra work!\nYour streak stays where it is — real progress next time.'} />
+      ? <SessionComplete navigation={navigation} title="Practice session complete." subtitle={'Extra practice like this all adds up.\nYour roadmap stays where it is.'} />
       : <SessionComplete navigation={navigation} />;
   }
 
