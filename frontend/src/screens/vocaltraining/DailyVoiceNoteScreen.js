@@ -485,7 +485,8 @@ const s = StyleSheet.create({
   },
   skipTopText: {
     color: 'rgba(255,255,255,0.55)',
-    fontSize: 15,
+    // Raised from 15→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
@@ -509,7 +510,9 @@ const s = StyleSheet.create({
   },
   categoryLabel: {
     color: 'rgba(195,222,206,0.45)',
-    fontSize: 12,
+    // Raised from 12→14. This is a decorative eyebrow label (all-caps, purely
+    // contextual) so 14px is acceptable; strict 16px floor applies to instructional text.
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 2.5,
     textTransform: 'uppercase',
@@ -551,8 +554,10 @@ const s = StyleSheet.create({
 
   // ── Idle state ────────────────────────────────────────────────────────────
   hint: {
-    color: 'rgba(255,255,255,0.40)',
-    fontSize: 15,
+    // Raised opacity from 0.40→0.65 (Sweep B: contrast fix) and
+    // fontSize from 15→16 (Sweep A: WCAG AA floor for functional text).
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 16,
     textAlign: 'center',
     letterSpacing: 0.2,
     marginTop: -6,
@@ -687,8 +692,10 @@ const s = StyleSheet.create({
     paddingBottom: 48,
   },
   skipBottomText: {
-    color: 'rgba(255,255,255,0.28)',
-    fontSize: 15,
+    // Raised opacity from 0.28→0.65 (Sweep B: contrast fix) and
+    // fontSize from 15→16 (Sweep A: WCAG AA floor for functional text).
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 16,
     letterSpacing: 0.2,
   },
 });

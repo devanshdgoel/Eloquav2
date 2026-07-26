@@ -699,9 +699,10 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
         <HoopEllipse state={urState} />
       </View>
 
-      {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on iOS — matches Android */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>HIGH</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>LOW</Text>
+      {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on iOS — matches Android.
+          0.60 dim opacity (a11y branch) for WCAG AA compliance on inactive labels. */}
+      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>HIGH</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>LOW</Text>
 
       {/* Dolphin */}
       <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>
@@ -952,8 +953,8 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
       </View>
 
       {/* Zone labels: HIGH pitch (top) / LOW pitch (bottom) on Android */}
-      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>HIGH</Text>
-      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.35)' }]}>LOW</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_UR.x + HOOP_W / 2 - fs(10), top: HOOP_UR.y - fv(14), color: urState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>HIGH</Text>
+      <Text style={[exs.zoneLabel, { left: HOOP_LL.x + HOOP_W / 2 - fs(10), top: HOOP_LL.y + HOOP_H / 2 + fv(4), color: llState === 'target' ? ORANGE : 'rgba(255,255,255,0.60)' }]}>LOW</Text>
 
       {/* Dolphin */}
       <Animated.View style={{ position: 'absolute', transform: [{ translateX: Animated.subtract(dolphinX, DOLPH_W / 2) }, { translateY: Animated.subtract(dolphinY, DOLPH_H / 2) }], zIndex: 10 }}>
@@ -1078,7 +1079,8 @@ const xs = StyleSheet.create({
 const exs = StyleSheet.create({
   prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 30, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
   promptBig: { top: fv(137), fontSize: 34, letterSpacing: 1.7 },
-  zoneLabel: { position: 'absolute', fontSize: 13, fontWeight: '700', letterSpacing: 0.5, zIndex: 20 },
+  // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional zone labels.
+  zoneLabel: { position: 'absolute', fontSize: 16, fontWeight: '700', letterSpacing: 0.5, zIndex: 20 },
 });
 
 // Help overlay styles

@@ -273,13 +273,19 @@ const ill = StyleSheet.create({
 
 // ── Card layout stylesheet ─────────────────────────────────────────────────────
 const tc = StyleSheet.create({
+  // Standard 56×56 ghost circle matching the bs.close style used in
+  // PitchGlidesExercise and other exercise screens. 56dp meets the WCAG
+  // 2.1 AA 44×44dp touch target minimum with room to spare.
   closeBtn: {
     marginLeft: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.20)',
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   closeTxt: {
     color: '#FFFFFF',

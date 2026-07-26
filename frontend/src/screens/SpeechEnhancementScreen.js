@@ -25,6 +25,7 @@ import { colors } from '../theme';
 import { logUsageEvent, logScreenView } from '../utils/analytics';
 import { useLargeText } from '../context/PrefsContext';
 import { MicIcon, ClipboardIcon, SpeakerIcon } from '../components/Icons';
+import * as Clipboard from 'expo-clipboard';
 import ScreenHeader from '../components/ScreenHeader';
 import SpeakerButton from '../components/SpeakerButton';
 
@@ -210,6 +211,15 @@ export default function SpeechEnhancementScreen({ navigation }) {
 
   // First-play motivational message — shown the very first time enhanced audio plays.
   const [firstPlayMsg,    setFirstPlayMsg]   = useState(null);
+
+  // copiedFeedback: true for 1800 ms after the user copies the transcript.
+  // The "Copy text" button label changes to "Copied ✓" while this is true.
+  const [copiedFeedback, setCopiedFeedback] = useState(false);
+  const copiedTimeoutRef = useRef(null);
+
+  // playbackRate: 'normal' plays at 1.0×; 'slow' plays at 0.85× to help the user
+  // hear the differences in their enhanced voice more clearly.
+  const [playbackRate, setPlaybackRate] = useState('normal');
   const FIRST_PLAY_KEY = 'eloqua_speech_first_play';
 
   // Screen-time tracking.
@@ -651,9 +661,11 @@ export default function SpeechEnhancementScreen({ navigation }) {
     setAudioFailed(false);
 
     try {
+      // Load at normal speed; actual playback rate is applied in playEnhanced()
+      // so the user can change the rate toggle after the file has preloaded.
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUrl },
-        { shouldPlay: false, rate: 0.85, shouldCorrectPitch: true, volume: 1.0 }
+        { shouldPlay: false, shouldCorrectPitch: true, volume: 1.0 }
       );
 
       // Discard if the component unmounted or a new session started while loading.
@@ -688,6 +700,10 @@ export default function SpeechEnhancementScreen({ navigation }) {
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: false,
         });
+        // Apply the current speed toggle before replaying. shouldCorrectPitch=true
+        // keeps the pitch natural even at 0.85× (avoids the "chipmunk" effect).
+        const rate = playbackRate === 'slow' ? 0.85 : 1.0;
+        await soundRef.current.setRateAsync(rate, true);
         await soundRef.current.setPositionAsync(0);
         await soundRef.current.playAsync();
         return;
@@ -728,6 +744,9 @@ export default function SpeechEnhancementScreen({ navigation }) {
         playsInSilentModeIOS: true,
         playThroughEarpieceAndroid: false,
       });
+      // Apply the user's chosen speed before the first play.
+      const rate = playbackRate === 'slow' ? 0.85 : 1.0;
+      await sound.setRateAsync(rate, true);
       await sound.playAsync();
 
       // First-time play: show motivational message for 4 s.
@@ -754,9 +773,32 @@ export default function SpeechEnhancementScreen({ navigation }) {
     if (soundRef.current) setAudioReady(true);
   }
 
-  async function shareText() {
+  // copyText — copies the transcript to the system clipboard and shows a
+  // "Copied ✓" confirmation on the button for 1800 ms.
+  async function copyText() {
     const text = result?.cleaned_transcript || result?.raw_transcript || '';
-    try { await Share.share({ message: text }); } catch { }
+    await Clipboard.setStringAsync(text);
+
+    // Show feedback and clear any running timeout from a rapid double-tap.
+    if (copiedTimeoutRef.current) {
+      clearTimeout(copiedTimeoutRef.current);
+    }
+    setCopiedFeedback(true);
+    copiedTimeoutRef.current = setTimeout(() => {
+      setCopiedFeedback(false);
+      copiedTimeoutRef.current = null;
+    }, 1800);
+  }
+
+  // shareTranscript — opens the OS native share sheet so the user can send
+  // their transcript to another app (Messages, Notes, etc.).
+  async function shareTranscript() {
+    const text = result?.cleaned_transcript || result?.raw_transcript || '';
+    try {
+      await Share.share({ message: text });
+    } catch {
+      // User dismissed the share sheet — no error needed.
+    }
   }
 
   const reset = useCallback(() => {
@@ -948,9 +990,59 @@ export default function SpeechEnhancementScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.actionBtn} onPress={shareText} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Copy transcript">
-            <Text style={styles.actionLabel}>Copy text</Text>
+          {/* Speed toggle chips — let the user hear the enhanced audio at a
+              comfortable pace. "Slower" plays at 0.85× with pitch correction
+              so the voice sounds natural (no artificial lowering). */}
+          {hasAudio && (
+            <View style={styles.speedRow}>
+              <TouchableOpacity
+                style={[styles.speedChip, playbackRate === 'normal' && styles.speedChipActive]}
+                onPress={() => setPlaybackRate('normal')}
+                activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: playbackRate === 'normal' }}
+                accessibilityLabel="Play at normal speed"
+              >
+                <Text style={[styles.speedChipText, playbackRate === 'normal' && styles.speedChipTextActive]}>
+                  Normal
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.speedChip, playbackRate === 'slow' && styles.speedChipActive]}
+                onPress={() => setPlaybackRate('slow')}
+                activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: playbackRate === 'slow' }}
+                accessibilityLabel="Play at slower speed"
+              >
+                <Text style={[styles.speedChipText, playbackRate === 'slow' && styles.speedChipTextActive]}>
+                  Slower
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Copy text — copies to clipboard and shows "Copied ✓" confirmation. */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={copyText}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={copiedFeedback ? 'Copied to clipboard' : 'Copy transcript to clipboard'}
+          >
+            <Text style={styles.actionLabel}>{copiedFeedback ? 'Copied ✓' : 'Copy text'}</Text>
             <ClipboardIcon size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          {/* Share — opens the OS native share sheet for sending to other apps. */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={shareTranscript}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Share transcript"
+          >
+            <Text style={styles.actionLabel}>Share</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.newRecordBtn} onPress={reset} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Start new recording">
@@ -1180,6 +1272,37 @@ const styles = StyleSheet.create({
     shadowColor: '#48D28C',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+  },
+
+  // ── Speed toggle row ─────────────────────────────────────────────────────────
+  // Shown below the play button; lets the user switch between 1.0× and 0.85×.
+  speedRow: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  speedChip: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  speedChipActive: {
+    // Orange border + subtle orange tint when selected.
+    borderColor: ORANGE,
+    backgroundColor: 'rgba(255,169,64,0.15)',
+  },
+  speedChipText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  speedChipTextActive: {
+    color: ORANGE,
+    fontWeight: '700',
   },
 
   // First-play motivational overlay

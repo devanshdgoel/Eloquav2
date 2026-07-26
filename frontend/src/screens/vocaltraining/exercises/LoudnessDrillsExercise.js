@@ -226,7 +226,9 @@ function WordCard({ word, timerAnim, isActive, isSuccess }) {
   const wordCount = (word || '').split(' ').length;
   // Scale card height and font for longer phrases/sentences
   const CARD_H  = wordCount <= 3 ? 110 : wordCount <= 6 ? 130 : 150;
-  const fontSize = wordCount <= 2 ? 52 : wordCount <= 4 ? 34 : wordCount <= 7 ? 24 : 18;
+  // Font size scales down with word count. The minimum is raised from 18→20
+  // so even long phrases meet the WCAG 2.1 AA minimum for functional text.
+  const fontSize = wordCount <= 2 ? 52 : wordCount <= 4 ? 34 : wordCount <= 7 ? 24 : 20;
   const letterSp = wordCount <= 2 ? 3 : 0.5;
   // Green border + glow on success, orange otherwise
   const borderCol   = isSuccess ? '#48D28C' : ORANGE;
@@ -258,7 +260,7 @@ function WordCard({ word, timerAnim, isActive, isSuccess }) {
           <Text
             style={{ fontSize, fontWeight: '800', color: isSuccess ? '#FFFFFF' : WORD_COL, letterSpacing: letterSp, textAlign: 'center', lineHeight: fontSize * 1.3 }}
             adjustsFontSizeToFit
-            minimumFontScale={0.5}
+            minimumFontScale={0.75}
             numberOfLines={4}
           >
             {word}
@@ -874,8 +876,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     setDoneCount(next);
     if (next >= TOTAL_ROUNDS) {
       setPhaseS('done');
-      // V2: score = successful rounds / (successful + missed rounds) × 100
-      const score = Math.round((TOTAL_ROUNDS / Math.max(TOTAL_ROUNDS, TOTAL_ROUNDS + missCountRef.current)) * 100);
+      // Score = successful rounds / total attempted rounds × 100.
+      // The Math.max wrapper was a no-op because missCount is always ≥ 0,
+      // so (TOTAL_ROUNDS + missCount) ≥ TOTAL_ROUNDS always holds. Removed it.
+      const score = Math.round((TOTAL_ROUNDS / (TOTAL_ROUNDS + missCountRef.current)) * 100);
       hapticSuccess(hapticEnabled);
       setTimeout(() => onComplete(score), 1200);
       return;
@@ -913,7 +917,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         <TouchableOpacity style={ex.xBtn} onPress={onExit} accessibilityRole="button" accessibilityLabel="Exit exercise">
           <Text style={ex.xText}>✕</Text>
         </TouchableOpacity>
-        <Text style={ex.counter}>{doneCount + 1}/{TOTAL_ROUNDS}</Text>
+        {/* Changed from "{N}/{M}" format to "Word N of M" for clarity with screen readers. */}
+        <Text style={ex.counter}>{'Word '}{doneCount + 1}{' of '}{TOTAL_ROUNDS}</Text>
         <TouchableOpacity style={ex.helpBtn} onPress={showHelp} accessibilityRole="button" accessibilityLabel="Show instructions">
           <Text style={ex.helpText}>?</Text>
         </TouchableOpacity>

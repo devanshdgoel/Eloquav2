@@ -96,8 +96,10 @@ const sc = StyleSheet.create({
   },
   hint: {
     color: 'rgba(255,255,255,0.55)',
-    fontSize: 13,
-    lineHeight: 17,
+    // Raised from 13→16 to meet WCAG 2.1 AA minimum. This text is instructional
+    // (tells the user what the score means), so it counts as functional text.
+    fontSize: 16,
+    lineHeight: 20,
   },
 });
 

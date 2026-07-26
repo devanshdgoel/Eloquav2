@@ -12,7 +12,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -30,6 +29,7 @@ import { colors } from '../theme';
 import { logFunnelEvent, logScreenView } from '../utils/analytics';
 import ScreenHeader from '../components/ScreenHeader';
 import SpeakerButton from '../components/SpeakerButton';
+import ConfirmSheet from '../components/ConfirmSheet';
 
 import BreathingExercise  from './vocaltraining/exercises/BreathingExercise';
 import SustainedPhonation from './vocaltraining/exercises/SustainedPhonationExercise';
@@ -127,6 +127,8 @@ export default function CheckinScreen({ navigation }) {
   const [tiers,            setTiers]            = useState(DEFAULT_TIERS);
   const [progressPlan,     setProgressPlan]     = useState(null);
   const [checkinNumber,    setCheckinNumber]    = useState(1);
+  // confirmSheet: config for ConfirmSheet; null = hidden.
+  const [confirmSheet,     setConfirmSheet]     = useState(null);
 
   const progressAnim   = useRef(new Animated.Value(0)).current;
   const recordingRef   = useRef(null);
@@ -170,37 +172,57 @@ export default function CheckinScreen({ navigation }) {
       if (actionType === 'REPLACE' || actionType === 'RESET') return;
       e.preventDefault();
 
+      // Use ConfirmSheet instead of Alert.alert for consistent bottom-sheet styling.
+      // In 'comparison' phase the user has completed all exercises, so offer the option
+      // to finish properly (save progress) alongside the destructive leave path.
+      const pendingAction = e.data.action;
+
       if (phase === 'comparison') {
-        // The user has already completed all exercises; offer to finish properly.
-        Alert.alert(
-          'Leave check-in?',
-          'Your results are ready. Finish to save your progress.',
-          [
-            { text: 'Stay', style: 'cancel' },
+        setConfirmSheet({
+          title: 'Leave check-in?',
+          body:  'Your results are ready. Finish to save your progress.',
+          actions: [
             {
-              text: 'Finish now',
-              onPress: () => handleFinish(),
+              label: 'Stay',
+              onPress: () => setConfirmSheet(null),
             },
             {
-              text: 'Leave without saving',
-              style: 'destructive',
-              onPress: () => navigation.dispatch(e.data.action),
+              label: 'Finish now',
+              onPress: () => {
+                setConfirmSheet(null);
+                handleFinish();
+              },
+            },
+            {
+              label: 'Leave without saving',
+              destructive: true,
+              onPress: () => {
+                setConfirmSheet(null);
+                navigation.dispatch(pendingAction);
+              },
             },
           ],
-        );
+        });
       } else {
-        Alert.alert(
-          'Leave check-in?',
-          "Your progress won't be saved if you leave now.",
-          [
-            { text: 'Stay', style: 'cancel' },
+        // 'mini' and 'post' phases — two actions only.
+        setConfirmSheet({
+          title: 'Leave check-in?',
+          body:  "Your progress won't be saved if you leave now.",
+          actions: [
             {
-              text: 'Leave',
-              style: 'destructive',
-              onPress: () => navigation.dispatch(e.data.action),
+              label: 'Stay',
+              onPress: () => setConfirmSheet(null),
+            },
+            {
+              label: 'Leave',
+              destructive: true,
+              onPress: () => {
+                setConfirmSheet(null);
+                navigation.dispatch(pendingAction);
+              },
             },
           ],
-        );
+        });
       }
     });
     return unsub;
@@ -405,14 +427,28 @@ export default function CheckinScreen({ navigation }) {
       });
     } catch {
       setFinishing(false);
-      Alert.alert(
-        'Could not save check-in',
-        'Check your connection and try again. Your recorded audio is not lost.',
-        [
-          { text: 'Try again', onPress: handleFinish },
-          { text: 'Go home', style: 'destructive', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) },
-        ]
-      );
+      // Use ConfirmSheet instead of Alert.alert for consistent styling.
+      setConfirmSheet({
+        title: 'Could not save check-in',
+        body:  'Check your connection and try again. Your recorded audio is not lost.',
+        actions: [
+          {
+            label: 'Try again',
+            onPress: () => {
+              setConfirmSheet(null);
+              handleFinish();
+            },
+          },
+          {
+            label: 'Go home',
+            destructive: true,
+            onPress: () => {
+              setConfirmSheet(null);
+              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+            },
+          },
+        ],
+      });
     }
   }
 
@@ -508,6 +544,8 @@ export default function CheckinScreen({ navigation }) {
             }]}
           />
         </View>
+        {/* Leave-guard sheet shown when the user tries to back out during mini exercises */}
+        <ConfirmSheet config={confirmSheet} onDismiss={() => setConfirmSheet(null)} />
       </View>
     );
   }
@@ -741,6 +779,9 @@ export default function CheckinScreen({ navigation }) {
               : <Text style={s.primaryBtnText}>Finish</Text>}
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Save-error sheet shown when handleFinish fails */}
+        <ConfirmSheet config={confirmSheet} onDismiss={() => setConfirmSheet(null)} />
       </LinearGradient>
     );
   }
@@ -952,7 +993,8 @@ const s = StyleSheet.create({
   },
   planSubtitle: {
     color: 'rgba(255,255,255,0.55)',
-    fontSize: 15,
+    // Raised from 15→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     fontWeight: '600',
     marginTop: -4,
   },
@@ -995,7 +1037,8 @@ const s = StyleSheet.create({
   },
   planTagText: {
     color: WHITE,
-    fontSize: 13,
+    // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.2,
   },

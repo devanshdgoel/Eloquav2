@@ -27,7 +27,10 @@ const MESSAGES = [
   { emoji: '🌟', heading: 'Halfway there!', sub: "Breathe. You're doing great." },
 ];
 
-export default function MidpointScreen({ onComplete, onExit }) {
+// doneCount — number of exercises completed so far (drives the filled pips).
+// totalCount — total exercises in the session (drives the total pip count).
+// Both default to 4 and 8 to match the original hard-coded layout.
+export default function MidpointScreen({ onComplete, onExit, doneCount = 4, totalCount = 8 }) {
   const largeText = useLargeText();
   const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   const opacity  = useRef(new Animated.Value(0)).current;
@@ -74,10 +77,12 @@ export default function MidpointScreen({ onComplete, onExit }) {
         <Text style={s.heading}>{m.heading}</Text>
         <Text style={[s.sub, { fontSize: fs(18) }]}>{m.sub}</Text>
 
-        {/* Progress pips — 8 total (4 done, 1 midpoint, 3 remaining) */}
+        {/* Progress pips — one pip per exercise.
+            Pips 0..(doneCount-1) are filled (done); pip doneCount is the
+            current midpoint (highlighted); the rest are empty (upcoming). */}
         <View style={s.pips}>
-          {Array.from({ length: 8 }, (_, i) => (
-            <View key={i} style={[s.pip, i < 4 && s.pipDone, i === 4 && s.pipNext]} />
+          {Array.from({ length: totalCount }, (_, i) => (
+            <View key={i} style={[s.pip, i < doneCount && s.pipDone, i === doneCount && s.pipNext]} />
           ))}
         </View>
 

@@ -6,7 +6,6 @@ import {
   Dimensions,
   Animated,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,6 +27,7 @@ import TailoredExercise, { findWeakestKey } from './exercises/TailoredExercise';
 import MidpointScreen     from './exercises/MidpointScreen';
 import FunctionalSpeech   from './exercises/FunctionalSpeechExercise';
 import ExerciseTitleCard  from './ExerciseTitleCard';
+import ConfirmSheet        from '../../components/ConfirmSheet';
 import { logSessionEvent, logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
 import { useHapticFeedback } from '../../context/PrefsContext';
@@ -182,6 +182,10 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
   // nextIndex: which exercise comes next. null = no card showing.
   const [transition, setTransition] = useState(null);
 
+  // confirmSheet: config object for ConfirmSheet; null = hidden.
+  // Replaces Alert.alert so we can style the leave-guard consistently.
+  const [confirmSheet, setConfirmSheet] = useState(null);
+
   // V2: collect per-exercise scores during the session for Firestore persistence.
   const exerciseScoresRef = useRef({});
 
@@ -223,15 +227,24 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       const actionType = e.data.action.type;
       if (actionType === 'REPLACE' || actionType === 'RESET') return; // programmatic — allow
       e.preventDefault();
-      Alert.alert(
-        'Leave session?',
-        "Your progress won't be saved if you leave now.",
-        [
-          { text: 'Stay', style: 'cancel' },
+
+      // Capture the pending navigation action so we can dispatch it if the
+      // user confirms they want to leave. We use ConfirmSheet instead of
+      // Alert.alert for consistent styling across iOS and Android.
+      const pendingAction = e.data.action;
+      setConfirmSheet({
+        title: 'Leave session?',
+        body:  "Your progress won't be saved if you leave now.",
+        actions: [
           {
-            text: 'Leave',
-            style: 'destructive',
+            label: 'Stay',
+            onPress: () => setConfirmSheet(null),
+          },
+          {
+            label: 'Leave',
+            destructive: true,
             onPress: () => {
+              setConfirmSheet(null);
               logSessionEvent({
                 started_at:                  new Date(startedAtRef.current).toISOString(),
                 abandoned_at:                new Date().toISOString(),
@@ -242,11 +255,11 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
                 abandoned_at_exercise_type:  SESSION_EXERCISES[exerciseIndexRef.current]?.type ?? null,
                 exercise_scores_partial:     { ...exerciseScoresRef.current },
               });
-              navigation.dispatch(e.data.action);
+              navigation.dispatch(pendingAction);
             },
           },
         ],
-      );
+      });
     });
     return unsub;
   }, [navigation, isDone]);
@@ -351,11 +364,21 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
       try {
         await finishSession();
       } catch {
-        Alert.alert(
-          'Could not save session',
-          'Check your connection and try again.',
-          [{ text: 'Go home', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }],
-        );
+        // Show a styled ConfirmSheet instead of a bare Alert.
+        setConfirmSheet({
+          title: 'Could not save session',
+          body:  'Check your connection and try again.',
+          actions: [
+            {
+              label: 'Go home',
+              destructive: true,
+              onPress: () => {
+                setConfirmSheet(null);
+                navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+              },
+            },
+          ],
+        });
       }
       return;
     }
@@ -435,9 +458,13 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
               totalExercises={SESSION_EXERCISES.length}
               {...(type === 'tailored'
                 ? { tiers, focusKey }
-                : EXERCISE_KEYS.includes(type)
-                  ? { tier: tiers[type] ?? 1 }
-                  : {}
+                : type === 'midpoint'
+                  // Pass the live progress counts so MidpointScreen's pips
+                  // reflect the actual session state rather than hard-coded 4/8.
+                  ? { doneCount: exerciseIndex, totalCount: SESSION_EXERCISES.length }
+                  : EXERCISE_KEYS.includes(type)
+                    ? { tier: tiers[type] ?? 1 }
+                    : {}
               )}
             />
             {__DEV__ && (
@@ -451,6 +478,13 @@ export default function VocalTrainingSessionScreen({ navigation, route }) {
           </>
         )}
       </View>
+
+      {/* ConfirmSheet for leave-guard and save-error dialogs.
+          Replaces bare Alert.alert calls so styling is consistent. */}
+      <ConfirmSheet
+        config={confirmSheet}
+        onDismiss={() => setConfirmSheet(null)}
+      />
 
       {/* Orange session progress bar — always visible at the very bottom. */}
       <View style={styles.progressTrack}>
