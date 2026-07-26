@@ -49,8 +49,11 @@ const C = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const INTRO_KEY       = '@eloqua_functional_speech_demo_seen';
-const HEAR_DELAY_MS   = 350;   // wait before TTS fires on new item
-const AUTO_SPEAK_MS   = 2800;  // auto-open mic after hearing
+const HEAR_DELAY_MS   = 350;    // wait before TTS fires so the card animation settles first
+// No AUTO_SPEAK_MS fixed timer — mic opens from Speech.speak's onDone callback so the
+// user always hears the full sentence before being asked to repeat it.
+// Tier ≥2 sentences take 5–15 s at rate 0.80, so a fixed 2.8 s was cutting TTS off mid-word.
+const AUTO_SPEAK_SAFETY_MS = 20000;  // safety cap if onDone never fires (e.g. interrupted TTS)
 const MAX_RECORD_MS   = 5000;  // mic timeout → wrong-answer drawer
 const MIN_SPEAK_MS    = 220;
 const CALIBRATION_MS  = 1500;
@@ -409,7 +412,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     setPhase('hear');
     cardScale.setValue(0.86);
     Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start();
-    // Play TTS — use enhanced voice for more natural speech
+
+    // Play TTS after a brief pause so the card animation settles first.
+    // The onDone callback opens the mic as soon as Speech.speak finishes naturally —
+    // this replaces the old fixed 2.8 s timer that cut off longer tier-2+ sentences.
     setTimeout(async () => {
       if (phaseRef.current !== 'hear') return;
       await setPlaybackMode();
@@ -417,14 +423,22 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         language: 'en-GB',          // British English tends to sound more natural
         rate: 0.80,                 // Slightly slower for elderly users
         pitch: 1.05,                // Slightly warmer pitch
-        // iOS: prefer enhanced quality voice
-        voice: 'com.apple.voice.enhanced.en-GB.Daniel',
+        voice: 'com.apple.voice.enhanced.en-GB.Daniel',  // iOS enhanced quality
+        // Open the mic immediately when TTS finishes so user hears the full sentence.
+        // Guard: only fire if still in 'hear' phase — the "I'm ready →" button sets
+        // phase to 'speak' early, so a late-firing onDone won't reopen a closed mic.
+        onDone: () => {
+          if (phaseRef.current === 'hear') openMic();
+        },
       });
     }, HEAR_DELAY_MS);
-    // Auto-open mic
+
+    // Safety-cap timer: if onDone never fires (TTS was interrupted by the speaker-
+    // replay button, or a platform bug prevents the callback), open the mic after 20 s.
+    // This prevents the exercise from hanging indefinitely on a silently-failed TTS.
     hearTimerRef.current = setTimeout(() => {
       if (phaseRef.current === 'hear') openMic();
-    }, AUTO_SPEAK_MS);
+    }, AUTO_SPEAK_SAFETY_MS);
   }
 
   async function openMic() {
