@@ -51,8 +51,11 @@ export function logSessionEvent(data) {
 //   { event: 'speech_enhance_failed', reason }
 export function logUsageEvent(data) {
   const u = uid();
-  if (!u) return;
-  addDoc(collection(db, 'users', u, 'usage_events'), {
+  // Always return a resolved Promise so callers can safely chain .catch() without
+  // checking the return value. Previously returned undefined when no user was signed in,
+  // causing "Cannot read properties of undefined (reading 'catch')" in exercise code.
+  if (!u) return Promise.resolve();
+  return addDoc(collection(db, 'users', u, 'usage_events'), {
     ...data,
     ts: serverTimestamp(),
   }).catch(() => {});
