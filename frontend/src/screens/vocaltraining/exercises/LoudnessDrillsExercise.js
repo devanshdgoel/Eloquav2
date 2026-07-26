@@ -12,9 +12,19 @@
  * Flow:
  *   1. First visit → 4-screen demo (title + 3 instruction overlays over scene).
  *   2. Jellyfish rises from a random hole, word card shows what to say.
- *   3. Loud enough voice (≥ threshold, sustained) → jellyfish flies off (whacked).
+ *   3. Loud enough voice (≥ threshold, sustained) → audio is sent to
+ *      /api/transcribe-chunk → if the right word is found, jellyfish flies off.
  *   4. Timer expires → jellyfish sinks back, same word retried.
  *   5. 5 successful whacks → onComplete().
+ *
+ * STT approach (why backend, not WebView):
+ *   The Web Speech API (window.SpeechRecognition) is not available inside iOS
+ *   WKWebView, which is the only WebView runtime available to React Native on iOS.
+ *   The old hidden-WebView approach therefore always fell back to volume-only mode
+ *   on iOS — any loud sound passed the word gate.  We now POST the recording to
+ *   the existing /api/transcribe-chunk endpoint (same one used by SpeechEnhancement)
+ *   and run the word check against the returned transcript.  A 5 s timeout and a
+ *   default-pass fallback ensure network issues never permanently block users.
  */
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -27,10 +37,10 @@ import {
   StatusBar,
   StyleSheet,
   ImageBackground,
+  ActivityIndicator,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CantDoNow from '../../../components/CantDoNow';
 import ScreenHeader from '../../../components/ScreenHeader';
@@ -38,6 +48,8 @@ import SpeakerButton from '../../../components/SpeakerButton';
 import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
 import { hapticMedium, hapticSuccess } from '../../../utils/haptics';
 import { logUsageEvent } from '../../../utils/analytics';
+import { fetchWithAuth } from '../../../utils/authHeaders';
+import { API_BASE_URL } from '../../../config/env';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -220,8 +232,13 @@ function Jellyfish({ hole, riseAnim, scaleAnim, opacityAnim }) {
   );
 }
 
-/** Pill card showing the word to say. Border turns green when the user nails it. */
-function WordCard({ word, timerAnim, isActive, isSuccess }) {
+/**
+ * Pill card showing the word to say.
+ * Border turns green on success.
+ * isChecking shows a small ActivityIndicator overlay to signal transcription in progress —
+ * the jellyfish stays visible so there's no visual jump between phases.
+ */
+function WordCard({ word, timerAnim, isActive, isSuccess, isChecking }) {
   const CARD_W = W - 100;
   const wordCount = (word || '').split(' ').length;
   // Scale card height and font for longer phrases/sentences
@@ -250,7 +267,7 @@ function WordCard({ word, timerAnim, isActive, isSuccess }) {
           overflow: 'hidden',
           paddingHorizontal: 16,
         }}>
-          {isActive && !isSuccess && (
+          {isActive && !isSuccess && !isChecking && (
             <Animated.View style={{
               position: 'absolute', left: 0, top: 0, bottom: 0,
               width: timerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, CARD_W] }),
@@ -265,6 +282,20 @@ function WordCard({ word, timerAnim, isActive, isSuccess }) {
           >
             {word}
           </Text>
+
+          {/* Checking overlay — translucent so the word is still legible.
+              Shows only during the brief backend transcription wait so the user
+              knows we received their voice and are processing, not frozen. */}
+          {isChecking && (
+            <View style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(255,255,255,0.55)',
+              borderRadius: CARD_H / 2,
+              justifyContent: 'center', alignItems: 'center',
+            }}>
+              <ActivityIndicator size="small" color={WORD_COL} />
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -421,71 +452,37 @@ const ds = StyleSheet.create({
 });
 
 
-// ─────────────────────────────────────────────────────────────────────────────────
-// Web Speech API STT — runs in a hidden WebView so we get on-device recognition
-// with ~200 ms interim results and zero server round-trips.
-//
-// Message protocol (RN → WebView):  'start' | 'reset' | 'stop'
-// Message protocol (WebView → RN):  { sttOk: bool } | { t: string } | { err: string }
-// ─────────────────────────────────────────────────────────────────────────────────
-const STT_WEBVIEW_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;background:transparent">
-<script>
-var rec=null,running=false,lastT='';
-function post(o){try{window.ReactNativeWebView.postMessage(JSON.stringify(o));}catch(e){}}
-function startRec(){
-  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){post({sttOk:false});return;}
-  post({sttOk:true});
-  rec=new SR();
-  rec.continuous=true;
-  rec.interimResults=true;
-  rec.lang='en-US';
-  rec.maxAlternatives=1;
-  rec.onresult=function(e){
-    var t='';
-    for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript+' ';
-    t=t.trim().toLowerCase();
-    if(t!==lastT){lastT=t;post({t:t});}
-  };
-  rec.onerror=function(e){if(e.error!=='no-speech'&&e.error!=='aborted')post({err:e.error});};
-  rec.onend=function(){if(running){try{rec.start();}catch(_){}}};
-  try{rec.start();}catch(e){post({sttOk:false});}
-}
-window.addEventListener('message',function(e){
-  if(e.data==='start'){running=true;startRec();}
-  else if(e.data==='reset'){lastT='';post({t:''});if(rec&&running){try{rec.stop();}catch(_){}}}
-  else if(e.data==='stop'){running=false;try{if(rec)rec.stop();}catch(_){};}
-});
-<\/script></body></html>`;
-
 /**
- * Checks whether the user's STT transcript contains the key words from the target phrase.
- * Returns true (allow whack) when:
- *   - STT is not available (Web Speech API absent in this WebView)
- *   - transcript is empty / too short to judge (interim result hasn't arrived yet)
- *   - at least one keyword from the target phrase appears in the transcript
+ * wordsMatch — checks whether the user's transcript contains key words from the target phrase.
  *
- * Matching is deliberately lenient: dysarthric speech often drops syllables or
- * gets mis-transcribed, so we only require that ANY key word (≥3 chars) be found.
- * Very short words like "GO" (2 chars) are excluded from key-word matching, so
- * tier-1 single-word rounds rely purely on the volume gate.
+ * Why this approach:
+ *   Dysarthric speech is often mis-transcribed (dropped syllables, slurred consonants).
+ *   We deliberately use a lenient prefix-match strategy so that "yeh" registers for "yes",
+ *   "spee" for "speak", etc.  The gate is still real — an empty or noise-only transcript
+ *   (length < 2) is treated as a mismatch, preventing any loud sound from passing.
+ *
+ * Key design decisions:
+ *   - Keywords filtered to ≥ 2 chars so short tier-1 words like "GO" are checked.
+ *   - Prefix match threshold is 3 chars (not 4) to catch more dysarthric truncations.
+ *   - All-short-word phrases: default pass so we never permanently lock out a user.
  */
-function wordsMatch(targetPhrase, transcript, sttAvailable) {
-  // STT disabled or unavailable — pass through so the volume gate alone decides
-  if (!sttAvailable) return true;
-  // Too short to contain a real word yet — give the benefit of the doubt
-  if (!transcript || transcript.length < 2) return true;
+function wordsMatch(targetPhrase, transcript) {
+  // Empty or very short transcript — treat as mismatch so the gate is real.
+  // (Brief transcripts can be noise artefacts, not a deliberate spoken word.)
+  if (!transcript || transcript.length < 2) return false;
   const tgt = targetPhrase.toLowerCase().replace(/[^a-z ]/g, '').trim();
   const txt = transcript.toLowerCase().replace(/[^a-z ]/g, '').trim();
   const txtWords = txt.split(/\s+/);
-  // Only keywords long enough to be meaningful; very short words are too ambiguous
-  const keys = tgt.split(/\s+/).filter(w => w.length >= 3);
-  // If the whole phrase is very short words (e.g. "GO"), skip word checking
+  // Include words ≥ 2 chars so short words like "GO" are also checked.
+  const keys = tgt.split(/\s+/).filter(w => w.length >= 2);
+  // All-short-word phrases (unlikely): pass through so we never permanently block
   if (keys.length === 0) return true;
-  // Exact match OR prefix match for ≥4-char keys (handles truncation/slurring)
   return keys.some(k =>
-    txtWords.some(w => w === k || (k.length >= 4 && w.startsWith(k.slice(0, 3))))
+    txtWords.some(w =>
+      w === k ||
+      // Prefix match for ≥ 3-char keys: handles dysarthric truncation ("yeh" for "yes")
+      (k.length >= 3 && w.startsWith(k.slice(0, Math.min(k.length, 3))))
+    )
   );
 }
 
@@ -518,7 +515,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   const [doneCount, setDoneCount]   = useState(0);
   const [activeHoleId, setActiveHoleId] = useState(null);
   const [idleMsg, setIdleMsg]       = useState('');
-  // Shown during 'checking' (neutral) and 'wrongword' (orange-tinted) phases
   // Green flash on the WordCard when the user says the word correctly
   const [wordSuccess, setWordSuccess] = useState(false);
   // "LOUDER!" prompt shown when the user speaks but not loud enough
@@ -556,12 +552,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
   // Fires when the user speaks but below threshold — shows "LOUDER!" prompt
   const softTimerRef      = useRef(null);
 
-  // STT refs — WebView handle, running transcript, and availability flag
-  const sttWebViewRef     = useRef(null);
-  const sttTranscriptRef  = useRef('');
-  // Default true so that if the WebView never replies we don't block all whacks
-  const sttAvailableRef   = useRef(true);
-
   function setPhaseS(p) { phaseRef.current = p; setPhase(p); }
   function setRoundS(n) { roundIdxRef.current = n; setRoundIdx(n); }
 
@@ -573,23 +563,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       cleanup();
     };
   }, []);
-
-  // Handle messages from the hidden STT WebView
-  function handleSttMessage(event) {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.sttOk === false) {
-        // Web Speech API not supported — fall back to volume-only mode
-        sttAvailableRef.current = false;
-      } else if (msg.sttOk === true) {
-        sttAvailableRef.current = true;
-      } else if (typeof msg.t === 'string') {
-        // Interim or final transcript — update running buffer for word check
-        sttTranscriptRef.current = msg.t;
-      }
-      // Ignore err messages (e.g. no-speech, audio-capture) — not fatal
-    } catch (_) {}
-  }
 
   async function calibrateAmbient() {
     ambientSamplesRef.current = [];
@@ -627,13 +600,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         // Log calibrated threshold for pilot tuning analysis.
         logUsageEvent({ event: 'loudness_threshold_calibrated', threshold: thresh, tier }).catch(() => {});
 
-        // Calibration mic released — now start the STT WebView
-        if (sttWebViewRef.current) sttWebViewRef.current.postMessage('start');
         startRound();
       }, CALIBRATION_MS);
     } catch (_) {
       adaptiveThreshRef.current = tierConfig.minVolume;
-      if (sttWebViewRef.current) sttWebViewRef.current.postMessage('start');
       startRound();
     }
   }
@@ -650,10 +620,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   function startRound() {
     if (phaseRef.current === 'done') return;
-
-    // Clear the previous round's transcript so the new word starts from scratch
-    sttTranscriptRef.current = '';
-    if (sttWebViewRef.current) sttWebViewRef.current.postMessage('reset');
 
     pickHole();
 
@@ -763,8 +729,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (idleTimerRef.current){ clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
     if (softTimerRef.current){ clearTimeout(softTimerRef.current); softTimerRef.current = null; }
     timerAnim.stopAnimation();
-    // Stop the STT WebView so it doesn't keep the mic open after the round ends
-    if (sttWebViewRef.current) sttWebViewRef.current.postMessage('stop');
     try {
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
@@ -787,37 +751,100 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (phaseRef.current !== 'done') startRound();
   }
 
+  /**
+   * handleWhack — called after MIN_SPEAK_MS of sustained loud voice.
+   *
+   * Why we stop + transcribe before deciding:
+   *   We can't read a live recording URI while it's still open; the file is only
+   *   accessible after stopAndUnloadAsync().  We stop the recording immediately so
+   *   the captured audio is available, switch to 'checking' phase (which halts
+   *   the countdown and shows a spinner on the WordCard), then POST to the backend.
+   *   If transcription succeeds and the word matches → doWhack.
+   *   If the word doesn't match → restart mic + countdown and prompt the user.
+   *   If the network call fails (timeout / server error) → default pass so a bad
+   *   connection never permanently blocks a user.
+   *
+   * Why phaseRef.current = 'checking' matters:
+   *   The idle timer checks phaseRef.current === 'waiting' before firing, so setting
+   *   it to 'checking' prevents a stale idle-prompt from appearing mid-transcription.
+   *   The speakRef timeout in onMeter also guards on phaseRef === 'waiting', so no
+   *   new whack can be triggered while we await the backend.
+   */
   async function handleWhack() {
     if (phaseRef.current !== 'waiting') return;
 
-    // Cancel any pending re-arm of the speak timer so we don't double-fire
+    // Silence any pending whack timer arm so we don't double-fire
     if (speakRef.current) { clearTimeout(speakRef.current); speakRef.current = null; }
 
-    // STT word check — volume was loud enough; verify the right word was spoken.
-    // wordsMatch() returns true when STT is unavailable or transcript is empty,
-    // so this gate never blocks users whose device doesn't support Web Speech API.
-    const currentWord = (tierConfig.rounds[roundIdxRef.current] ?? tierConfig.rounds[0]).word;
-    if (!wordsMatch(currentWord, sttTranscriptRef.current, sttAvailableRef.current)) {
-      // Wrong word — show prompt, let the countdown continue, do NOT whack
-      if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
-      setTooSoftMsg(`Say "${currentWord}"!`);
-      // Auto-hide prompt after 2 s so it doesn't linger if the user goes quiet
-      setTimeout(() => { if (phaseRef.current === 'waiting') setTooSoftMsg(''); }, 2000);
-      return;
-    }
-
+    // Stop the countdown while we transcribe — jellyfish stays visible
+    if (countdownRef.current) { clearTimeout(countdownRef.current); countdownRef.current = null; }
+    timerAnim.stopAnimation();
     clearIdleTimer();
     if (softTimerRef.current) { clearTimeout(softTimerRef.current); softTimerRef.current = null; }
     setTooSoftMsg('');
-    if (countdownRef.current) { clearTimeout(countdownRef.current); countdownRef.current = null; }
-    timerAnim.stopAnimation();
 
-    // Stop the recording — volume + STT together are sufficient signal; no backend needed.
+    // Grab the recording before stopping it so we have the URI for upload
     const rec = recordingRef.current;
     recordingRef.current = null;
-    try { if (rec) await rec.stopAndUnloadAsync(); } catch (_) {}
+    let uri = null;
+    try {
+      uri = rec?.getURI?.() ?? null;
+      if (rec) await rec.stopAndUnloadAsync();
+    } catch (_) {}
 
-    // Flash the WordCard green for 300 ms — immediate positive visual feedback.
+    // Switch to 'checking' so the idle timer doesn't fire and the WordCard shows a spinner
+    phaseRef.current = 'checking';
+    setPhaseS('checking');
+
+    const currentWord = (tierConfig.rounds[roundIdxRef.current] ?? tierConfig.rounds[0]).word;
+    // Default to pass if we have no URI or if the network call fails —
+    // a bad connection should not permanently block a user from advancing.
+    let wordOk = true;
+
+    if (uri) {
+      try {
+        const form = new FormData();
+        form.append('file', { uri, type: 'audio/m4a', name: 'loudness.m4a' });
+
+        // 5 s timeout — the backend usually responds in < 2 s; 5 s covers a slow
+        // mobile connection without making the UX feel frozen.
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 5000);
+        const res = await fetchWithAuth(`${API_BASE_URL}/api/transcribe-chunk`, {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        });
+        clearTimeout(tid);
+
+        if (res.ok) {
+          const data = await res.json();
+          wordOk = wordsMatch(currentWord, data.transcript ?? '');
+        }
+        // Non-ok response (e.g. 500): default pass so server errors don't block users
+      } catch (_) {
+        // AbortError (timeout) or network error: default pass
+      }
+    }
+
+    if (!wordOk) {
+      // Wrong word spoken — reset to waiting so the round continues
+      phaseRef.current = 'waiting';
+      setPhaseS('waiting');
+      setTooSoftMsg(`Say "${currentWord}"!`);
+      // Auto-hide the prompt after 2 s to avoid lingering if the user goes quiet
+      setTimeout(() => { if (phaseRef.current === 'waiting') setTooSoftMsg(''); }, 2000);
+
+      // Restart recording and countdown so the round continues from where it was interrupted.
+      // We give a fresh full timer here rather than resuming the partial countdown —
+      // the user needs enough time to attempt the word again after reading the prompt.
+      await startMic();
+      countdownRef.current = setTimeout(handleMiss, effectiveTimerMs);
+      Animated.timing(timerAnim, { toValue: 0, duration: effectiveTimerMs, useNativeDriver: false }).start();
+      return;
+    }
+
+    // Correct word — flash green then whack
     setWordSuccess(true);
     setTimeout(() => { setWordSuccess(false); doWhack(); }, 300);
   }
@@ -890,6 +917,8 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
 
   const activeHole = activeHoleId != null ? HOLES.find(h => h.id === activeHoleId) : null;
   const isWaiting  = phase === 'waiting';
+  // 'checking' phase shows the word card (jellyfish stays up) with a spinner overlay
+  const isChecking = phase === 'checking';
   const round      = tierConfig.rounds[roundIdx] ?? tierConfig.rounds[tierConfig.rounds.length - 1];
 
   // Sort holes back→front; split active from rest for layered rendering
@@ -931,6 +960,7 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
           timerAnim={timerAnim}
           isActive={isWaiting}
           isSuccess={wordSuccess}
+          isChecking={isChecking}
         />
         <Text style={ex.instrLine}>
           {round.word.split(' ').length <= 2
@@ -991,18 +1021,6 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       <View style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 35 }}>
         <CantDoNow onSkip={onSkip} onEnd={onExit} />
       </View>
-
-      {/* Hidden STT WebView — 1×1 invisible, runs Web Speech API on-device */}
-      <WebView
-        ref={sttWebViewRef}
-        source={{ html: STT_WEBVIEW_HTML, baseUrl: 'https://localhost' }}
-        style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
-        onMessage={handleSttMessage}
-        javaScriptEnabled
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        originWhitelist={['*']}
-      />
 
       {/* Help overlay — shown when ? is pressed; exercise is paused */}
       {showHelpOverlay && (
