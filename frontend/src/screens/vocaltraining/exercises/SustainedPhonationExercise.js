@@ -17,6 +17,7 @@ import ScreenHeader from '../../../components/ScreenHeader';
 import SpeakerButton from '../../../components/SpeakerButton';
 import { useHapticFeedback, useLargeText } from '../../../context/PrefsContext';
 import { hapticSuccess } from '../../../utils/haptics';
+import { logUsageEvent } from '../../../utils/analytics';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -344,7 +345,13 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
   const [isLoud,     setIsLoud]     = useState(false);
   const isLoudRef = useRef(false);
   // showHelpOverlay: true when ? is pressed — exercise is paused, overlay shown
-  const [showHelpOverlay, setShowHelpOverlay] = useState(false);
+  const [showHelpOverlay,  setShowHelpOverlay]  = useState(false);
+  // calibratedThresh: set after calibration finishes so the target line re-renders.
+  // Kept as state (not ref) because the bar visualization is a React subtree.
+  const [calibratedThresh, setCalibratedThresh] = useState(null);
+  // noisyRoom: true when the adaptive threshold lands above 0.65 (very noisy space).
+  // Shown as a dismissible one-line notice before the first round starts.
+  const [noisyRoom,        setNoisyRoom]        = useState(false);
 
   const phaseRef          = useRef('calibrating');
   const roundRef          = useRef(0);
@@ -403,6 +410,19 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
         }
         // Stop calibration recording — DO NOT change audio mode
         try { await recording.stopAndUnloadAsync(); } catch (_) {}
+
+        const thresh = adaptiveThreshRef.current;
+
+        // Expose the calibrated threshold to the render tree so the target line updates.
+        setCalibratedThresh(thresh);
+
+        // Noisy-room notice: threshold > 0.65 means the room is loud enough that
+        // the user will need a significantly stronger voice — warn them.
+        if (thresh > 0.65) setNoisyRoom(true);
+
+        // Log the calibrated value so thresholds can be tuned from pilot data.
+        logUsageEvent({ event: 'phonation_threshold_calibrated', threshold: thresh, tier }).catch(() => {});
+
         startNextRound();
       }, CALIBRATION_MS);
     } catch (_) {
@@ -636,8 +656,23 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           <Text style={[ex.msg, { fontSize: fs(26) }]}>{msg}</Text>
         </View>
 
-        {/* 26-bar waveform visualization */}
-        <View style={ex.barsWrap}>
+        {/* Noisy-room notice — shown once after calibration if adaptive threshold
+            > 0.65 (very loud environment). Dismissed by tapping × or automatically
+            when the first round begins (startNextRound clears the flag via setNoisyRoom). */}
+        {noisyRoom && (
+          <View style={ex.noisyBanner}>
+            <Text style={ex.noisyText}>
+              It's a bit noisy here — a quieter spot will make this easier
+            </Text>
+            <TouchableOpacity onPress={() => setNoisyRoom(false)} accessibilityRole="button" accessibilityLabel="Dismiss">
+              <Text style={ex.noisyDismiss}>×</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* 26-bar waveform visualization — wrapped in a relative container so the
+            target line can be absolutely positioned at the threshold height */}
+        <View style={[ex.barsWrap, { position: 'relative' }]}>
           {bars.map((v, i) => (
             <View
               key={i}
@@ -650,6 +685,19 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
               ]}
             />
           ))}
+          {/* Target line — drawn at the height matching adaptiveThreshRef so users
+              can see exactly how loud they need to be. Only shown after calibration
+              so calibratedThresh is non-null. Positioned from the bottom of the bar
+              area because bars grow upward from their flex-end baseline. */}
+          {calibratedThresh !== null && (
+            <View
+              pointerEvents="none"
+              style={[
+                ex.threshLine,
+                { bottom: Math.round(calibratedThresh * BAR_MAX_H) },
+              ]}
+            />
+          )}
         </View>
 
         {/* Bottom: CantDoNow + pills */}
@@ -720,6 +768,43 @@ const ex = StyleSheet.create({
   msg: {
     color: '#FFFFFF', fontSize: 26, fontWeight: '700',
     textAlign: 'center', letterSpacing: 0.3, lineHeight: 34,
+  },
+  // Horizontal dashed line at the adaptive threshold height inside the bar area.
+  // Orange so it reads clearly against both green (scoring) and white (ready) bars.
+  threshLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: ORANGE,
+    opacity: 0.80,
+    borderRadius: 1,
+  },
+  // One-line noisy-room notice — dismissible, shown immediately after calibration
+  noisyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,169,64,0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    gap: 10,
+  },
+  noisyText: {
+    flex: 1,
+    color: ORANGE,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+    letterSpacing: 0.2,
+  },
+  noisyDismiss: {
+    color: ORANGE,
+    fontSize: 20,
+    fontWeight: '300',
+    lineHeight: 22,
   },
   barsWrap: {
     flexDirection: 'row',
