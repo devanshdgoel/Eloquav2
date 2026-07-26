@@ -8,6 +8,8 @@ import {
   Dimensions,
   Image,
   Animated,
+  PanResponder,
+  Pressable,
 } from 'react-native';
 import TabBar from '../components/TabBar';
 import Svg, {
@@ -135,11 +137,19 @@ export default function HomeScreen({ navigation }) {
   const viewportHRef = useRef(0);
   const maxOffset = Math.max(0, CANVAS_H - viewportH);
 
-  const offsetRef = useRef(0);
-  const animY     = useRef(new Animated.Value(0)).current;
+  const offsetRef        = useRef(0);
+  const animY            = useRef(new Animated.Value(0)).current;
+  // panStartOffsetRef: saves offsetRef.current when a pan gesture begins,
+  // so we can compute the new offset as (startOffset - gesture.dy) on each move.
+  const panStartOffsetRef = useRef(0);
 
   const [canScrollUp,   setCanScrollUp]   = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(true);
+
+  // lockedToast: shown briefly when the user taps a future (locked) node,
+  // telling them which session to complete first.
+  const [lockedToast, setLockedToast] = useState(false);
+  const lockedToastTimeoutRef = useRef(null);
 
   const [progress, setProgress] = useState({
     current_node:         0,
@@ -214,6 +224,42 @@ export default function HomeScreen({ navigation }) {
 
   const scrollUp   = () => applyOffset(offsetRef.current - SCROLL_STEP);
   const scrollDown = () => applyOffset(offsetRef.current + SCROLL_STEP);
+
+  // showLockedToast — briefly display a banner telling the user to complete
+  // the current active session before tapping a future node.
+  // Auto-dismisses after 2000 ms; any previous timer is cleared first.
+  function showLockedToast() {
+    if (lockedToastTimeoutRef.current) {
+      clearTimeout(lockedToastTimeoutRef.current);
+    }
+    setLockedToast(true);
+    lockedToastTimeoutRef.current = setTimeout(() => {
+      setLockedToast(false);
+      lockedToastTimeoutRef.current = null;
+    }, 2000);
+  }
+
+  // panResponder — handles vertical swipe gestures on the roadmap viewport.
+  // We only claim the gesture when vertical drag clearly dominates horizontal,
+  // which prevents fighting with any horizontal scroll containers above.
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        // Claim gesture only when the vertical movement is at least 8px more
+        // than the horizontal movement, so we don't interfere with swipes.
+        return Math.abs(gesture.dy) > Math.abs(gesture.dx) + 8;
+      },
+      onPanResponderGrant: () => {
+        // Capture the scroll position at the moment the finger lands.
+        // We'll compute each frame's target relative to this starting offset.
+        panStartOffsetRef.current = offsetRef.current;
+      },
+      onPanResponderMove: (_, gesture) => {
+        // Swipe up (negative dy) → scroll down into the map (higher offset).
+        applyOffset(panStartOffsetRef.current - gesture.dy);
+      },
+    })
+  ).current;
 
   useFocusEffect(
     useCallback(() => {
@@ -357,11 +403,15 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* ── Roadmap viewport ──────────────────────────────────────────────── */}
-      <View style={styles.viewport} onLayout={onViewportLayout}>
+      {/* panHandlers: attach PanResponder so vertical swipes scroll the map.
+          pointerEvents is not set so the viewport receives all touches. */}
+      <View style={styles.viewport} onLayout={onViewportLayout} {...panResponder.panHandlers}>
 
         {/* Animated canvas */}
         <Animated.View style={{ transform: [{ translateY: animY }] }}>
-          <Svg width={W} height={CANVAS_H}>
+          {/* accessible={false}: all interactive targets are handled by the
+              Pressable overlay above this SVG — the SVG itself is decorative. */}
+          <Svg width={W} height={CANVAS_H} accessible={false}>
 
             {/* Clip paths for node icons */}
             <Defs>
@@ -405,7 +455,11 @@ export default function HomeScreen({ navigation }) {
               </G>
             ))}
 
-            {/* Nodes */}
+            {/* Nodes — rendered in SVG for visual appearance only.
+                All interactivity is handled by the Pressable overlay layer below
+                (see the absoluteFillObject overlay after the </Svg> close tag).
+                Screen readers cannot reliably interact with SVG G elements,
+                so onPress is intentionally removed here. */}
             {NODE_DEFS.map((def, i) => {
               const isDone    = i < activeNode;
               const isActive  = i === activeNode;
@@ -423,11 +477,6 @@ export default function HomeScreen({ navigation }) {
                 <G
                   key={i}
                   opacity={groupOpacity}
-                  onPress={
-                    isActive || isDone
-                      ? () => handleNodePress(i)
-                      : undefined
-                  }
                 >
                   {/* Base circle — checkin nodes get a warm orange-tinted fill when undone */}
                   <Circle
@@ -545,6 +594,87 @@ export default function HomeScreen({ navigation }) {
             })}
           </Svg>
         </Animated.View>
+
+        {/* ── Accessible Pressable overlay for roadmap nodes ────────────
+            This layer sits in absoluteFillObject on top of the Animated canvas.
+            pointerEvents="box-none" means the overlay View itself does not
+            capture touches — only the individual Pressable children do.
+            This lets pan gestures still reach the PanResponder on the viewport. */}
+        <Animated.View
+          style={[StyleSheet.absoluteFillObject, { transform: [{ translateY: animY }] }]}
+          pointerEvents="box-none"
+        >
+          {NODE_DEFS.map((def, i) => {
+            const isDone   = i < activeNode;
+            const isActive = i === activeNode;
+            const isFuture = i > activeNode;
+            const r        = isActive ? R_ACTIVE : R_OTHER;
+            const isCheckin = i > 0 && i % LEVELS_EVERY === 0;
+
+            // Build a descriptive label so screen-reader users understand each node.
+            let label;
+            if (isDone) {
+              label = `Session ${i + 1}, completed`;
+            } else if (isActive) {
+              label = isCheckin
+                ? `Session ${i + 1}, progress check-in, your current session`
+                : `Session ${i + 1}, your current session`;
+            } else {
+              label = isCheckin
+                ? `Session ${i + 1}, progress check-in, locked`
+                : `Session ${i + 1}, locked`;
+            }
+
+            // Pressable hit area: square bounding box around the circle,
+            // using the node's radius so active (larger) nodes get a larger tap target.
+            const hitSize = r * 2 + 16; // 16px padding beyond the radius
+
+            return (
+              <Pressable
+                key={i}
+                style={{
+                  position: 'absolute',
+                  // Centre the Pressable on the node's cx/cy coordinates.
+                  left: def.cx - hitSize / 2,
+                  top:  def.cy - hitSize / 2,
+                  width:  hitSize,
+                  height: hitSize,
+                  borderRadius: hitSize / 2,
+                }}
+                accessibilityRole={isDone || isActive ? 'button' : 'none'}
+                accessibilityLabel={label}
+                accessibilityState={{
+                  disabled: isFuture,
+                  selected: isActive,
+                }}
+                onPress={() => {
+                  if (isFuture) {
+                    // Future node: show the locked toast banner instead of navigating.
+                    showLockedToast();
+                  } else {
+                    handleNodePress(i);
+                  }
+                }}
+              />
+            );
+          })}
+        </Animated.View>
+
+        {/* ── Legend row — bottom-left of viewport ──────────────────────
+            Explains the ★ symbol used on check-in milestone nodes.
+            Positioned with absolute coords so it never overlaps the map content. */}
+        <View style={styles.legendRow} pointerEvents="none">
+          <Text style={styles.legendText}>★ = progress check-in</Text>
+        </View>
+
+        {/* ── Locked node toast — briefly shown when user taps a future node ── */}
+        {lockedToast && (
+          <View style={styles.lockedToast} pointerEvents="none">
+            <Text style={styles.lockedToastText}>
+              {'Complete session '}{activeNode + 1}{' first'}
+            </Text>
+          </View>
+        )}
 
         {/* ── Streak pill — floats above the top gradient fade ─────────── */}
         <View style={styles.streakPill} pointerEvents="none">
@@ -876,5 +1006,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
+  },
+
+  // ── Legend row ────────────────────────────────────────────────────────────
+  // Explains the ★ used on progress check-in milestone nodes.
+  // Sits at the top-left of the viewport so it never overlaps the streak pill.
+  legendRow: {
+    position: 'absolute',
+    top: 14,
+    left: 16,
+    zIndex: 30,
+  },
+  legendText: {
+    color: 'rgba(255,255,255,0.50)',
+    fontSize: 13,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
+
+  // ── Locked node toast ─────────────────────────────────────────────────────
+  // Appears briefly at the bottom of the viewport when the user taps a
+  // future node, explaining what to do. Reuses the errorBanner colour so
+  // it is visually consistent with other inline warnings in the screen.
+  lockedToast: {
+    position: 'absolute',
+    bottom: 100,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(254,156,45,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(254,156,45,0.35)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    alignItems: 'center',
+    zIndex: 40,
+  },
+  lockedToastText: {
+    color: '#FFA940',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
