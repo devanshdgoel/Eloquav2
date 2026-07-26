@@ -196,11 +196,15 @@ export default function HomeScreen({ navigation }) {
   // ProgressScreen always agree on when a check-in is available.
   const checkinDue     = isCheckinDue(progress);
 
+  // Web-compatibility guard: Image.resolveAssetSource returns null on web during SSR.
+  // Fall back to the require() directly so the SVG <Image> still has a valid source.
   const nodeIconUri = useMemo(
-    () => Image.resolveAssetSource(require('../../assets/images/NodeIcon.png')).uri, []
+    () => Image.resolveAssetSource?.(require('../../assets/images/NodeIcon.png'))?.uri
+       ?? require('../../assets/images/NodeIcon.png'), []
   );
   const dolphinUri = useMemo(
-    () => Image.resolveAssetSource(require('../../assets/images/Dolphin2.png')).uri, []
+    () => Image.resolveAssetSource?.(require('../../assets/images/Dolphin2.png'))?.uri
+       ?? require('../../assets/images/Dolphin2.png'), []
   );
 
   // Log the very first Home visit once per account (gate via AsyncStorage).
