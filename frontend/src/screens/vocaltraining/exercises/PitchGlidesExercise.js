@@ -423,7 +423,7 @@ async function analyzeGlideRecording(uri) {
 // ExerciseScreenIOS — expo-av metering drives dolphin; audio is recorded and
 // sent to the backend after completion for real pitch range feedback.
 // ══════════════════════════════════════════════════════════════════════════════
-function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1, analysisFallbackScore = 100 }) {
   const { top: safeTop } = useSafeAreaInsets();
   const hapticEnabled = useHapticFeedback();
   const largeText = useLargeText();
@@ -562,7 +562,9 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
     await cleanup();
     setPhase('analyzing');
 
-    let score = 100;
+    // Default to analysisFallbackScore (100 in training sessions — lenient; 50 in
+    // baseline — avoids placing a cold-start user at pitch tier 3 they never demonstrated).
+    let score = analysisFallbackScore;
     let rangeHz = null;
     // Track whether we actually attempted backend analysis so we can log fallbacks.
     let analysisAttempted = false;
@@ -752,7 +754,7 @@ function ExerciseScreenIOS({ onComplete, onExit, onShowDemo, onSkip, tier = 1 })
 // The dolphin position maps directly to normalised pitch (0 = baseline, 1 = high).
 // No audio recording needed — pitch is detected in real time.
 // ══════════════════════════════════════════════════════════════════════════════
-function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
+function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 1, analysisFallbackScore = 100 }) {
   const { top: safeTop } = useSafeAreaInsets();
   const hapticEnabled = useHapticFeedback();
   const largeText = useLargeText();
@@ -864,8 +866,10 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
       // Compute score from actual pitch range achieved.
       // 15 Hz floor = barely any glide (~0); tierConfig.pitchRangeHz = full tier-appropriate
       // glide (100). Floor at 30 to credit completing all hoops even when range is limited.
+      // analysisFallbackScore is used when fewer than 20 pitch samples were collected
+      // (e.g. very fast completion or mic issue), matching the iOS fallback behaviour.
       const validHz = hzSamplesRef.current;
-      let score = 100;
+      let score = analysisFallbackScore;
       if (validHz.length >= 20) {
         const rangeHz = Math.max(...validHz) - Math.min(...validHz);
         score = Math.max(30, Math.min(100, Math.round(Math.max(0, (rangeHz - 15) / Math.max(1, tierConfig.pitchRangeHz - 15)) * 100)));
@@ -1142,7 +1146,7 @@ const pgHelp = StyleSheet.create({
 const STEP_TUTORIAL = 0;
 const STEP_EXERCISE = 1;
 
-export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8 }) {
+export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier = 1, exerciseIndex = 0, totalExercises = 8, analysisFallbackScore = 100 }) {
   // null = AsyncStorage check in progress; avoids a one-frame flash to the intro.
   const [step, setStep] = useState(null);
   const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
@@ -1174,6 +1178,7 @@ export default function PitchGlidesExercise({ onComplete, onExit, onSkip, tier =
       onShowDemo={() => setStep(STEP_TUTORIAL)}
       onSkip={onSkip ?? onComplete}
       tier={tier}
+      analysisFallbackScore={analysisFallbackScore}
     />
   );
 }

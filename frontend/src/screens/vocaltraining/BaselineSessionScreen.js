@@ -491,6 +491,10 @@ export default function BaselineSessionScreen({ navigation }) {
             // (training session key) — include pitchGlide explicitly so the dolphin
             // game receives the correct tier instead of defaulting to 1.
             {...((EXERCISE_KEYS.includes(type) || type === 'pitchGlide') ? { tier: BASELINE_TIER } : {})}
+            // In the baseline, if pitch analysis fails or has no URI, default to 50
+            // (tier-2 midpoint) rather than 100. A new user should not be placed at
+            // tier 3 solely because the backend call timed out on a cold start.
+            {...(type === 'pitchGlide' ? { analysisFallbackScore: 50 } : {})}
             // Breathing in the baseline gets a simplified 1-cycle intro instead
             // of the full 3-cycle routine with detailed instructions.
             {...(type === 'breathing' ? { baseline: true } : {})}
