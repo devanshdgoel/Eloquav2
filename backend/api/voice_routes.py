@@ -11,6 +11,8 @@ from services.voice_cloning_service import (
     delete_cloned_voice,
     get_user_voice_id,
     has_cloned_voice,
+    trigger_reclone_if_due,
+    upload_voice_sample,
 )
 from utils.auth_dep import get_current_user
 from utils.validators import is_valid_audio
@@ -107,6 +109,57 @@ async def voice_status(
         "voice_id": get_user_voice_id(user_id),
         "is_default": not cloned,
     }
+
+
+@router.post("/voice/add-sample")
+async def add_voice_sample(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Upload one audio recording as a training sample for the user's voice clone.
+
+    Stores the file in Firebase Storage under voice_samples/{uid}/.
+    After every RECLONE_EVERY_N new samples a background thread deletes the
+    current ElevenLabs clone and recreates it with up to the 10 most recent
+    recordings — so the clone improves automatically without user action.
+
+    Returns immediately; the re-clone (when triggered) runs asynchronously.
+    """
+    user_id = current_user["uid"]
+
+    if not is_valid_audio(file.filename):
+        raise HTTPException(status_code=400, detail="Invalid audio format.")
+
+    content = await file.read()
+    max_bytes = MAX_AUDIO_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"File exceeds {MAX_AUDIO_SIZE_MB} MB limit.")
+
+    # Save to a local temp file so we can pass a Path to Firebase Storage upload.
+    ext = Path(file.filename).suffix or ".m4a"
+    save_path = VOICE_SAMPLES_DIR / f"sample_{user_id}_{uuid.uuid4().hex}{ext}"
+    try:
+        with open(save_path, "wb") as out:
+            out.write(content)
+
+        new_count = upload_voice_sample(user_id, save_path)
+        reclone_triggered = trigger_reclone_if_due(user_id)
+
+        return {
+            "status":            "success",
+            "sample_count":      new_count,
+            "reclone_triggered": reclone_triggered,
+        }
+
+    except Exception as exc:
+        logger.error("add_voice_sample failed for user %s: %s", user_id[:8], exc)
+        raise HTTPException(status_code=500, detail="Failed to store voice sample.")
+    finally:
+        try:
+            save_path.unlink()
+        except OSError:
+            pass
 
 
 @router.delete("/voice/clone")

@@ -35,6 +35,15 @@ const MAX_RECORD_MS = 35000;
 const PASSAGE =
   '"When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow."';
 
+// Upload a recording as a voice clone training sample — fire-and-forget.
+// Failures are silently swallowed so the exercise flow is never interrupted.
+function uploadVoiceSample(uri) {
+  const form = new FormData();
+  form.append('file', { uri, type: 'audio/m4a', name: 'reading_sample.m4a' });
+  fetchWithAuth(`${API_BASE_URL}/api/voice/add-sample`, { method: 'POST', body: form })
+    .catch(() => {});
+}
+
 const SPEAKER_TEXT =
   `Reading Aloud. Read this sentence clearly at your natural pace: ${PASSAGE}`;
 
@@ -116,6 +125,10 @@ export default function ReadingMiniExercise({
       analyzeRecording(uri, 'reading', durationS)
         .then(score => { if (score !== null && onScoreReady) onScoreReady(score); })
         .catch(() => {});
+
+      // Fire-and-forget: upload this recording as a voice clone training sample.
+      // Non-fatal — if it fails the reading exercise still completes normally.
+      uploadVoiceSample(uri);
     } catch {
       onComplete(null);
     }

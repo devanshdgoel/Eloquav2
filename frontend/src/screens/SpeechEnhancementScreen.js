@@ -603,6 +603,8 @@ export default function SpeechEnhancementScreen({ navigation }) {
   async function analyzeVoiceAsync(transcript, durationS) {
     const uris = chunkUrisRef.current;
     if (!uris.length || !durationS) return;
+    // Use the middle chunk — avoids the first chunk (may start mid-word) and the
+    // last chunk (may be mostly silence). Middle chunk is typically the best quality.
     const uri = uris[Math.floor(uris.length / 2)];
     if (!uri) return;
 
@@ -620,6 +622,18 @@ export default function SpeechEnhancementScreen({ navigation }) {
     } catch (e) {
       console.warn('[Speech] Voice analysis skipped:', e?.message);
     }
+
+    // Upload the same chunk as a voice clone training sample — fire-and-forget.
+    // Over time this gives ElevenLabs more data so the clone improves automatically.
+    // Non-fatal — a network failure here never affects the session result.
+    try {
+      const sampleForm = new FormData();
+      sampleForm.append('file', { uri, type: 'audio/m4a', name: 'speech_sample.m4a' });
+      fetchWithAuth(`${API_BASE_URL}/api/voice/add-sample`, {
+        method: 'POST',
+        body: sampleForm,
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   // ── Audio preload ─────────────────────────────────────────────────────────────

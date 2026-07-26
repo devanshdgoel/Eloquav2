@@ -1,6 +1,11 @@
 import logging
+import tempfile
+import threading
+import time
+from pathlib import Path
+
 import requests
-from firebase_admin import firestore
+from firebase_admin import firestore, storage as fb_storage
 
 from config import ELEVENLABS_API_KEY
 
@@ -8,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 # Rachel — ElevenLabs default voice used when no clone exists.
 DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+
+# Trigger a re-clone after every N new samples.
+# 4 samples ≈ 4 sessions; each Reading Aloud clip is ~15–35 s, so 4 clips give
+# ~1–2 min of new audio — enough for ElevenLabs to meaningfully improve quality.
+RECLONE_EVERY_N = 4
+
+# Cap how many stored samples are used per re-clone so the upload stays fast.
+MAX_SAMPLES_PER_RECLONE = 10
 
 # Firestore collection that holds per-user profiles.
 # voice_id is stored as a field on the same document as name/email/age/phone.
@@ -217,3 +230,115 @@ def _clear_voice_id(user_id: str) -> None:
         )
     except Exception as exc:
         logger.warning("Failed to clear voice_id from Firestore: %s", exc)
+
+
+# ── Voice sample collection for continuous clone improvement ──────────────────
+
+def upload_voice_sample(user_id: str, local_path: Path) -> int:
+    """
+    Upload a voice recording to Firebase Storage and increment the sample counter.
+
+    Stored at:  voice_samples/{user_id}/{timestamp_ms}{ext}
+    Returns:    the new total sample count for this user.
+
+    The sample counter is stored in Firestore using a server-side Increment so
+    concurrent uploads from multiple devices don't race.
+    """
+    bucket = fb_storage.bucket()
+    timestamp_ms = int(time.time() * 1000)
+    suffix = local_path.suffix or '.m4a'
+    blob_name = f"voice_samples/{user_id}/{timestamp_ms}{suffix}"
+
+    blob = bucket.blob(blob_name)
+    content_type = {'.wav': 'audio/wav', '.mp3': 'audio/mpeg'}.get(suffix, 'audio/mp4')
+    blob.upload_from_filename(str(local_path), content_type=content_type)
+    logger.info("Voice sample uploaded for user %s: %s", user_id[:8], blob_name)
+
+    # Atomically increment — safe even if multiple uploads happen simultaneously.
+    doc_ref = _user_doc_ref(user_id)
+    doc_ref.set({'voice_sample_count': firestore.Increment(1)}, merge=True)
+    doc = doc_ref.get()
+    return int(doc.to_dict().get('voice_sample_count', 1))
+
+
+def trigger_reclone_if_due(user_id: str) -> bool:
+    """
+    Check whether a re-clone is due based on the current sample count.
+    If yes, spawn a daemon thread to run reclone_from_stored_samples() so the
+    caller (API route) returns immediately.  Returns True if a reclone was triggered.
+    """
+    try:
+        doc = _user_doc_ref(user_id).get()
+        count = int(doc.to_dict().get('voice_sample_count', 0)) if doc.exists else 0
+    except Exception as exc:
+        logger.warning("Could not read sample count: %s", exc)
+        return False
+
+    if count > 0 and count % RECLONE_EVERY_N == 0:
+        logger.info("Sample count %d → triggering background reclone for user %s", count, user_id[:8])
+        threading.Thread(
+            target=reclone_from_stored_samples,
+            args=(user_id,),
+            daemon=True,
+        ).start()
+        return True
+    return False
+
+
+def reclone_from_stored_samples(user_id: str) -> None:
+    """
+    Download the most-recent MAX_SAMPLES_PER_RECLONE recordings from Firebase Storage,
+    delete the current ElevenLabs clone, and recreate it with all samples.
+
+    Runs in a background daemon thread — never blocks an API response.
+    """
+    tmp_paths = []
+    try:
+        bucket = fb_storage.bucket()
+        blobs = list(bucket.list_blobs(prefix=f"voice_samples/{user_id}/"))
+        if not blobs:
+            logger.warning("reclone: no stored samples found for user %s", user_id[:8])
+            return
+
+        # Newest samples first so we prefer the most recent voice quality.
+        blobs.sort(key=lambda b: b.time_created, reverse=True)
+        blobs = blobs[:MAX_SAMPLES_PER_RECLONE]
+
+        # Download each blob to a local temp file for the ElevenLabs upload.
+        for blob in blobs:
+            suffix = Path(blob.name).suffix or '.m4a'
+            tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+            tmp.close()
+            blob.download_to_filename(tmp.name)
+            tmp_paths.append(Path(tmp.name))
+
+        # Delete the existing ElevenLabs clone first so we don't hit the voice-slot limit.
+        # If deletion fails we still attempt the create — ElevenLabs will overwrite gracefully
+        # on some plan tiers, and the worst case is a 422 caught below.
+        old_voice_id = _load_voice_id(user_id)
+        if old_voice_id and ELEVENLABS_API_KEY:
+            try:
+                requests.delete(
+                    f"https://api.elevenlabs.io/v1/voices/{old_voice_id}",
+                    headers={"xi-api-key": ELEVENLABS_API_KEY},
+                    timeout=15,
+                )
+                logger.info("Deleted old clone %s for user %s before reclone", old_voice_id[:8], user_id[:8])
+            except Exception as exc:
+                logger.warning("Could not delete old clone (continuing anyway): %s", exc)
+            # Clear immediately so a failed create doesn't leave a stale voice_id pointing
+            # to the now-deleted ElevenLabs voice.
+            _clear_voice_id(user_id)
+
+        # Recreate the clone with all downloaded samples + persist the new voice_id.
+        create_cloned_voice(user_id, tmp_paths)
+        logger.info("Re-clone complete for user %s using %d samples", user_id[:8], len(tmp_paths))
+
+    except Exception as exc:
+        logger.error("reclone_from_stored_samples failed for user %s: %s", user_id[:8], exc)
+    finally:
+        for p in tmp_paths:
+            try:
+                p.unlink()
+            except Exception:
+                pass
