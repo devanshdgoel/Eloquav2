@@ -196,6 +196,12 @@ export default function BaselineSessionScreen({ navigation }) {
   const exerciseScoresRef = useRef({});
   const exerciseIndexRef  = useRef(0); // mirrors exerciseIndex for the beforeRemove listener
 
+  // readingScorePromiseRef holds a Promise that resolves when ReadingMiniExercise
+  // delivers its score. finishBaseline() awaits it so the score is always captured
+  // even when the user advances quickly through Voice Setup before analysis finishes.
+  const readingScorePromiseRef  = useRef(null);
+  const readingScoreResolveRef  = useRef(null);
+
   // Screen-time tracking and funnel event on mount.
   useEffect(() => {
     const logExit = logScreenView('BaselineSession');
@@ -206,6 +212,14 @@ export default function BaselineSessionScreen({ navigation }) {
   // Keep ref in sync so the beforeRemove listener reads the latest index without
   // being re-registered on every state change.
   useEffect(() => { exerciseIndexRef.current = exerciseIndex; }, [exerciseIndex]);
+
+  // Create the reading score promise once on mount — immediately usable by finishBaseline.
+  // useRef does not accept a lazy initializer, so we use a one-time useEffect instead.
+  useEffect(() => {
+    readingScorePromiseRef.current = new Promise(resolve => {
+      readingScoreResolveRef.current = resolve;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Guard against accidental back navigation mid-session.
   // Programmatic replace/reset is allowed through (completes the flow normally).
@@ -261,6 +275,14 @@ export default function BaselineSessionScreen({ navigation }) {
 
   // Save scores, initialise tiers, advance the roadmap, navigate to StreakCelebration.
   async function finishBaseline() {
+    // Wait for the reading analysis score before reading exerciseScoresRef,
+    // because ReadingMiniExercise advances immediately and sends its score later.
+    // Race against an 8-second timeout so finishBaseline never hangs indefinitely.
+    if (readingScorePromiseRef.current) {
+      const timeout = new Promise(resolve => setTimeout(resolve, 8000));
+      await Promise.race([readingScorePromiseRef.current, timeout]);
+    }
+
     const scores = exerciseScoresRef.current;
 
     if (Object.keys(scores).length > 0) {
@@ -473,11 +495,17 @@ export default function BaselineSessionScreen({ navigation }) {
             // of the full 3-cycle routine with detailed instructions.
             {...(type === 'breathing' ? { baseline: true } : {})}
             // ReadingMiniExercise advances immediately after recording stops.
-            // When the background analysis finishes it calls onScoreReady, which
-            // writes the score into exerciseScoresRef before finishBaseline() runs.
+            // Background analysis finishes later and calls onScoreReady.
+            // We also resolve readingScorePromiseRef so finishBaseline() unblocks
+            // (it awaits the promise, capped at 8 s, before reading exerciseScoresRef).
             {...(type === 'reading' ? {
+              // Create the analysis promise lazily when the reading exercise first mounts.
+              // If finishBaseline() runs before onScoreReady fires, it awaits this promise
+              // (capped at 8 s) so the score is captured before writing difficulty tiers.
               onScoreReady: (score) => {
                 exerciseScoresRef.current['reading'] = Math.round(score);
+                // Resolve the waiting promise so finishBaseline can proceed with the real score.
+                readingScoreResolveRef.current?.(score);
               },
             } : {})}
           />
