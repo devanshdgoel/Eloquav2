@@ -1051,7 +1051,8 @@ const xs = StyleSheet.create({
 const exs = StyleSheet.create({
   prompt:    { position: 'absolute', top: fv(100), left: 0, right: 0, zIndex: 25, color: WHITE, fontSize: 30, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
   promptBig: { top: fv(137), fontSize: 34, letterSpacing: 1.7 },
-  zoneLabel: { position: 'absolute', fontSize: 13, fontWeight: '700', letterSpacing: 0.5, zIndex: 20 },
+  // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional zone labels.
+  zoneLabel: { position: 'absolute', fontSize: 16, fontWeight: '700', letterSpacing: 0.5, zIndex: 20 },
 });
 
 // Help overlay styles

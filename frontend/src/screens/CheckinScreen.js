@@ -950,7 +950,8 @@ const s = StyleSheet.create({
   },
   planSubtitle: {
     color: 'rgba(255,255,255,0.55)',
-    fontSize: 15,
+    // Raised from 15→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     fontWeight: '600',
     marginTop: -4,
   },
@@ -993,7 +994,8 @@ const s = StyleSheet.create({
   },
   planTagText: {
     color: WHITE,
-    fontSize: 13,
+    // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.2,
   },

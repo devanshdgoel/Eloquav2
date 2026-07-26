@@ -343,7 +343,8 @@ const styles = StyleSheet.create({
   // ── Input fields ─────────────────────────────────────────────────────────────
   fieldLabel: {
     color: '#C3DECE',
-    fontSize: 13,
+    // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -416,7 +417,8 @@ const styles = StyleSheet.create({
   tcsText: {
     flex: 1,
     color: 'rgba(255,255,255,0.75)',
-    fontSize: 15,
+    // Raised from 15→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     lineHeight: 22,
   },
   tcsLink: {
@@ -458,7 +460,8 @@ const styles = StyleSheet.create({
   // ── Privacy note ──────────────────────────────────────────────────────────────
   privacyNote: {
     color: 'rgba(255,255,255,0.35)',
-    fontSize: 13,
+    // Raised from 13→16 to meet WCAG 2.1 AA minimum for functional text.
+    fontSize: 16,
     textAlign: 'center',
     letterSpacing: 0.2,
   },

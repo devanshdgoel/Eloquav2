@@ -125,7 +125,8 @@ const chip = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   iconActive: { backgroundColor: 'rgba(255,169,64,0.15)' },
-  label: { color: WHITE, fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
+  // Raised from 12→16 to meet WCAG 2.1 AA minimum for functional text.
+  label: { color: WHITE, fontSize: 16, fontWeight: '700', textAlign: 'center', lineHeight: 20 },
   dim:   { color: 'rgba(255,255,255,0.35)' },
   // Small orange dot below label when unlocked
   dot: {
