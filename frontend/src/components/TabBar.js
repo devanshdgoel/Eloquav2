@@ -8,6 +8,7 @@
  */
 import React, { useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, Animated } from 'react-native';
+import { StackActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ORANGE   = '#FFA940';
@@ -76,11 +77,14 @@ export default function TabBar({ navigation, activeTab }) {
 
   function handlePress(tab) {
     if (tab === activeTab) return;
-    navigation.navigate(
-      tab === 'settings' ? 'Settings'
+    // Use StackActions.replace instead of navigate() to avoid pushing a new copy of the
+    // route onto the stack on every tab switch. navigate() would accumulate duplicate routes,
+    // causing the Android hardware-back button to replay every past tab visit, and showing
+    // two mounted Home screens in the accessibility tree after just a few switches.
+    const routeName = tab === 'settings' ? 'Settings'
       : tab === 'progress' ? 'Progress'
-      : 'Home'
-    );
+      : 'Home';
+    navigation.dispatch(StackActions.replace(routeName));
   }
 
   return (
