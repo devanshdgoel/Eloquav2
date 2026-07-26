@@ -344,13 +344,22 @@ export default function BaselineSessionScreen({ navigation }) {
     // has data to work with. This was previously only called from the old AssessmentScreen
     // (now replaced by BaselineSession), leaving progress_plan permanently unset.
     // computeProgressPlan expects { voice_power, expression, fluency } keys.
-    // We derive voice_power from the phonation score; expression from pitchGlide;
-    // fluency from reading. MPT is not captured in the baseline session so we pass null
-    // and let computeProgressPlan use its internal 5 s fallback.
+    //
+    // voice_power and expression are set to null here on purpose. The check-in comparison
+    // screen (CheckinScreen) derives these from acoustic analysis of the personal-sentence
+    // recordings (pre/post), not from exercise performance. Mixing exercise scores into
+    // the plan baseline would produce meaningless "Ahead/Behind" tags because the two
+    // measurement pipelines are not comparable. Setting to null causes computeProgressPlan
+    // to omit those dimensions from milestone targets (null → "–" in VS YOUR PLAN card).
+    //
+    // fluency from ReadingMiniExercise IS produced by the same backend acoustic pipeline
+    // that CheckinScreen uses, so it is a valid anchor for the plan.
+    //
+    // TODO: derive all three from an acoustic analysis pass in a future baseline revision.
     const planBaselineScores = {
-      voice_power: augmentedScores.phonation != null ? Math.round((augmentedScores.phonation + (augmentedScores.loudness ?? augmentedScores.phonation)) / 2) : null,
-      expression:  scores.pitchGlide ?? null,
-      fluency:     scores.reading    ?? null,
+      voice_power: null,
+      expression:  null,
+      fluency:     scores.reading ?? null,
     };
     const plan = computeProgressPlan(planBaselineScores, null);
     // Fire-and-forget — a failed write should never delay navigation or break the session.
