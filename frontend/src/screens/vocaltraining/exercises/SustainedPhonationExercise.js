@@ -30,9 +30,12 @@ const CALIBRATION_MS  = 1500;
 // ambient noise in genuinely noisy environments. Previously the 0.60 cap
 // was hit before the formula could set a threshold above the room's noise floor.
 const MAX_THRESHOLD   = 0.82;
-// Reduced from 800 ms — user reported bars staying green long after stopping.
-// 280 ms is fast enough to feel instant while still ignoring a brief breath or swallow.
-const SILENCE_END_MS  = 280;
+// Raised from 280 ms to 600 ms for Parkinson's patients.
+// PD voice has natural tremor fluctuations that can briefly dip below threshold
+// mid-phonation — a 280 ms window catches these dips and incorrectly ends the round.
+// 600 ms is short enough to feel responsive when the user genuinely stops,
+// but long enough to bridge normal PD voice variability and short breath pauses.
+const SILENCE_END_MS  = 600;
 const MAX_PHONATE_MS  = 20000;
 const REST_MS         = 6500;
 
