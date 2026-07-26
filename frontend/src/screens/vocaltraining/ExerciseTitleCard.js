@@ -22,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Ellipse } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../theme';
+import SpeakerButton from '../../components/SpeakerButton';
 
 // ── Breathing illustration ────────────────────────────────────────────────────
 // Reuses the same bubble asset that BreathingExercise's own title screen shows,
@@ -215,6 +216,19 @@ export default function ExerciseTitleCard({ exercise, onReady, onExit }) {
       {/* Exercise name — large, bold, left-aligned to match reference designs */}
       <Text style={tc.title}>{exercise.label}</Text>
 
+      {/* One-line description pulled from SESSION_EXERCISES.desc.
+          Tells the user what to expect before they tap → to begin, reducing
+          anxiety for first-time encounters with an unfamiliar exercise type.
+          SpeakerButton reads "label. desc" so screen-reader users get the same
+          contextual priming as sighted users. */}
+      <View style={tc.descRow}>
+        <Text style={tc.desc} numberOfLines={3}>{exercise.desc}</Text>
+        <SpeakerButton
+          text={`${exercise.label}. ${exercise.desc}`}
+          size={40}
+        />
+      </View>
+
       {/* Exercise-specific illustration centred in the remaining space */}
       <View style={tc.illustrationWrap}>
         {Illustration ? <Illustration /> : null}
@@ -282,6 +296,23 @@ const tc = StyleSheet.create({
     lineHeight: 64,
     marginTop: 16,
     marginHorizontal: 28,
+  },
+  // Description row: text on the left, SpeakerButton on the right
+  descRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 28,
+    marginTop: 10,
+    gap: 10,
+  },
+  // Secondary colour (≥0.60 opacity on dark bg passes WCAG AA at 17px)
+  desc: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 17,
+    fontWeight: '400',
+    lineHeight: 24,
+    letterSpacing: 0.2,
   },
   illustrationWrap: {
     flex: 1,
