@@ -204,11 +204,27 @@ export async function tryCompleteSession() {
     // Return optimistic progress so the celebration screen still shows.
     // Fetch last known progress from Firestore cache (may still work offline).
     try {
-      const cached = await fetchProgress();
+      const cached    = await fetchProgress();
+      const todayStr  = today();
+
+      // Apply the same streak logic as completeSession() so the optimistic
+      // value matches what the server will compute when the session flushes.
+      // Without this, a user who already trained today would see streak +1
+      // optimistically even though completeSession() would hold it steady.
+      let streak = cached.streak_days;
+      if (cached.last_session_date === todayStr) {
+        // Same calendar day — streak stays; no double-count.
+      } else if (cached.last_session_date === yesterday()) {
+        streak += 1;
+      } else {
+        // Gap of more than one day — streak resets.
+        streak = 1;
+      }
+
       return {
         current_node:       Math.min(TOTAL_NODES - 1, cached.current_node + 1),
         sessions_completed: cached.sessions_completed + 1,
-        streak_days:        cached.streak_days + 1,
+        streak_days:        streak,
         offline:            true,
       };
     } catch {
