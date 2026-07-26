@@ -674,12 +674,12 @@ export default function SettingsScreen({ navigation }) {
             onPress={() => Linking.openURL(`mailto:${FEEDBACK_EMAIL}?subject=Eloqua%20Feedback`)}
             right={<ChevronRight />}
           />
+          {/* Application.nativeApplicationVersion reads the native CFBundleShortVersionString
+              (iOS) / versionName (Android), which matches the App Store build number.
+              Fallback to Constants.expoConfig?.version for dev/Expo Go, then '—'. */}
           <Row
             label="Version"
             isLast
-            {/* Application.nativeApplicationVersion reads the native CFBundleShortVersionString
-                (iOS) / versionName (Android), which matches the App Store build number.
-                Fallback to Constants.expoConfig?.version for dev/Expo Go, then '—'. */}
             right={<ValueTag label={Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '—'} color={DIM} />}
           />
         </Section>
