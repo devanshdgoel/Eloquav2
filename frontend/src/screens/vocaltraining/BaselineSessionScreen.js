@@ -43,6 +43,8 @@ import {
   EXERCISE_KEYS,
   saveSessionExerciseScores,
   setTiersFromBaselineExercises,
+  computeProgressPlan,
+  storeProgressPlan,
 } from '../../services/difficultyService';
 import { getUserProfile } from '../../utils/storage';
 import { logFunnelEvent, logScreenView } from '../../utils/analytics';
@@ -257,6 +259,22 @@ export default function BaselineSessionScreen({ navigation }) {
     // Write difficulty tiers and baseline_focus_key to Firestore.
     // Non-blocking — session completes even if this write fails.
     setTiersFromBaselineExercises(augmentedScores, focusKey).catch(() => {});
+
+    // Build and persist the progress plan so CheckinScreen's "VS YOUR PLAN" comparison
+    // has data to work with. This was previously only called from the old AssessmentScreen
+    // (now replaced by BaselineSession), leaving progress_plan permanently unset.
+    // computeProgressPlan expects { voice_power, expression, fluency } keys.
+    // We derive voice_power from the phonation score; expression from pitchGlide;
+    // fluency from reading. MPT is not captured in the baseline session so we pass null
+    // and let computeProgressPlan use its internal 5 s fallback.
+    const planBaselineScores = {
+      voice_power: augmentedScores.phonation != null ? Math.round((augmentedScores.phonation + (augmentedScores.loudness ?? augmentedScores.phonation)) / 2) : null,
+      expression:  scores.pitchGlide ?? null,
+      fluency:     scores.reading    ?? null,
+    };
+    const plan = computeProgressPlan(planBaselineScores, null);
+    // Fire-and-forget — a failed write should never delay navigation or break the session.
+    storeProgressPlan(plan).catch(() => {});
 
     try {
       const result  = await tryCompleteSession();
