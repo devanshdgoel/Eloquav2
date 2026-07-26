@@ -130,6 +130,14 @@ const EXERCISE_FOCUS = {
     label: 'Voice Power',
     tip:   'Project your voice clearly across the room. In Parkinson\'s, the brain can lose track of how loud "normal" sounds — training recalibrates it.',
   },
+  pitchGlide: {
+    label: 'Pitch Variety',
+    tip:   'Vary your pitch to sound more expressive. A wider pitch range makes speech easier to follow and feel more engaging.',
+  },
+  reading: {
+    label: 'Clear Speech',
+    tip:   'Speak each word fully and at a steady pace. Clear articulation helps listeners follow every syllable.',
+  },
 };
 
 // ── Fallback done screen ───────────────────────────────────────────────────────
@@ -280,21 +288,32 @@ export default function BaselineSessionScreen({ navigation }) {
     }).start();
   }
 
-  // Compare the two scored exercise results and return the weaker dimension as the focus.
+  // Compare all scored exercises and return the key with the lowest score as the focus.
   // Clinical basis: LSVT LOUD targets the WEAKEST link first for maximum functional gain.
-  // A score < 65 at tier 2 signals a meaningful gap; if both are strong, no specific focus
-  // is set and sessions develop both dimensions in parallel.
+  // A score < 65 at tier 2 signals a meaningful gap; if all are strong, no specific focus
+  // is set and sessions develop all dimensions in parallel.
+  // Previously only considered phonation/loudness — extended to include pitchGlide and
+  // reading so a user whose weakest area is pitch or speech gets a correctly tailored plan.
   function deriveFocusKey(scores) {
-    const phon = scores.phonation != null && Number.isFinite(scores.phonation) ? scores.phonation : 0;
-    const loud = scores.loudness  != null && Number.isFinite(scores.loudness)  ? scores.loudness  : 0;
+    const phon  = scores.phonation  != null && Number.isFinite(scores.phonation)  ? scores.phonation  : 0;
+    const loud  = scores.loudness   != null && Number.isFinite(scores.loudness)   ? scores.loudness   : 0;
+    const pitch = scores.pitchGlide != null && Number.isFinite(scores.pitchGlide) ? scores.pitchGlide : 0;
+    const read  = scores.reading    != null && Number.isFinite(scores.reading)    ? scores.reading    : 0;
 
-    const weakestKey   = phon <= loud ? 'phonation' : 'loudness';
-    const weakestScore = Math.min(phon, loud);
+    const candidates = [
+      { key: 'phonation',  score: phon  },
+      { key: 'loudness',   score: loud  },
+      { key: 'pitchGlide', score: pitch },
+      { key: 'reading',    score: read  },
+    ];
+
+    // Find the exercise with the lowest score.
+    const weakest = candidates.reduce((a, b) => a.score <= b.score ? a : b);
 
     // Only designate a focus if the weakest dimension genuinely needs attention.
     // 65 is the midpoint between the 50-threshold for tier placement and the 80
     // that earns a tier-up — a principled "could benefit from extra attention" cutoff.
-    return weakestScore < 65 ? weakestKey : null;
+    return weakest.score < 65 ? weakest.key : null;
   }
 
   // Save scores, initialise tiers, advance the roadmap, navigate to StreakCelebration.
@@ -396,9 +415,13 @@ export default function BaselineSessionScreen({ navigation }) {
       }
 
       // Map exercise focusKey to the 3-axis key expected by BaselineResultsScreen.
-      const mappedFocusKey = (focusKey === 'phonation' || focusKey === 'loudness')
-        ? 'voice_power'
-        : focusKey;
+      // phonation + loudness → voice_power axis; pitchGlide → expression axis;
+      // reading → fluency axis.  null passes through unchanged (no focus designated).
+      const mappedFocusKey =
+        (focusKey === 'phonation' || focusKey === 'loudness') ? 'voice_power'  :
+        focusKey === 'pitchGlide'                             ? 'expression'   :
+        focusKey === 'reading'                                ? 'fluency'      :
+        focusKey;
 
       // Pass real expression + fluency scores now that the baseline includes
       // PitchGlideMiniExercise and ReadingMiniExercise. Both will be null only
