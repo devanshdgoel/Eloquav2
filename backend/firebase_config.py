@@ -5,6 +5,8 @@ import os
 import firebase_admin
 from firebase_admin import credentials
 
+from config import FIREBASE_STORAGE_BUCKET
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,8 +30,12 @@ def initialize_firebase():
                 )
             cred = credentials.Certificate(json_path)
 
-        firebase_admin.initialize_app(cred)
-        logger.info("Firebase Admin SDK initialised successfully")
+        # storageBucket registers the default bucket so firebase_admin.storage.bucket()
+        # works throughout the app without needing to pass the bucket name each time.
+        firebase_admin.initialize_app(cred, {
+            'storageBucket': FIREBASE_STORAGE_BUCKET,
+        })
+        logger.info("Firebase Admin SDK initialised (storage bucket: %s)", FIREBASE_STORAGE_BUCKET)
 
     except Exception as exc:
         logger.critical("Failed to initialise Firebase Admin SDK: %s", exc)

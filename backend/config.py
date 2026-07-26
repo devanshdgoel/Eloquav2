@@ -8,6 +8,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 
+# Firebase Storage bucket (without gs:// prefix).
+# Set FIREBASE_STORAGE_BUCKET env var on Render.
+# Used for storing user voice samples for voice clone improvement.
+FIREBASE_STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "eloqua-f714f.firebasestorage.app")
+
 # CORS
 # Default "*" allows any origin during local development.
 # In production, set ALLOWED_ORIGINS=https://your-domain.com in .env
