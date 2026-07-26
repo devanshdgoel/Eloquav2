@@ -382,6 +382,14 @@ export default function BaselineSessionScreen({ navigation }) {
             // Breathing in the baseline gets a simplified 1-cycle intro instead
             // of the full 3-cycle routine with detailed instructions.
             {...(type === 'breathing' ? { baseline: true } : {})}
+            // ReadingMiniExercise advances immediately after recording stops.
+            // When the background analysis finishes it calls onScoreReady, which
+            // writes the score into exerciseScoresRef before finishBaseline() runs.
+            {...(type === 'reading' ? {
+              onScoreReady: (score) => {
+                exerciseScoresRef.current['reading'] = Math.round(score);
+              },
+            } : {})}
           />
         )}
       </View>

@@ -42,6 +42,7 @@ export default function ReadingMiniExercise({
   onComplete,
   onSkip,
   onExit,
+  onScoreReady,   // called asynchronously when background analysis returns a score
   exerciseIndex   = 0,
   totalExercises  = 6,
 }) {
@@ -97,7 +98,6 @@ export default function ReadingMiniExercise({
     maxTimerRef.current = null;
 
     if (!recordingRef.current) return;
-    setPhase('processing');
 
     const durationS = Math.round((Date.now() - startMsRef.current) / 1000);
 
@@ -107,8 +107,15 @@ export default function ReadingMiniExercise({
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
 
-      const score = await analyzeRecording(uri, 'reading', durationS);
-      onComplete(score);
+      // Advance the user immediately — no "Analysing…" wait screen.
+      // The backend call runs in the background and calls onScoreReady when it finishes.
+      // VoiceSetupExercise (next step) takes ~1–2 min, which is plenty of time for the
+      // 12-second analysis timeout to complete before finishBaseline() is called.
+      onComplete(null);
+
+      analyzeRecording(uri, 'reading', durationS)
+        .then(score => { if (score !== null && onScoreReady) onScoreReady(score); })
+        .catch(() => {});
     } catch {
       onComplete(null);
     }
@@ -139,9 +146,10 @@ export default function ReadingMiniExercise({
     return null;
   }
 
-  const sessionFill  = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
-  const isRecording  = phase === 'recording';
-  const isProcessing = phase === 'processing';
+  const sessionFill = totalExercises > 0 ? exerciseIndex / totalExercises : 0;
+  const isRecording = phase === 'recording';
+  // isProcessing is no longer used — analysis runs in the background and the
+  // user is advanced immediately after recording stops (no blocking wait screen).
 
   return (
     <LinearGradient colors={BG_GRADIENT} style={{ flex: 1 }}>
@@ -167,28 +175,22 @@ export default function ReadingMiniExercise({
           <Text style={s.timer}>{elapsed}s</Text>
         )}
 
-        {isProcessing && (
-          <Text style={[s.processing, { fontSize: fs(20) }]}>Analysing…</Text>
-        )}
-
-        {!isProcessing && (
-          <TouchableOpacity
-            style={[s.btn, isRecording && s.btnDone]}
-            onPress={isRecording ? stopRecording : startRecording}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
-          >
-            <Text style={[s.btnText, { fontSize: fs(20) }]}>{isRecording ? 'Done  ✓' : 'Start  →'}</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[s.btn, isRecording && s.btnDone]}
+          onPress={isRecording ? stopRecording : startRecording}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+        >
+          <Text style={[s.btnText, { fontSize: fs(20) }]}>{isRecording ? 'Done  ✓' : 'Start  →'}</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={s.progressTrack}>
         <View style={[s.progressFill, { width: `${sessionFill * 100}%` }]} />
       </View>
 
-      {!isRecording && !isProcessing && (
+      {!isRecording && (
         <View style={s.bottom}>
           <CantDoNow onSkip={onSkip} onEnd={onExit} />
         </View>
