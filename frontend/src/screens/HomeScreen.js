@@ -1031,12 +1031,12 @@ const styles = StyleSheet.create({
   },
 
   // ── Locked node toast ─────────────────────────────────────────────────────
-  // Appears briefly at the bottom of the viewport when the user taps a
-  // future node, explaining what to do. Reuses the errorBanner colour so
-  // it is visually consistent with other inline warnings in the screen.
+  // Moved from bottom:100 to top:72 (below the streak pill) so it appears in
+  // the user's eye line near the action, not far below the tapped node.
+  // zIndex 50 sits above both fade gradients (zIndex 30/20) and the SVG overlay.
   lockedToast: {
     position: 'absolute',
-    bottom: 100,
+    top: 72,
     left: 24,
     right: 24,
     backgroundColor: 'rgba(254,156,45,0.15)',
@@ -1046,7 +1046,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     alignItems: 'center',
-    zIndex: 40,
+    zIndex: 50,
   },
   lockedToastText: {
     color: '#FFA940',
