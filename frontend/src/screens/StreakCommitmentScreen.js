@@ -22,6 +22,7 @@ import {
   Dimensions,
   TouchableOpacity,
   StatusBar,
+  Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Polyline, Line } from 'react-native-svg';
@@ -245,7 +246,11 @@ export default function StreakCommitmentScreen({ navigation, route }) {
 
   function handleShare() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Share sheet — can be wired to expo-sharing later
+    // Share.share opens the native share sheet with a pre-filled message.
+    // Errors are suppressed — if sharing is unavailable the user just stays put.
+    Share.share({
+      message: `I'm on a ${streakDays}-day voice training streak with Eloqua 🐬`,
+    }).catch(() => {});
   }
 
   const headerSlide = headerAnim.interpolate({

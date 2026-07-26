@@ -155,7 +155,10 @@ export default function HomeScreen({ navigation }) {
     const { sessions_completed: done, last_checkin_session: lastCI } = progress;
 
     // Node 0 before any session has been completed → daily check-in then baseline session.
+    // Fire-and-forget pre-warm so the Render backend is awake before the first analysis
+    // request arrives (baseline has no previous session to trigger this earlier).
     if (i === 0 && done === 0) {
+      fetch(`${API_BASE_URL}/api/wake`).catch(() => {});
       navigation.navigate('DailyVoiceNote', {
         nextScreen: 'BaselineSession',
         nextParams: {},

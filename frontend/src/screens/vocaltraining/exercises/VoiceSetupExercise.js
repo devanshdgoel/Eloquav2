@@ -91,8 +91,91 @@ const hb = StyleSheet.create({
   },
 });
 
-// ── Phase 0: Intro ────────────────────────────────────────────────────────────
-// Explains the purpose and lets the user skip without reading sentences.
+// ── Phase 0: Consent ─────────────────────────────────────────────────────────
+// Shown before the recording steps. States plainly what happens to the audio
+// so the user can make an informed choice before any microphone access.
+// "Create my voice profile" advances to the Intro (recording instructions).
+// "Not now" follows the same skip path as the Intro's "Skip for now" link.
+function ConsentPhase({ onAccept, onSkip, onExit, sessionFill }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
+  return (
+    <FadeIn>
+      <LinearGradient
+        colors={BG_GRADIENT} locations={BG_LOCATIONS}
+        start={BG_START} end={BG_END}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <StatusBar barStyle="light-content" />
+
+      <View style={ip.header}>
+        <TouchableOpacity
+          style={hb.closeBtn}
+          onPress={onExit}
+          accessibilityRole="button"
+          accessibilityLabel="Exit exercise"
+        >
+          <Text style={hb.closeText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={ip.content}>
+        <Text style={ip.eyebrow}>YOUR VOICE & PRIVACY</Text>
+        <Text style={ip.title}>Before we{'\n'}record</Text>
+
+        {/* Plain-language consent — three points users need before agreeing */}
+        <View style={ip.card}>
+          <View style={ip.cardRow}>
+            <View style={ip.stepBadge}><Text style={ip.stepNum}>1</Text></View>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>
+              Your recordings are used to create a synthetic copy of your voice.
+            </Text>
+          </View>
+          <View style={ip.cardRow}>
+            <View style={ip.stepBadge}><Text style={ip.stepNum}>2</Text></View>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>
+              They are processed by ElevenLabs, a third-party voice AI service.
+            </Text>
+          </View>
+          <View style={ip.cardRow}>
+            <View style={ip.stepBadge}><Text style={ip.stepNum}>3</Text></View>
+            <Text style={[ip.cardText, { fontSize: fs(16) }]}>
+              You can delete your voice profile at any time from Settings.
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ flex: 1 }} />
+
+      <View style={ip.btnArea}>
+        <TouchableOpacity
+          style={ip.primaryBtn}
+          onPress={onAccept}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Create my voice profile"
+        >
+          <Text style={[ip.primaryText, { fontSize: fs(17) }]}>Create my voice profile  →</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onSkip}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Not now"
+          hitSlop={{ top: 12, bottom: 12, left: 20, right: 20 }}
+        >
+          <Text style={[ip.skipLink, { fontSize: fs(15) }]}>Not now</Text>
+        </TouchableOpacity>
+      </View>
+
+      <SessionBar fill={sessionFill} />
+    </FadeIn>
+  );
+}
+
+// ── Phase 1: Intro ────────────────────────────────────────────────────────────
+// Explains the recording steps after consent is given.
 function IntroPhase({ onBegin, onSkip, onExit, sessionFill }) {
   const largeText = useLargeText();
   const fs = (n) => largeText ? Math.round(n * 1.25) : n;
@@ -399,7 +482,9 @@ export default function VoiceSetupExercise({
   exerciseIndex = 5,
   totalExercises = 6,
 }) {
-  const [phase, setPhase]               = useState('intro');
+  // 'consent' → 'intro' → 'recording' → 'processing'
+  // Consent is the first phase so users explicitly agree before any mic access.
+  const [phase, setPhase]               = useState('consent');
   const [sentenceIndex, setSentenceIndex] = useState(0);
   const [isRecording, setIsRecording]   = useState(false);
 
@@ -484,6 +569,17 @@ export default function VoiceSetupExercise({
       }
     }
     onComplete(100);
+  }
+
+  if (phase === 'consent') {
+    return (
+      <ConsentPhase
+        onAccept={() => setPhase('intro')}
+        onSkip={onSkip}
+        onExit={onExit}
+        sessionFill={sessionFill}
+      />
+    );
   }
 
   if (phase === 'intro') {

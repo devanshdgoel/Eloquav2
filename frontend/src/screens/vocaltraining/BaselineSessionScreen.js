@@ -35,9 +35,11 @@ import {
   Animated,
   TouchableOpacity,
   Alert,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import SpeakerButton from '../../components/SpeakerButton';
 import { tryCompleteSession } from '../../services/progressService';
 import { onSessionComplete, requestPermission as requestNotificationPermission } from '../../services/notificationService';
 import {
@@ -173,9 +175,18 @@ const fc = StyleSheet.create({
 });
 
 // ── Main container ─────────────────────────────────────────────────────────────
+// Safety text read aloud by SpeakerButton on the pre-session card.
+const SAFETY_TEXT =
+  'Safety note. These exercises should feel effortful, but never painful. ' +
+  'If your throat hurts or you feel strain beyond normal effort, stop and rest. ' +
+  'If you have an existing voice or throat condition, check with your care team first.';
+
 export default function BaselineSessionScreen({ navigation }) {
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const [isDone,        setIsDone]        = useState(false);
+  // Safety card is shown once per session, before the first exercise.
+  // Dismissed by tapping the CTA — does not count as an exercise index.
+  const [showSafety,    setShowSafety]    = useState(true);
 
   // Brief warm message shown between scored exercises (same as VocalTrainingSession).
   const [transitioning, setTransitioning] = useState(false);
@@ -262,13 +273,21 @@ export default function BaselineSessionScreen({ navigation }) {
     const focus    = focusKey ? EXERCISE_FOCUS[focusKey] : null;
 
     // Use real scores where available; fall back to tier-2 midpoint (50) only if a
-    // task was skipped or the backend returned null (e.g. network failure).
+    // task was skipped or the backend returned null (e.g. network failure / cold start).
+    const pitchDefaulted  = scores.pitchGlide == null;
+    const speechDefaulted = scores.reading    == null;
     const augmentedScores = {
       phonation:   scores.phonation   ?? null,
       loudness:    scores.loudness    ?? null,
       pitchGlides: scores.pitchGlide  ?? 50,
       speech:      scores.reading     ?? 50,
     };
+
+    // Flag when either expression or fluency score fell back to the ?? 50 default
+    // so these users can be identified in Firestore for manual follow-up or retry.
+    if (pitchDefaulted || speechDefaulted) {
+      augmentedScores.defaulted_tiers = true;
+    }
 
     // Write difficulty tiers and baseline_focus_key to Firestore.
     // Non-blocking — session completes even if this write fails.
@@ -390,6 +409,40 @@ export default function BaselineSessionScreen({ navigation }) {
     return <SessionComplete navigation={navigation} />;
   }
 
+  // Safety card: shown before the first exercise on every baseline session.
+  // One-time per-session gate — once dismissed, exerciseIndex proceeds normally.
+  if (showSafety) {
+    return (
+      <LinearGradient colors={colors.gradients.session} style={sf.root}>
+        <StatusBar barStyle="light-content" />
+        <View style={sf.content}>
+          <Text style={sf.eyebrow}>BEFORE YOU BEGIN</Text>
+          <Text style={sf.title}>A quick note on effort</Text>
+          <View style={sf.card}>
+            <Text style={sf.cardText}>
+              These exercises should feel effortful, but never painful. If your
+              throat hurts or you feel strain beyond normal effort, stop and rest.
+            </Text>
+            <Text style={sf.cardText}>
+              If you have an existing voice or throat condition, check with your
+              care team first.
+            </Text>
+          </View>
+          <SpeakerButton text={SAFETY_TEXT} size={44} />
+        </View>
+        <TouchableOpacity
+          style={sf.btn}
+          onPress={() => setShowSafety(false)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="I understand, start my assessment"
+        >
+          <Text style={sf.btnText}>I understand — let's begin  →</Text>
+        </TouchableOpacity>
+      </LinearGradient>
+    );
+  }
+
   const { type } = SESSION_EXERCISES[exerciseIndex];
   const ExerciseComponent = EXERCISE_MAP[type];
 
@@ -448,6 +501,38 @@ export default function BaselineSessionScreen({ navigation }) {
     </View>
   );
 }
+
+// Safety pre-card styles — single use per baseline session
+const sf = StyleSheet.create({
+  root:    { flex: 1, justifyContent: 'space-between' },
+  content: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, gap: 20 },
+  eyebrow: {
+    color: '#FFA940', fontSize: 14, fontWeight: '800',
+    letterSpacing: 2.5, textAlign: 'center',
+  },
+  title: {
+    color: '#FFFFFF', fontSize: 32, fontWeight: '800',
+    lineHeight: 40, textAlign: 'center',
+  },
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    padding: 20, gap: 12,
+  },
+  cardText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 17, lineHeight: 26, fontWeight: '400',
+  },
+  btn: {
+    margin: 28, backgroundColor: '#FFA940',
+    borderRadius: 28, paddingVertical: 20,
+    alignItems: 'center',
+    shadowColor: '#FFA940', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
+  },
+  btnText: { color: '#1A1A1A', fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
+});
 
 const styles = StyleSheet.create({
   // Dark base colour fills the safe-area inset below the progress bar on iPhone.

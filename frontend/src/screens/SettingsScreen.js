@@ -33,6 +33,7 @@ import { usePrefsRefresh, useLargeText } from '../context/PrefsContext';
 import { getUserProfile } from '../utils/storage';
 import { fetchWithAuth } from '../utils/authHeaders';
 import { API_BASE_URL } from '../config/env';
+import { getVoiceStatus, deleteClonedVoice } from '../services/voiceService';
 import {
   requestPermission,
   hasPermission,
@@ -63,6 +64,9 @@ const WHITE     = '#FFFFFF';
 const DIM       = 'rgba(255,255,255,0.60)';
 const DIVIDER   = 'rgba(195,222,206,0.10)';
 const RED       = '#E05252';
+
+// TODO: replace with the real support address before launching to the App Store
+const FEEDBACK_EMAIL = 'feedback@eloqua.app';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -391,6 +395,11 @@ export default function SettingsScreen({ navigation }) {
   const [prefs,           setPrefs]           = useState(DEFAULT_PREFS);
   const [notifPermission, setNotifPermission] = useState(false);
   const [timePickerOpen,  setTimePickerOpen]  = useState(false);
+  // null = not yet loaded; { has_cloned_voice: bool } after load
+  const [voiceStatus,     setVoiceStatus]     = useState(null);
+  const [voiceDeleting,   setVoiceDeleting]   = useState(false);
+  // true while DELETE /api/account is in-flight — disables the button to prevent double-tap
+  const [accountDeleting, setAccountDeleting] = useState(false);
 
   useEffect(() => {
     const logExit = logScreenView('Settings');
@@ -401,6 +410,8 @@ export default function SettingsScreen({ navigation }) {
     getUserProfile().then(p => setProfile(p));
     loadPrefs().then(p => setPrefs(p));
     hasPermission().then(setNotifPermission);
+    // Non-fatal — voice status is best-effort; null means "not yet known".
+    getVoiceStatus().then(setVoiceStatus).catch(() => {});
   }, []);
 
   // Generic pref update — writes to AsyncStorage and notifies PrefsContext.
@@ -446,6 +457,34 @@ export default function SettingsScreen({ navigation }) {
     });
   }, [profile]);
 
+  // Confirm then call the DELETE /api/voice/clone endpoint.
+  // On success the status badge updates in place; the user doesn't need to restart.
+  function handleDeleteVoiceProfile() {
+    Alert.alert(
+      'Delete voice profile?',
+      'This removes your personalised voice model from ElevenLabs. Smart Speech will use the default voice until you create a new profile.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setVoiceDeleting(true);
+            try {
+              await deleteClonedVoice();
+              setVoiceStatus({ has_cloned_voice: false });
+              Alert.alert('Voice profile deleted', 'Your voice model has been removed.');
+            } catch {
+              Alert.alert('Could not delete', 'Please try again or contact support.');
+            } finally {
+              setVoiceDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function handleSignOut() {
     Alert.alert(
       isGuest ? 'Exit guest session?' : 'Sign out?',
@@ -485,13 +524,24 @@ export default function SettingsScreen({ navigation }) {
                   text: 'Yes, delete everything',
                   style: 'destructive',
                   onPress: async () => {
+                    setAccountDeleting(true);
                     try {
-                      await fetchWithAuth(`${API_BASE_URL}/api/account`, { method: 'DELETE' });
+                      const res = await fetchWithAuth(`${API_BASE_URL}/api/account`, { method: 'DELETE' });
+                      if (!res.ok) {
+                        // Backend rejected — do NOT sign the user out; show a retry prompt.
+                        throw new Error(`Server returned ${res.status}`);
+                      }
+                      // Only sign out after the backend confirms deletion.
+                      await signOut();
+                      navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                     } catch {
-                      // Best-effort backend deletion — proceed with local sign-out regardless.
+                      setAccountDeleting(false);
+                      Alert.alert(
+                        'Account not deleted',
+                        "We couldn't delete your account right now — please try again or email us.",
+                        [{ text: 'OK' }]
+                      );
                     }
-                    await signOut();
-                    navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                   },
                 },
               ]
@@ -584,12 +634,43 @@ export default function SettingsScreen({ navigation }) {
           />
         </Section>
 
+        {/* ── Voice Profile — clone status + delete action ── */}
+        {/* Only shown for non-guest users; guests can't create a voice profile. */}
+        {!isGuest && (
+          <Section label="VOICE PROFILE">
+            <Row
+              label="Profile status"
+              sublabel={
+                voiceStatus == null
+                  ? 'Checking…'
+                  : voiceStatus.has_cloned_voice
+                    ? 'Active — your personal voice is set up'
+                    : 'No profile yet — create one in the Voice Setup exercise'
+              }
+              isLast={!voiceStatus?.has_cloned_voice}
+              right={
+                voiceStatus?.has_cloned_voice
+                  ? <ValueTag label="Active" color={MINT} />
+                  : null
+              }
+            />
+            {voiceStatus?.has_cloned_voice && (
+              <Row
+                label={voiceDeleting ? 'Deleting…' : 'Delete my voice profile'}
+                tintLabel={voiceDeleting ? DIM : RED}
+                onPress={voiceDeleting ? undefined : handleDeleteVoiceProfile}
+                isLast
+              />
+            )}
+          </Section>
+        )}
+
         {/* ── Help — feedback link + version ── */}
         <Section label="HELP">
           <Row
             label="Send feedback"
             sublabel="Help us improve Eloqua"
-            onPress={() => Linking.openURL('mailto:gs2022@ic.ac.uk?subject=Eloqua%20Feedback')}
+            onPress={() => Linking.openURL(`mailto:${FEEDBACK_EMAIL}?subject=Eloqua%20Feedback`)}
             right={<ChevronRight />}
           />
           <Row
@@ -615,13 +696,15 @@ export default function SettingsScreen({ navigation }) {
 
           {!isGuest && (
             <TouchableOpacity
-              style={s.deleteBtn}
-              onPress={handleDeleteAccount}
+              style={[s.deleteBtn, accountDeleting && { opacity: 0.5 }]}
+              onPress={accountDeleting ? undefined : handleDeleteAccount}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Delete account"
             >
-              <Text style={[s.deleteText, { fontSize: fs(16) }]}>Delete account</Text>
+              <Text style={[s.deleteText, { fontSize: fs(16) }]}>
+                {accountDeleting ? 'Deleting…' : 'Delete account'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>

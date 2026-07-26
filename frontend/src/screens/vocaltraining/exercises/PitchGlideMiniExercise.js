@@ -128,7 +128,9 @@ export default function PitchGlideMiniExercise({
       form.append('audio_duration_s', String(durationS));
 
       const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 12000);
+      // 25 s instead of 12 s — the Render free tier can take 15–20 s on cold start,
+      // so a 12 s abort would always time out on a user's first-ever baseline session.
+      const tid = setTimeout(() => controller.abort(), 25000);
       const res = await fetchWithAuth(`${API_BASE_URL}/api/analyze-voice`, {
         method: 'POST',
         body:   form,
@@ -173,7 +175,9 @@ export default function PitchGlideMiniExercise({
         )}
 
         {isProcessing && (
-          <Text style={[s.processing, { fontSize: fs(20) }]}>Analysing…</Text>
+          <Text style={[s.processing, { fontSize: fs(20) }]}>
+            {'Analysing… this can take a moment on first use.'}
+          </Text>
         )}
 
         {!isProcessing && (

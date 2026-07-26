@@ -156,7 +156,7 @@ An orange progress bar fills as exercises complete. Long-press the bottom-right 
 
 **Sustained Phonation** — User holds "ahhh" while a live volume meter gives feedback. Score = seconds held ÷ tier target. `bestScore` tracked across 3 rounds.
 
-**Pitch Glides** — WebView + Web Audio API autocorrelation. 4–6 hoops alternate high/low target pitch. Hold pitch in zone for `HOLD_MS` to clear a hoop.
+**Pitch Glides** — *Dual-platform.* **iOS:** expo-av metering drives the dolphin as a vocal-effort proxy for pitch; after all hoops complete the full recording is sent to the backend (Praat `f0_range_hz`) for clinical scoring. **Android:** a hidden WebView runs autocorrelation pitch detection in real time; score is derived from max–min Hz of valid samples. Both platforms: 4–6 hoops alternate LOW→HIGH→LOW→HIGH; hold in target zone for `HOLD_MS` to clear a hoop. Score scales against `pitchRangeHz` from the tier config.
 
 **Loudness Drills** — Flash-card phrases appear; speak loud enough within the timer to "whack" the jellyfish. Misses retry the same round.
 
@@ -492,7 +492,7 @@ frontend/src/
       exercises/
         BreathingExercise.js
         SustainedPhonationExercise.js — score = bestSeconds/targetSeconds
-        PitchGlidesExercise.js        — WebView pitch detection, score=100 on completion
+        PitchGlidesExercise.js        — dual-platform: iOS expo-av effort proxy + backend f0_range_hz; Android WebView autocorrelation Hz range score
         LoudnessDrillsExercise.js     — score penalised by miss count
         FunctionalSpeechExercise.js   — score=100 on completion
         VoiceSetupExercise.js         — [V4] 3-phase voice clone recording exercise
@@ -881,3 +881,56 @@ The file-level docstring was also updated to accurately describe the LOW→HIGH�
 | `exercises/PitchGlidesExercise.js` | STEP_TITLE removed; Android hoop direction fixed; docstring corrected |
 | `exercises/TailoredExercise.js` | `findWeakestKey` exported |
 | `vocaltraining/VocalTrainingSessionScreen.js` | `findWeakestKey` imported; `resolveCardExercise()` helper; midpoint skip logic |
+
+---
+
+## V5.5 — 2026-07-26
+
+**Theme:** PitchGlides iOS pitch framing fix (M12)
+
+### V5.5.1 — iOS Instruction Reframe
+
+**File:** `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js`
+
+**Problem:** The iOS path of `PITCH_GLIDES_INTRO_TEXT`, `PITCH_INSTR_STEPS`, and `PITCH_INSTR_TEXT` described the task as "speak SOFTLY / LOUDLY", and the in-exercise prompt showed `"Say 'ahh' — LOUD"` / `"Say 'ahh' — softly"`. The zone labels read `LOUD` (upper hoop) and `quiet` (lower hoop). This contradicts the clinical goal — Pitch Glides trains pitch variation, not loudness per se.
+
+**Background:** iOS WKWebView cannot call `getUserMedia`, so real-time pitch tracking is impossible. The exercise uses expo-av metering (voice level) as a proxy — rising in pitch typically requires more vocal effort, so the louder–softer contrast indirectly achieves the pitch-glide goal. But the user-visible language must target pitch, not volume.
+
+**Changes:**
+
+| Element | Before | After |
+|---|---|---|
+| `PITCH_GLIDES_INTRO_TEXT` (iOS) | "speak SOFTLY for the lower hoop and LOUDLY for the upper hoop" | "glide your voice from a LOW pitch to a HIGH pitch" |
+| `PITCH_INSTR_STEPS` step 2 (iOS) | "Speak SOFTLY for the lower hoop — LOUDLY for the upper hoop." | "Glide from a LOW pitch for the lower hoop to a HIGH pitch for the upper hoop." |
+| `PITCH_INSTR_TEXT` (iOS) | "Speak softly … and loudly …" | "Glide from a low pitch … to a high pitch …" |
+| In-exercise prompt (iOS) | `"Say 'ahh' — LOUD"` / `"Say 'ahh' — softly"` | `"Glide UP — low to high"` / `"Glide DOWN — back to low"` |
+| Zone labels (iOS) | `LOUD` / `quiet` | `HIGH` / `LOW` (now matches Android) |
+
+File header docstring and `PITCH_INSTR_STEPS` platform comment updated to accurately describe the dual-platform architecture.
+
+### V5.5.2 — `pitchRangeHz` Wired to Score Scaling
+
+**File:** `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js`
+
+`pitchRangeHz` in `PITCH_TIERS` was previously unused by any scoring logic — both iOS and Android used a hardcoded divisor of `85` Hz. The comment block now explicitly documents this, and the value is now used as the per-tier scoring target:
+
+```js
+score = Math.round(Math.max(0, (rangeHz - 15) / Math.max(1, tierConfig.pitchRangeHz - 15)) * 100)
+```
+
+A user who glides the full `pitchRangeHz` span at their tier receives a score of 100; a user who achieves no glide beyond 15 Hz receives 0. This makes tier 1 easier to score well on than tier 5, consistent with the rest of the difficulty system.
+
+Applied to both platforms: iOS `finishExercise` (Praat `f0_range_hz` result) and Android `completeHoop` (autocorrelation range from `hzSamplesRef`).
+
+### V5.5.3 — `pitch_analysis_fallback` Analytics Event
+
+**File:** `frontend/src/screens/vocaltraining/exercises/PitchGlidesExercise.js`
+
+When iOS backend analysis is attempted but returns no `f0_range_hz` (timeout, cold start, or Praat failed), `logUsageEvent({ event: 'pitch_analysis_fallback' })` is now fired. The score defaults to 100 in this case — intentionally lenient. The event lets us monitor how frequently Render cold-start timeouts affect the first-session experience.
+
+### V5.5 — Files Changed
+
+| File | Change |
+|---|---|
+| `exercises/PitchGlidesExercise.js` | iOS pitch framing; zone labels HIGH/LOW; score formula uses `pitchRangeHz`; `pitch_analysis_fallback` analytics; header docstring updated |
+| `VOCAL_TRAINING.md` | §4 Pitch Glides section updated; key file reference updated; V5.5 changelog added |
