@@ -12,6 +12,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -289,6 +290,14 @@ export default function CheckinScreen({ navigation }) {
     } catch (e) {
       console.error('[Checkin] startRecording:', e?.message);
       setRecPhase('ready');
+      // Mic permission was denied or the device rejected the recording request.
+      // Inform the user so they know what happened — a silent reset is invisible and
+      // leaves them tapping the record button repeatedly with no feedback.
+      Alert.alert(
+        'Microphone Unavailable',
+        'Could not access the microphone. Please check your permissions in Settings and try again.',
+        [{ text: 'OK' }],
+      );
     }
   }
 

@@ -265,8 +265,17 @@ export default function HomeScreen({ navigation }) {
         panStartOffsetRef.current = offsetRef.current;
       },
       onPanResponderMove: (_, gesture) => {
-        // Swipe up (negative dy) → scroll down into the map (higher offset).
-        applyOffset(panStartOffsetRef.current - gesture.dy);
+        // Compute maxOffset here from viewportHRef (a ref, always current) rather than
+        // calling the outer applyOffset function. The PanResponder is created once on
+        // mount, so any closure over applyOffset or viewportH state would be stale
+        // after the first onViewportLayout fires and updates viewportH.
+        const dynamicMax = Math.max(0, CANVAS_H - viewportHRef.current);
+        const next    = panStartOffsetRef.current - gesture.dy;
+        const clamped = Math.max(0, Math.min(next, dynamicMax));
+        offsetRef.current = clamped;
+        setCanScrollUp(clamped > 0);
+        setCanScrollDown(clamped < dynamicMax);
+        Animated.spring(animY, { toValue: -clamped, useNativeDriver: true, tension: 55, friction: 9 }).start();
       },
     })
   ).current;

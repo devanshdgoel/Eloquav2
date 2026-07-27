@@ -51,6 +51,9 @@ export default function SetupVoiceScreen({ navigation }) {
   const silenceCountRef  = useRef(0);
   // Prevents stopRecording from firing twice if both timer and tap happen simultaneously
   const stoppingRef      = useRef(false);
+  // Guards state updates (setRecordings, setCurrentIndex) after unmount.
+  // Set to false in cleanup so concurrent metering callbacks are no-ops.
+  const isMountedRef     = useRef(true);
   // Pulsing ring animation — expands and fades while recording to signal active mic
   const pulseAnim        = useRef(new Animated.Value(1)).current;
 
@@ -73,7 +76,12 @@ export default function SetupVoiceScreen({ navigation }) {
     const logExit = logScreenView('SetupVoice');
     return () => {
       logExit();
+      // Mark unmounted first so any in-flight stopRecording callback skips state updates.
+      isMountedRef.current = false;
       // Stop any in-progress recording when the screen unmounts (e.g. user navigates back).
+      // Setting stoppingRef prevents a concurrent metering-timer callback from calling
+      // stopRecording a second time while cleanup is running.
+      stoppingRef.current = true;
       clearInterval(meteringTimerRef.current);
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(() => {});
@@ -163,6 +171,11 @@ export default function SetupVoiceScreen({ navigation }) {
     const uri = recordingRef.current.getURI();
     recordingRef.current = null;
 
+    // Guard: if the component unmounted while recording was in progress (e.g. user
+    // navigated back), skip all state updates to avoid the "can't update unmounted
+    // component" warning and potential double-unload of the recording object.
+    if (!isMountedRef.current) return;
+
     // Save the URI for this sentence and advance to the next one.
     const updated = [...recordings];
     updated[currentIndex] = uri;
@@ -171,7 +184,9 @@ export default function SetupVoiceScreen({ navigation }) {
     if (currentIndex < SENTENCES.length - 1) {
       // Brief pause before showing the next sentence so the transition
       // feels deliberate rather than abrupt.
-      setTimeout(() => setCurrentIndex(currentIndex + 1), 400);
+      setTimeout(() => {
+        if (isMountedRef.current) setCurrentIndex(currentIndex + 1);
+      }, 400);
     } else {
       await finishSetup(updated);
     }

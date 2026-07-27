@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -433,10 +434,12 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
       if (phaseRef.current !== 'hear') return;
       await setPlaybackMode();
       Speech.speak(it.text, {
-        language: 'en-GB',          // British English tends to sound more natural
-        rate: 0.80,                 // Slightly slower for elderly users
-        pitch: 1.05,                // Slightly warmer pitch
-        voice: 'com.apple.voice.enhanced.en-GB.Daniel',  // iOS enhanced quality
+        language: 'en-GB',   // British English tends to sound more natural
+        rate: 0.80,          // Slightly slower for elderly users
+        pitch: 1.05,         // Slightly warmer pitch
+        // Enhanced voice is iOS-only; passing it on Android causes TTS to silently
+        // fall back to an unknown/non-English system voice on some devices.
+        ...(Platform.OS === 'ios' ? { voice: 'com.apple.voice.enhanced.en-GB.Daniel' } : {}),
         // Open the mic immediately when TTS finishes so user hears the full sentence.
         // Guard: only fire if still in 'hear' phase — the "I'm ready →" button sets
         // phase to 'speak' early, so a late-firing onDone won't reopen a closed mic.
@@ -564,8 +567,9 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
     if (phaseRef.current === 'success' || phaseRef.current === 'wrong' || phaseRef.current === 'checking') return;
     clearIdleTimer();
     clearTimeout(hearTimerRef.current);
-    // Max-record timer fired — message should encourage without implying failure
-    setWrongReason('timeout');
+    // Callers set wrongReasonRef.current before calling handleWrong so the drawer
+    // shows contextually appropriate copy. Default to 'timeout' here as a safety net.
+    if (!wrongReasonRef.current) wrongReasonRef.current = 'timeout';
     phaseRef.current = 'wrong';
     setPhase('wrong');
     retryCountRef.current += 1; // penalise each wrong-drawer trigger
@@ -691,7 +695,10 @@ function ExerciseScreen({ onComplete, onExit, onShowDemo, onSkip, tier = 1 }) {
         style={styles.speakerBtn}
         onPress={async () => {
           await setPlaybackMode();
-          Speech.speak(item.text, { language: 'en-GB', rate: 0.80, pitch: 1.05, voice: 'com.apple.voice.enhanced.en-GB.Daniel' });
+          Speech.speak(item.text, {
+            language: 'en-GB', rate: 0.80, pitch: 1.05,
+            ...(Platform.OS === 'ios' ? { voice: 'com.apple.voice.enhanced.en-GB.Daniel' } : {}),
+          });
         }}
         accessibilityRole="button"
         accessibilityLabel="Tap to hear the word"

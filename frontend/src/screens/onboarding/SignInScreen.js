@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   // ── Input fields ─────────────────────────────────────────────────────────────
   fieldLabel: {
     color: '#C3DECE',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
