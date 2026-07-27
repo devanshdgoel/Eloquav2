@@ -26,6 +26,12 @@ module.exports = {
       bundleIdentifier: 'com.eloqua.app',
       buildNumber: '1',
       infoPlist: {
+        // Declares that the app uses no non-exempt encryption (only standard
+        // HTTPS/TLS, which Apple exempts). Setting this to false stops App Store
+        // Connect / TestFlight from asking the export-compliance question on
+        // every new build. Change to true only if we add custom/proprietary
+        // encryption that isn't exempt under US export regulations.
+        ITSAppUsesNonExemptEncryption: false,
         NSMicrophoneUsageDescription:
           'Eloqua needs the microphone to record your voice for training and speech enhancement.',
         NSCameraUsageDescription:

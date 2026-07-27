@@ -28,6 +28,7 @@
   "submit": {
     "production": {
       "ios": {
+        "ascAppId": "6793752451",
         "ascApiKeyPath": "./asc-api-key.p8",
         "ascApiKeyId": "TF25TX4APR",
         "ascApiKeyIssuerId": "d51b8315-3c60-4308-a5d5-872376423015"
