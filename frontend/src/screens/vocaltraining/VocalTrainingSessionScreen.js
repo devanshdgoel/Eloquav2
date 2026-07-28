@@ -6,6 +6,7 @@ import {
   Dimensions,
   Animated,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -49,6 +50,11 @@ async function maybeRequestNotificationPermission() {
   await requestNotificationPermission().catch(() => {});
 }
 
+// PitchGlidesExercise uses a WebView for real-time pitch detection, which does not
+// function correctly on Android due to platform audio routing constraints.
+// The exercise is excluded from Android sessions entirely.
+const IS_ANDROID = Platform.OS === 'android';
+
 // The fixed sequence of exercises that make up one training session.
 // Breathing appears twice: at the start and as a mid-session reset
 // (after every three consecutive exercises, per clinical recommendation).
@@ -66,11 +72,12 @@ const SESSION_EXERCISES = [
     label: 'Sustained Sound',
     desc: "Take a deep breath, then hold a steady 'Ahhh' sound for as long as you can.",
   },
-  {
+  // Pitch Glides is excluded on Android — WebView mic access does not work on that platform.
+  ...(!IS_ANDROID ? [{
     type: 'pitchGlides',
     label: 'Pitch Glides',
     desc: 'Slide your voice gently from a low note up to a high note, then back down again.',
-  },
+  }] : []),
   {
     type: 'loudness',
     label: 'Voice Power',

@@ -23,6 +23,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -149,11 +150,20 @@ export default function BaselineResultsScreen({ navigation, route }) {
           <Text style={styles.title}>Here's where{'\n'}you're starting.</Text>
         </View>
 
-        {/* Top row: Voice Power + Pitch Variety */}
-        <View style={styles.cardRow}>
-          <ScoreCard title="Voice Power"   score={voicePowerScore} type="voice_power" />
-          <ScoreCard title="Pitch Variety" score={expressionScore} type="expression"  />
-        </View>
+        {/* Top row: Voice Power + Pitch Variety (iOS only — pitch not assessed on Android) */}
+        {Platform.OS !== 'android' ? (
+          <View style={styles.cardRow}>
+            <ScoreCard title="Voice Power"   score={voicePowerScore} type="voice_power" />
+            <ScoreCard title="Pitch Variety" score={expressionScore} type="expression"  />
+          </View>
+        ) : (
+          <ScoreCard
+            title="Voice Power"
+            score={voicePowerScore}
+            type="voice_power"
+            style={styles.cardFullWidth}
+          />
+        )}
 
         {/* Bottom row: Speech Rhythm full width */}
         <ScoreCard
