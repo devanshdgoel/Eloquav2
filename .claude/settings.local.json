@@ -155,7 +155,8 @@
       "Bash(Select-Object Length, LastWriteTime)",
       "Bash(Get-Item \"C:\\\\Users\\\\devan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-devan-Desktop-Imperial-Eloqua-Eloquav2-Eloquav2\\\\ceff4609-00b9-4e6a-8b75-6817a74d7c9c\\\\tasks\\\\a751b63a4393709da.output\" -ErrorAction SilentlyContinue)",
       "Bash(grep -E \"\\\\.\\(md|json|js\\)$\")",
-      "Bash(xargs grep -l \"Session event logging\\\\|session_logs\")"
+      "Bash(xargs grep -l \"Session event logging\\\\|session_logs\")",
+      "Bash(npx eas *)"
     ]
   }
 }
