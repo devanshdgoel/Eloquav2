@@ -11,13 +11,17 @@ const AuthContext = createContext(null);
 // Ping the backend health endpoint so Render wakes up before the user's first
 // API call. Non-fatal — any failure is silently swallowed.
 async function warmUpBackend() {
+  const controller = new AbortController();
+  // Store the timeout ID so it can be cleared whether the fetch succeeds or fails,
+  // preventing accumulated timer leaks across repeated auth cycles.
+  const abortTimer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 10_000);
     await fetch(`${API_BASE_URL}/api/health`, { signal: controller.signal });
   } catch {
     // Cold start or network error — backend will still serve when the user
     // makes their first real request; this just reduces perceived latency.
+  } finally {
+    clearTimeout(abortTimer);
   }
 }
 

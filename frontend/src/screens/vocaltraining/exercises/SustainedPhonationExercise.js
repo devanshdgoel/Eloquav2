@@ -699,7 +699,7 @@ function ExerciseScreen({ onComplete, onExit, onShowInstructions, onSkip, tier }
           {calibratedThresh !== null && (
             <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.round(calibratedThresh * BAR_MAX_H) }}>
               <View style={ex.threshLine} />
-              {round === 1 && (
+              {round === 0 && (
                 <Text style={ex.threshCaption}>Reach this line</Text>
               )}
             </View>

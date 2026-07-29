@@ -1235,24 +1235,32 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
       <BottomWave />
 
       {/* Hidden WebView — handles mic and autocorrelation pitch detection.
-          Starts pitch detection as soon as the component mounts. */}
+          IMPORTANT: width/height must be at least 1px on Android. A 0×0 WebView
+          does not execute JavaScript on Android, causing the exercise to hang at
+          "Starting…" indefinitely. opacity:0 keeps it invisible. */}
       <WebView
         ref={webViewRef}
         source={{ html: PITCH_WEBVIEW_HTML, baseUrl: 'https://localhost' }}
-        style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
         onMessage={onWebViewMessage}
         onError={() => setMicError(true)}
         javaScriptEnabled
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={['*']}
+        androidLayerType="hardware"
         onPermissionRequest={(e) => {
-          // Grant microphone access to the WebView so getUserMedia can run
+          // Grant microphone access — try both API shapes across react-native-webview versions
           try { e.nativeEvent.request.grant(e.nativeEvent.resources); } catch (_) {}
+          try { e.nativeEvent.grant(e.nativeEvent.resources); } catch (_) {}
         }}
         onLoad={() => {
-          // Trigger pitch detection as soon as the WebView is ready
-          try { webViewRef.current?.postMessage('start'); } catch (_) {}
+          // Small delay before posting 'start' — onLoad fires when HTML is parsed
+          // but the window.addEventListener('message') listener inside the inline
+          // script may not be attached yet on the first JS tick on Android.
+          setTimeout(() => {
+            try { webViewRef.current?.postMessage('start'); } catch (_) {}
+          }, 150);
         }}
       />
 

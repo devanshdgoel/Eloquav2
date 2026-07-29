@@ -13,11 +13,14 @@
  * Null means no baseline has been completed yet; falls back to phonation.
  */
 import React, { useRef } from 'react';
+import { Platform } from 'react-native';
 
 import SustainedPhonationExercise from './SustainedPhonationExercise';
 import LoudnessDrillsExercise     from './LoudnessDrillsExercise';
 import PitchGlidesExercise        from './PitchGlidesExercise';
 import FunctionalSpeechExercise   from './FunctionalSpeechExercise';
+
+const IS_ANDROID = Platform.OS === 'android';
 
 const EXERCISE_KEY_MAP = {
   phonation:   SustainedPhonationExercise,
@@ -33,12 +36,16 @@ const EXERCISE_KEY_MAP = {
  *   1. The key matching focusKey (user's weakest baseline dimension)
  *   2. 'phonation' (most fundamental PD exercise) as the final fallback
  *
+ * On Android, pitchGlides is excluded from the candidate pool because the
+ * WebView-based pitch detection does not work on that platform.
+ *
  * @param {{ phonation, loudness, pitchGlides, speech }} tiers
  * @param {string|null} focusKey
  * @returns {string} one of the EXERCISE_KEY_MAP keys
  */
 export function findWeakestKey(tiers, focusKey) {
-  const keys    = Object.keys(EXERCISE_KEY_MAP);
+  // On Android, exclude pitchGlides — WebView mic access is broken on that platform.
+  const keys    = Object.keys(EXERCISE_KEY_MAP).filter(k => !IS_ANDROID || k !== 'pitchGlides');
   const minTier = Math.min(...keys.map(k => tiers[k] ?? 1));
 
   // All exercises at the minimum tier

@@ -12,6 +12,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -50,10 +51,12 @@ const MIN_REC_S       = 3;
 const MAX_REC_S       = 20;
 const PROGRESS_BAR_H  = 8;
 
+// PitchGlides is excluded on Android — WebView mic access does not work on that platform.
+// Android check-in mini sessions run 3 exercises instead of 4.
 const MINI_EXERCISES = [
   { type: 'breathing',   label: 'Breathing' },
   { type: 'phonation',   label: 'Sustained Phonation' },
-  { type: 'pitchGlides', label: 'Pitch Glides' },
+  ...(Platform.OS !== 'android' ? [{ type: 'pitchGlides', label: 'Pitch Glides' }] : []),
   { type: 'speech',      label: 'Functional Speech' },
 ];
 
@@ -289,6 +292,14 @@ export default function CheckinScreen({ navigation }) {
     } catch (e) {
       console.error('[Checkin] startRecording:', e?.message);
       setRecPhase('ready');
+      // Mic permission was denied or the device rejected the recording request.
+      // Inform the user so they know what happened — a silent reset is invisible and
+      // leaves them tapping the record button repeatedly with no feedback.
+      Alert.alert(
+        'Microphone Unavailable',
+        'Could not access the microphone. Please check your permissions in Settings and try again.',
+        [{ text: 'OK' }],
+      );
     }
   }
 
@@ -649,7 +660,11 @@ export default function CheckinScreen({ navigation }) {
   // ── Render: comparison ────────────────────────────────────────────────────
 
   if (phase === 'comparison') {
-    const SCORE_KEYS = ['voice_power', 'expression', 'fluency'];
+    // On Android, pitchGlides was not run so the expression dimension is not assessed.
+    // Exclude it from all score comparisons so totals and plan-vs-actual rows are accurate.
+    const SCORE_KEYS = Platform.OS === 'android'
+      ? ['voice_power', 'fluency']
+      : ['voice_power', 'expression', 'fluency'];
     const LABELS     = { voice_power: 'Voice Power', expression: 'Pitch Variety', fluency: 'Speech Rhythm' };
     const COLORS     = { voice_power: ORANGE, expression: MINT, fluency: '#9FCFBD' };
 
@@ -742,7 +757,8 @@ export default function CheckinScreen({ navigation }) {
 
             const PLAN_DIMS = [
               { key: 'voice_power', label: 'Voice Power' },
-              { key: 'expression',  label: 'Pitch Variety' },
+              // Expression (Pitch Variety) excluded on Android — pitch not assessed on that platform.
+              ...(Platform.OS !== 'android' ? [{ key: 'expression', label: 'Pitch Variety' }] : []),
               { key: 'fluency',     label: 'Speech Rhythm' },
             ];
 

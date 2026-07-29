@@ -36,6 +36,7 @@ import {
   TouchableOpacity,
   Alert,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -74,6 +75,10 @@ async function maybeRequestNotificationPermission() {
   await requestNotificationPermission().catch(() => {});
 }
 
+// PitchGlides uses a WebView for real-time pitch detection, which does not work on Android.
+// It is excluded from the baseline session on Android entirely.
+const IS_ANDROID = Platform.OS === 'android';
+
 // All scored exercises run at this tier during the baseline session.
 // Tier 2 is challenging enough to produce discriminating scores without
 // being overwhelming for someone doing this for the first time.
@@ -95,7 +100,8 @@ const SESSION_EXERCISES = [
   { type: 'breathing',  label: 'Breathing' },
   { type: 'phonation',  label: 'Sustained Sound' },
   { type: 'loudness',   label: 'Voice Power' },
-  { type: 'pitchGlide', label: 'Pitch Range' },
+  // Pitch Range is excluded on Android — WebView mic access does not work on that platform.
+  ...(!IS_ANDROID ? [{ type: 'pitchGlide', label: 'Pitch Range' }] : []),
   { type: 'reading',    label: 'Reading Aloud' },
   { type: 'voiceSetup', label: 'Voice Profile' },
 ];
@@ -114,7 +120,10 @@ const EXERCISE_MAP = {
 
 // Breathing and voiceSetup are not scored.
 // Phonation and loudness → voice_power. pitchGlide → expression. reading → fluency.
-const SCORED_TYPES = new Set(['phonation', 'loudness', 'pitchGlide', 'reading']);
+// pitchGlide is omitted from SCORED_TYPES on Android since the exercise doesn't run.
+const SCORED_TYPES = IS_ANDROID
+  ? new Set(['phonation', 'loudness', 'reading'])
+  : new Set(['phonation', 'loudness', 'pitchGlide', 'reading']);
 
 // Encouragement shown after each scored exercise completes.
 const ENC_MSGS = ['Nicely done.', "That's the one.", 'Your voice carried that.', 'Well done.'];
@@ -297,15 +306,19 @@ export default function BaselineSessionScreen({ navigation }) {
   function deriveFocusKey(scores) {
     const phon  = scores.phonation  != null && Number.isFinite(scores.phonation)  ? scores.phonation  : 0;
     const loud  = scores.loudness   != null && Number.isFinite(scores.loudness)   ? scores.loudness   : 0;
-    const pitch = scores.pitchGlide != null && Number.isFinite(scores.pitchGlide) ? scores.pitchGlide : 0;
     const read  = scores.reading    != null && Number.isFinite(scores.reading)    ? scores.reading    : 0;
 
     const candidates = [
       { key: 'phonation',  score: phon  },
       { key: 'loudness',   score: loud  },
-      { key: 'pitchGlide', score: pitch },
       { key: 'reading',    score: read  },
     ];
+
+    // Include pitch only on iOS — it is not assessed on Android.
+    if (!IS_ANDROID) {
+      const pitch = scores.pitchGlide != null && Number.isFinite(scores.pitchGlide) ? scores.pitchGlide : 0;
+      candidates.push({ key: 'pitchGlide', score: pitch });
+    }
 
     // Find the exercise with the lowest score.
     const weakest = candidates.reduce((a, b) => a.score <= b.score ? a : b);
@@ -356,7 +369,10 @@ export default function BaselineSessionScreen({ navigation }) {
     const augmentedScores = {
       phonation:   scores.phonation   ?? null,
       loudness:    scores.loudness    ?? null,
-      pitchGlides: scores.pitchGlide  ?? 50,
+      // On Android, pitchGlide was never run — use null so scoreToTier falls back to
+      // tier 1 (lowest default). TailoredExercise filters pitchGlides on Android anyway
+      // so this tier value is never actually used to select an exercise.
+      pitchGlides: IS_ANDROID ? null : (scores.pitchGlide ?? 50),
       speech:      scores.reading     ?? 50,
     };
 

@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 const extra = Constants.expoConfig?.extra ?? {};
 
@@ -16,7 +17,9 @@ function getApiBaseUrl() {
     const host = hostUri.split(':')[0];
     return `http://${host}:8000`;
   }
-  return 'http://localhost:8000';
+  // On Android emulator, localhost refers to the emulator's own loopback, not the
+  // host machine. 10.0.2.2 is the Android emulator alias for the host machine.
+  return Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
 }
 
 export const API_BASE_URL = getApiBaseUrl();
