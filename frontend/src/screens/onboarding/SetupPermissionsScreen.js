@@ -98,7 +98,7 @@ export default function SetupPermissionsScreen({ navigation }) {
         </TouchableOpacity>
 
         <View style={s.header}>
-          <Text style={[s.title, { fontSize: fs(34) }]}>Microphone{'\n'}access</Text>
+          <Text style={[s.title, { fontSize: fs(34), lineHeight: fs(42) }]}>Microphone{'\n'}access</Text>
           <Text style={[s.subtitle, { fontSize: fs(17) }]}>Here is exactly why Eloqua needs it.</Text>
         </View>
 
@@ -115,7 +115,7 @@ export default function SetupPermissionsScreen({ navigation }) {
         </View>
 
         <View style={s.note}>
-          <Text style={s.noteText}>Audio processed securely. Never shared.</Text>
+          <Text style={[s.noteText, { fontSize: fs(16) }]}>Audio processed securely. Never shared.</Text>
         </View>
 
         <TouchableOpacity style={s.btn} onPress={handleAllow} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Allow microphone access">
