@@ -156,7 +156,9 @@
       "Bash(Get-Item \"C:\\\\Users\\\\devan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-devan-Desktop-Imperial-Eloqua-Eloquav2-Eloquav2\\\\ceff4609-00b9-4e6a-8b75-6817a74d7c9c\\\\tasks\\\\a751b63a4393709da.output\" -ErrorAction SilentlyContinue)",
       "Bash(grep -E \"\\\\.\\(md|json|js\\)$\")",
       "Bash(xargs grep -l \"Session event logging\\\\|session_logs\")",
-      "Bash(npx eas *)"
+      "Bash(npx eas *)",
+      "Bash(echo \"version: $\\(node -e \"console.log\\(require\\('./frontend/package.json'\\).version\\)\"\\)\")",
+      "Bash(echo \"now: $\\(node \"C:/Users/rishi/.claude/jobs/80d4feb5/tmp/onboardCheck.js\" 6\\)\")"
     ]
   }
 }
