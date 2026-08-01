@@ -1349,12 +1349,6 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
         }} />
       </View>
 
-      {phase === 'listening' && (
-        <View style={{ position: 'absolute', bottom: fv(16), left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
-          <CantDoNow onSkip={onSkip} onEnd={onExit} />
-        </View>
-      )}
-
       {showHelpOverlay && (
         <View style={pgHelp.overlay}>
           <View style={[pgHelp.header, { paddingTop: safeTop + 14 }]}>
@@ -1376,6 +1370,16 @@ function ExerciseScreenAndroid({ onComplete, onExit, onShowDemo, onSkip, tier = 
           <TouchableOpacity style={pgHelp.continueBtn} onPress={closeHelp} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Continue exercise">
             <Text style={[pgHelp.continueText, { fontSize: fsl(18) }]}>Continue Exercise  →</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Skip button — always visible on Android regardless of phase.
+          The default export guard prevents Android reaching this component,
+          but this ensures a skip is available even during 'loading'/'calibrating'
+          if somehow the component is rendered. */}
+      {!showHelpOverlay && !micError && (
+        <View style={{ position: 'absolute', bottom: fv(16), left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
+          <CantDoNow onSkip={onSkip} onEnd={onExit} />
         </View>
       )}
     </View>
@@ -1537,6 +1541,38 @@ const STEP_EXERCISE = 1;
 // (very fast completion or mic issue). 100 was too generous — a user who barely
 // phonated would score perfectly. 60 is a neutral "completed but unmeasured" score
 // that lets the nudge system treat it as a mid-range result.
+// ── Android unsupported screen ────────────────────────────────────────────────
+// Shown immediately if PitchGlidesExercise is somehow reached on Android.
+// Auto-skips on mount; manual button is the fallback if the callback hasn't fired yet.
+function AndroidUnsupportedScreen({ onSkip }) {
+  useEffect(() => {
+    // Fire immediately — no delay needed. The screen renders before the callback
+    // runs so the user sees it for at most one frame before the session advances.
+    onSkip();
+  }, []);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: TEAL_DARK, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+      <StatusBar barStyle="light-content" />
+      <Text style={{ color: WHITE, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 12 }}>
+        Not available on this device
+      </Text>
+      <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 32 }}>
+        Pitch Glides uses a feature not supported on Android. This exercise will be skipped automatically.
+      </Text>
+      <TouchableOpacity
+        style={{ backgroundColor: ORANGE, borderRadius: 28, paddingVertical: 18, paddingHorizontal: 40 }}
+        onPress={onSkip}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Skip this exercise"
+      >
+        <Text style={{ color: '#1A1A1A', fontSize: 18, fontWeight: '800' }}>Skip  →</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // On iOS the fallback covers a backend failure after all hoops complete — 100 is
 // still appropriate there because the user demonstrably held all hoops.
 // BaselineSessionScreen always passes analysisFallbackScore=50 explicitly, overriding this default.
@@ -1553,12 +1589,24 @@ export default function PitchGlidesExercise({
   const [step, setStep] = useState(null);
 
   useEffect(() => {
+    // Android guard: skip AsyncStorage entirely — the component will short-circuit below.
+    if (Platform.OS === 'android') return;
+
     AsyncStorage.getItem(DEMO_KEY)
       // ExerciseTitleCard is shown by VocalTrainingSessionScreen before this component
       // mounts, so we skip straight to Tutorial on first visit (no separate TitleScreen).
       .then(val => setStep(val ? STEP_EXERCISE : STEP_TUTORIAL))
       .catch(() => setStep(STEP_TUTORIAL));
   }, []);
+
+  // Android guard — pitch glides are not supported on Android. Return the skip screen
+  // immediately so no exercise logic runs. All array-level filters (VocalTrainingSessionScreen,
+  // TailoredExercise, BaselineSessionScreen, CheckinScreen) already prevent Android reaching
+  // this component; this is a defensive last line of defence.
+  // Placed AFTER hooks to satisfy React's Rules of Hooks (hooks must always run).
+  if (Platform.OS === 'android') {
+    return <AndroidUnsupportedScreen onSkip={onSkip ?? onComplete} />;
+  }
 
   if (step === null) return null;
 
