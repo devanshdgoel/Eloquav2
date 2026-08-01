@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, PixelRatio } from 'react-native';
 
 const PREFS_KEY = 'eloqua_preferences';
 
@@ -28,10 +28,19 @@ export function PrefsProvider({ children }) {
     try {
       const raw = await AsyncStorage.getItem(PREFS_KEY);
       if (raw) {
+        // Returning user — apply their stored preference.
         const parsed = JSON.parse(raw);
         setLargeText(parsed.largeText === true);
         setHapticFeedback(parsed.hapticFeedback !== false);
         setAudioCues(parsed.audioCues !== false);
+      } else {
+        // First launch — no stored preference yet. Check whether the OS font
+        // scale is elevated (≥1.15 covers "Large" and above on both iOS and
+        // Android). If so, auto-enable the in-app large text toggle so the user
+        // doesn't lose the accessibility benefit they already rely on.
+        // System font scaling is disabled globally in App.js; this is the bridge.
+        const systemScale = PixelRatio.getFontScale();
+        if (systemScale >= 1.15) setLargeText(true);
       }
     } catch {}
 
