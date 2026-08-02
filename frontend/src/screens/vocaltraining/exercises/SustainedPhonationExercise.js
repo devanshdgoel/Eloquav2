@@ -7,6 +7,7 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -259,28 +260,30 @@ function InstructScreen({ onNext, onExit }) {
           rightAction={<SpeakerButton text={INSTRUCTIONS_TEXT} />}
         />
 
-        <Text style={ins.heading} numberOfLines={1} adjustsFontSizeToFit>Sustained Sound</Text>
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+          <Text style={ins.heading} numberOfLines={1} adjustsFontSizeToFit>Sustained Sound</Text>
 
-        <View style={ins.card}>
-          {INSTRUCTIONS.map(({ step, text }) => (
-            <View key={step} style={ins.row}>
-              <View style={ins.badge}>
-                <Text style={ins.badgeNum}>{step}</Text>
+          <View style={ins.card}>
+            {INSTRUCTIONS.map(({ step, text }) => (
+              <View key={step} style={ins.row}>
+                <View style={ins.badge}>
+                  <Text style={ins.badgeNum}>{step}</Text>
+                </View>
+                <Text style={ins.stepText}>{text}</Text>
               </View>
-              <Text style={ins.stepText}>{text}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
 
-        <TouchableOpacity
-          style={ins.startBtn}
-          onPress={onNext}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Begin exercise"
-        >
-          <Text style={ins.startText}>Begin Exercise  →</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={ins.startBtn}
+            onPress={onNext}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Begin exercise"
+          >
+            <Text style={ins.startText}>Begin Exercise  →</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     </FadeIn>
   );

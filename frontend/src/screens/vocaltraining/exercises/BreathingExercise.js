@@ -8,6 +8,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -204,22 +205,24 @@ function VideoScreen({ onNext, onExit }) {
         rightAction={<SpeakerButton text={BREATHING_INSTRUCTIONS_TEXT} />}
       />
 
-      <Text style={vs.heading}>Diaphragmatic{'\n'}Breathing Technique</Text>
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+        <Text style={vs.heading}>Diaphragmatic{'\n'}Breathing Technique</Text>
 
-      <View style={vs.cardBox}>
-        {INSTRUCTIONS.map(({ step, text }) => (
-          <View key={step} style={vs.instrRow}>
-            <View style={vs.stepBadge}>
-              <Text style={vs.stepNum}>{step}</Text>
+        <View style={vs.cardBox}>
+          {INSTRUCTIONS.map(({ step, text }) => (
+            <View key={step} style={vs.instrRow}>
+              <View style={vs.stepBadge}>
+                <Text style={vs.stepNum}>{step}</Text>
+              </View>
+              <Text style={vs.instrText}>{text}</Text>
             </View>
-            <Text style={vs.instrText}>{text}</Text>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
 
-      <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
-        <Text style={vs.startText}>Begin Exercise  →</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={vs.startBtn} onPress={onNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
+          <Text style={vs.startText}>Begin Exercise  →</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </FadeIn>
   );
 }

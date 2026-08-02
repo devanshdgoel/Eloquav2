@@ -11,6 +11,7 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { StarIcon } from '../../../components/Icons';
 import ScreenHeader from '../../../components/ScreenHeader';
@@ -68,28 +69,36 @@ export default function MidpointScreen({ onComplete, onExit, doneCount = 4, tota
         />
       </View>
 
-      <Animated.View style={[s.content, { opacity, transform: [{ translateY: slideY }] }]}>
-        {/* Star badge */}
-        <Animated.View style={[s.badge, { transform: [{ scale: starScale }] }]}>
-          <StarIcon size={52} color={ORANGE} />
+      {/* ScrollView allows the card to scroll on small screens when large text
+          is enabled. flexGrow:1 + justifyContent:'center' centres the card
+          when content fits; scrolling kicks in only when it overflows. */}
+      <ScrollView
+        contentContainerStyle={s.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View style={[s.content, { opacity, transform: [{ translateY: slideY }] }]}>
+          {/* Star badge */}
+          <Animated.View style={[s.badge, { transform: [{ scale: starScale }] }]}>
+            <StarIcon size={52} color={ORANGE} />
+          </Animated.View>
+
+          <Text style={s.heading}>{m.heading}</Text>
+          <Text style={[s.sub, { fontSize: fs(18) }]}>{m.sub}</Text>
+
+          {/* Progress pips — one pip per exercise.
+              Pips 0..(doneCount-1) are filled (done); pip doneCount is the
+              current midpoint (highlighted); the rest are empty (upcoming). */}
+          <View style={s.pips}>
+            {Array.from({ length: totalCount }, (_, i) => (
+              <View key={i} style={[s.pip, i < doneCount && s.pipDone, i === doneCount && s.pipNext]} />
+            ))}
+          </View>
+
+          <TouchableOpacity style={s.continueBtn} onPress={onComplete} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Keep going">
+            <Text style={[s.continueTxt, { fontSize: fs(18) }]}>Keep going  →</Text>
+          </TouchableOpacity>
         </Animated.View>
-
-        <Text style={s.heading}>{m.heading}</Text>
-        <Text style={[s.sub, { fontSize: fs(18) }]}>{m.sub}</Text>
-
-        {/* Progress pips — one pip per exercise.
-            Pips 0..(doneCount-1) are filled (done); pip doneCount is the
-            current midpoint (highlighted); the rest are empty (upcoming). */}
-        <View style={s.pips}>
-          {Array.from({ length: totalCount }, (_, i) => (
-            <View key={i} style={[s.pip, i < doneCount && s.pipDone, i === doneCount && s.pipNext]} />
-          ))}
-        </View>
-
-        <TouchableOpacity style={s.continueBtn} onPress={onComplete} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Keep going">
-          <Text style={[s.continueTxt, { fontSize: fs(18) }]}>Keep going  →</Text>
-        </TouchableOpacity>
-      </Animated.View>
+      </ScrollView>
     </View>
   );
 }
@@ -97,7 +106,12 @@ export default function MidpointScreen({ onComplete, onExit, doneCount = 4, tota
 const s = StyleSheet.create({
   root: {
     flex: 1, backgroundColor: DARK_TEAL,
-    alignItems: 'center', justifyContent: 'center',
+  },
+  // flexGrow:1 + justifyContent:'center' centres the card when it fits;
+  // paddingTop clears the absolutely-positioned header (~100px on most devices).
+  scrollContent: {
+    flexGrow: 1, justifyContent: 'center', alignItems: 'center',
+    paddingTop: 100, paddingBottom: 32,
   },
   // Header now rendered by shared ScreenHeader component.
   // Positioned at the top of the screen absolutely so it doesn't push

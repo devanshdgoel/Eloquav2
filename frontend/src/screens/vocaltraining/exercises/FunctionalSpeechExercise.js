@@ -17,6 +17,7 @@ import {
   Animated,
   Dimensions,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -257,18 +258,20 @@ function IntroScreen({ onStart, onExit, progress }) {
         onBack={onExit}
         rightAction={<SpeakerButton text={SPEECH_INSTR_TEXT} />}
       />
-      <Text style={styles.introTitle} numberOfLines={1} adjustsFontSizeToFit>Functional Speech</Text>
-      <View style={styles.introCard}>
-        {SPEECH_INSTR_STEPS.map(({ step, text }) => (
-          <View key={step} style={styles.introRow}>
-            <View style={styles.introBadge}><Text style={styles.introBadgeNum}>{step}</Text></View>
-            <Text style={[styles.introStepText, { fontSize: fs(17) }]}>{text}</Text>
-          </View>
-        ))}
-      </View>
-      <TouchableOpacity style={styles.introStartBtn} onPress={onStart} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
-        <Text style={[styles.introStartText, { fontSize: fs(18) }]}>Let's Go  →</Text>
-      </TouchableOpacity>
+      <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+        <Text style={styles.introTitle} numberOfLines={1} adjustsFontSizeToFit>Functional Speech</Text>
+        <View style={styles.introCard}>
+          {SPEECH_INSTR_STEPS.map(({ step, text }) => (
+            <View key={step} style={styles.introRow}>
+              <View style={styles.introBadge}><Text style={styles.introBadgeNum}>{step}</Text></View>
+              <Text style={[styles.introStepText, { fontSize: fs(17) }]}>{text}</Text>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity style={styles.introStartBtn} onPress={onStart} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Begin exercise">
+          <Text style={[styles.introStartText, { fontSize: fs(18) }]}>Let's Go  →</Text>
+        </TouchableOpacity>
+      </ScrollView>
       <View style={styles.introBarTrack}>
         <View style={[styles.introBarFill, { width: (314 * SC) * Math.max(0.02, progress) }]} />
       </View>
