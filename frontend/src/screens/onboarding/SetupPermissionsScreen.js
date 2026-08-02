@@ -7,6 +7,7 @@ import {
   StatusBar,
   Linking,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,7 +87,13 @@ export default function SetupPermissionsScreen({ navigation }) {
     <LinearGradient colors={colors.gradients.app} style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      <View style={[s.inner, { paddingTop: top + 32, paddingBottom: bottom + 32 }]}>
+      {/* ScrollView allows the layout to scroll when large text pushes content
+          beyond the screen height. flexGrow:1 on contentContainerStyle means
+          space-between still distributes evenly when content fits. */}
+      <ScrollView
+        contentContainerStyle={[s.inner, { paddingTop: top + 32, paddingBottom: bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+      >
 
         <TouchableOpacity
           style={s.backBtn}
@@ -122,7 +129,7 @@ export default function SetupPermissionsScreen({ navigation }) {
           <Text style={[s.btnText, { fontSize: fs(18) }]}>Allow microphone  →</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -130,7 +137,9 @@ export default function SetupPermissionsScreen({ navigation }) {
 const s = StyleSheet.create({
   root:  { flex: 1 },
   inner: {
-    flex: 1,
+    // flexGrow instead of flex:1 so ScrollView can expand beyond screen height
+    // when large text pushes content past the viewport.
+    flexGrow: 1,
     paddingHorizontal: 28,
     gap: 24,
     justifyContent: 'space-between',

@@ -7,6 +7,7 @@ import {
   StatusBar,
   Dimensions,
   Linking,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import { MicIcon, LockIcon, TrashIcon } from '../../components/Icons';
 import { colors } from '../../theme';
 import ScreenHeader from '../../components/ScreenHeader';
 import SpeakerButton from '../../components/SpeakerButton';
+import { useLargeText } from '../../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -53,6 +55,8 @@ const POINTS_BODY_TEXT = POINTS.map(
 
 export default function VoiceCloningExplainerScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
 
   useEffect(() => {
     const logExit = logScreenView('VoiceCloningExplainer');
@@ -73,12 +77,15 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
         rightAction={<SpeakerButton text={POINTS_BODY_TEXT} />}
       />
 
-      <View style={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}>
+      <ScrollView
+        contentContainerStyle={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+      >
 
         <View style={s.header}>
-          <Text style={s.eyebrow}>YOUR VOICE & PRIVACY</Text>
-          <Text style={s.title}>Your voice stays{'\n'}your voice.</Text>
-          <Text style={s.subtitle}>
+          <Text style={[s.eyebrow, { fontSize: fs(16) }]}>YOUR VOICE & PRIVACY</Text>
+          <Text style={[s.title, { fontSize: fs(30), lineHeight: fs(38) }]}>Your voice stays{'\n'}your voice.</Text>
+          <Text style={[s.subtitle, { fontSize: fs(16), lineHeight: fs(24) }]}>
             Here is what happens to your recordings and why.
           </Text>
         </View>
@@ -88,8 +95,8 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
             <View key={i} style={s.card}>
               <View style={s.cardIconWrap}>{p.renderIcon()}</View>
               <View style={s.cardText}>
-                <Text style={s.cardTitle}>{p.title}</Text>
-                <Text style={s.cardBody}>{p.body}</Text>
+                <Text style={[s.cardTitle, { fontSize: fs(16) }]}>{p.title}</Text>
+                <Text style={[s.cardBody, { fontSize: fs(16), lineHeight: fs(24) }]}>{p.body}</Text>
               </View>
             </View>
           ))}
@@ -101,7 +108,7 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
           accessibilityRole="link"
           accessibilityLabel="Read our full Privacy Policy"
         >
-          <Text style={s.privacyText}>Read our full Privacy Policy →</Text>
+          <Text style={[s.privacyText, { fontSize: fs(16) }]}>Read our full Privacy Policy →</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -111,10 +118,10 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="I understand, let's begin"
         >
-          <Text style={s.btnText}>I understand, let's begin</Text>
+          <Text style={[s.btnText, { fontSize: fs(18) }]}>I understand, let's begin</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -122,7 +129,7 @@ export default function VoiceCloningExplainerScreen({ navigation }) {
 const s = StyleSheet.create({
   root:  { flex: 1 },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 28 * SC,
     gap: 24 * SC,
     justifyContent: 'space-between',

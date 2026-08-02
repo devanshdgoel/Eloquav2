@@ -210,7 +210,7 @@ export default function SignInScreen({ navigation }) {
           </TouchableOpacity>
 
           {/* Privacy assurance — important for medical/health context */}
-          <Text style={styles.privacyNote}>
+          <Text style={[styles.privacyNote, { fontSize: fs(16) }]}>
             Your voice data is encrypted and never shared.
           </Text>
         </ScrollView>
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
   // ── Privacy note ──────────────────────────────────────────────────────────────
   privacyNote: {
     color: 'rgba(255,255,255,0.35)',
-    fontSize: 13,
+    fontSize: 16,
     textAlign: 'center',
     letterSpacing: 0.2,
   },

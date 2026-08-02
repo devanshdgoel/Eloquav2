@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +14,7 @@ import { logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
 import ScreenHeader from '../../components/ScreenHeader';
 import SpeakerButton from '../../components/SpeakerButton';
+import { useLargeText } from '../../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -54,6 +56,8 @@ const STEPS_BODY_TEXT = STEPS.map(
 
 export default function HowItWorksScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
 
   useEffect(() => {
     const logExit = logScreenView('HowItWorks');
@@ -74,22 +78,25 @@ export default function HowItWorksScreen({ navigation }) {
         rightAction={<SpeakerButton text={STEPS_BODY_TEXT} />}
       />
 
-      <View style={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}>
+      <ScrollView
+        contentContainerStyle={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+      >
 
         <View style={s.header}>
-          <Text style={s.eyebrow}>HOW IT WORKS</Text>
-          <Text style={s.title}>Three things,{'\n'}every day.</Text>
+          <Text style={[s.eyebrow, { fontSize: fs(16) }]}>HOW IT WORKS</Text>
+          <Text style={[s.title, { fontSize: fs(32), lineHeight: fs(40) }]}>Three things,{'\n'}every day.</Text>
         </View>
 
         <View style={s.steps}>
           {STEPS.map((step) => (
             <View key={step.num} style={s.card}>
               <View style={[s.badge, { borderColor: step.color + '55', backgroundColor: step.color + '18' }]}>
-                <Text style={[s.badgeNum, { color: step.color }]}>{step.num}</Text>
+                <Text style={[s.badgeNum, { color: step.color, fontSize: fs(18) }]}>{step.num}</Text>
               </View>
               <View style={s.cardText}>
-                <Text style={s.cardTitle}>{step.title}</Text>
-                <Text style={s.cardBody}>{step.body}</Text>
+                <Text style={[s.cardTitle, { fontSize: fs(17) }]}>{step.title}</Text>
+                <Text style={[s.cardBody, { fontSize: fs(16), lineHeight: fs(24) }]}>{step.body}</Text>
               </View>
             </View>
           ))}
@@ -102,7 +109,7 @@ export default function HowItWorksScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="One more thing"
         >
-          <Text style={s.btnText}>One more thing  →</Text>
+          <Text style={[s.btnText, { fontSize: fs(18) }]}>One more thing  →</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -111,10 +118,10 @@ export default function HowItWorksScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="Skip intro"
         >
-          <Text style={s.skipText}>Skip intro</Text>
+          <Text style={[s.skipText, { fontSize: fs(16) }]}>Skip intro</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -122,7 +129,7 @@ export default function HowItWorksScreen({ navigation }) {
 const s = StyleSheet.create({
   root:  { flex: 1 },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 28 * SC,
     gap: 28 * SC,
   },
@@ -142,7 +149,9 @@ const s = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  steps: { gap: 14 * SC, flex: 1 },
+  // flex:1 removed — inside ScrollView a flex child has no bounded height to
+  // grow into, so cards would collapse to zero. Content sizes itself naturally.
+  steps: { gap: 14 * SC },
   card: {
     backgroundColor: CARD_BG,
     borderRadius: 18 * SC,

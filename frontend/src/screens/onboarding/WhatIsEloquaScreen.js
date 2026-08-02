@@ -7,6 +7,7 @@ import {
   StatusBar,
   Dimensions,
   Image,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +15,7 @@ import { logScreenView } from '../../utils/analytics';
 import { colors } from '../../theme';
 import ScreenHeader from '../../components/ScreenHeader';
 import SpeakerButton from '../../components/SpeakerButton';
+import { useLargeText } from '../../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -33,6 +35,8 @@ const BODY_TEXT =
 
 export default function WhatIsEloquaScreen({ navigation }) {
   const { top, bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
 
   useEffect(() => {
     const logExit = logScreenView('WhatIsEloqua');
@@ -53,7 +57,10 @@ export default function WhatIsEloquaScreen({ navigation }) {
         rightAction={<SpeakerButton text={BODY_TEXT} />}
       />
 
-      <View style={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}>
+      <ScrollView
+        contentContainerStyle={[s.inner, { paddingTop: 8, paddingBottom: bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+      >
 
         <Image
           source={require('../../../assets/images/Dolphin2.png')}
@@ -63,14 +70,14 @@ export default function WhatIsEloquaScreen({ navigation }) {
         />
 
         <View style={s.textBlock}>
-          <Text style={s.eyebrow}>ABOUT ELOQUA</Text>
-          <Text style={s.title}>Parkinson's changes{'\n'}how you speak.</Text>
-          <Text style={s.body}>
+          <Text style={[s.eyebrow, { fontSize: fs(16) }]}>ABOUT ELOQUA</Text>
+          <Text style={[s.title, { fontSize: fs(32), lineHeight: fs(40) }]}>Parkinson's changes{'\n'}how you speak.</Text>
+          <Text style={[s.body, { fontSize: fs(16), lineHeight: fs(26) }]}>
             Voices can become quieter, faster, and harder to understand over time.
             Eloqua gives you a daily voice workout — just a few minutes — to keep
             your speech clear and strong.
           </Text>
-          <Text style={s.body}>
+          <Text style={[s.body, { fontSize: fs(16), lineHeight: fs(26) }]}>
             The exercises are based on LSVT LOUD therapy principles, adapted for
             everyday use on your phone.
           </Text>
@@ -83,7 +90,7 @@ export default function WhatIsEloquaScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="How it works"
         >
-          <Text style={s.btnText}>How it works  →</Text>
+          <Text style={[s.btnText, { fontSize: fs(18) }]}>How it works  →</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -92,10 +99,10 @@ export default function WhatIsEloquaScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="Skip intro"
         >
-          <Text style={s.skipText}>Skip intro</Text>
+          <Text style={[s.skipText, { fontSize: fs(16) }]}>Skip intro</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -103,7 +110,7 @@ export default function WhatIsEloquaScreen({ navigation }) {
 const s = StyleSheet.create({
   root:  { flex: 1 },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 32 * SC,
     alignItems: 'center',
     justifyContent: 'space-between',
