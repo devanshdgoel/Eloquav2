@@ -24,12 +24,14 @@ import {
   TouchableOpacity,
   StatusBar,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
 import SpeakerButton from '../components/SpeakerButton';
+import { useLargeText } from '../context/PrefsContext';
 
 // Maps a 0–100 score to a band label and colour.
 function scoreBand(score) {
@@ -64,11 +66,13 @@ function scoreHint(score, type) {
 function ScoreCard({ title, score, type, style }) {
   const { label, color } = scoreBand(score);
   const hint = scoreHint(score, type);
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <View style={[sc.card, style]}>
-      <Text style={sc.title}>{title}</Text>
-      <Text style={[sc.label, { color }]}>{label}</Text>
-      <Text style={sc.hint}>{hint}</Text>
+      <Text style={[sc.title, { fontSize: fs(11) }]}>{title}</Text>
+      <Text style={[sc.label, { color, fontSize: fs(20) }]}>{label}</Text>
+      <Text style={[sc.hint, { fontSize: fs(16), lineHeight: fs(20) }]}>{hint}</Text>
     </View>
   );
 }
@@ -116,6 +120,8 @@ export default function BaselineResultsScreen({ navigation, route }) {
   } = route?.params ?? {};
 
   const { bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
 
   const speakerText = focusTip
     ? `Your primary focus is ${focusLabel}. ${focusTip}`
@@ -142,12 +148,17 @@ export default function BaselineResultsScreen({ navigation, route }) {
         rightAction={speakerText ? <SpeakerButton text={speakerText} /> : undefined}
       />
 
-      {/* ── Main content — fills available space between header and button ─── */}
-      <View style={styles.content}>
+      {/* ScrollView allows cards to scroll if large text grows them past the
+          available height. The button below is outside the scroll so it stays
+          visible and reachable without scrolling. */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
 
         <View style={styles.intro}>
-          <Text style={styles.eyebrow}>YOUR VOICE PROFILE</Text>
-          <Text style={styles.title}>Here's where{'\n'}you're starting.</Text>
+          <Text style={[styles.eyebrow, { fontSize: fs(12) }]}>YOUR VOICE PROFILE</Text>
+          <Text style={[styles.title, { fontSize: fs(32), lineHeight: fs(38) }]}>Here's where{'\n'}you're starting.</Text>
         </View>
 
         {/* Top row: Voice Power + Pitch Variety (iOS only — pitch not assessed on Android) */}
@@ -175,14 +186,14 @@ export default function BaselineResultsScreen({ navigation, route }) {
 
         {/* Focus card — primary training target or balanced plan */}
         <View style={styles.focusCard}>
-          <Text style={styles.focusEyebrow}>
+          <Text style={[styles.focusEyebrow, { fontSize: fs(12) }]}>
             {focusLabel ? 'YOUR PRIMARY FOCUS' : 'YOUR APPROACH'}
           </Text>
-          <Text style={styles.focusTitle}>{displayFocusLabel}</Text>
-          <Text style={styles.focusTip}>{displayFocusTip}</Text>
+          <Text style={[styles.focusTitle, { fontSize: fs(22) }]}>{displayFocusLabel}</Text>
+          <Text style={[styles.focusTip, { fontSize: fs(16), lineHeight: fs(22) }]}>{displayFocusTip}</Text>
         </View>
 
-      </View>
+      </ScrollView>
 
       {/* ── CTA ── */}
       <View style={[styles.btnWrap, { paddingBottom: bottom + 20 }]}>
@@ -193,7 +204,7 @@ export default function BaselineResultsScreen({ navigation, route }) {
           accessibilityRole="button"
           accessibilityLabel="Start My Journey"
         >
-          <Text style={styles.btnText}>Start My Journey  →</Text>
+          <Text style={[styles.btnText, { fontSize: fs(20) }]}>Start My Journey  →</Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -204,7 +215,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
 
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 8,

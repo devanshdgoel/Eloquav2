@@ -19,6 +19,7 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
@@ -31,6 +32,7 @@ import { logScreenView } from '../utils/analytics';
 import { FireIcon, LightningIcon, StarIcon } from '../components/Icons';
 import TabBar from '../components/TabBar';
 import ScreenHeader from '../components/ScreenHeader';
+import { useLargeText } from '../context/PrefsContext';
 
 const { width: W } = Dimensions.get('window');
 const SC = W / 402;
@@ -93,12 +95,14 @@ const ACHIEVEMENTS = [
 // ── Achievement chip ──────────────────────────────────────────────────────────
 function AchievementChip({ achievement, ctx }) {
   const unlocked = achievement.check(ctx);
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <View style={[chip.wrap, !unlocked && chip.locked]}>
       <View style={[chip.icon, unlocked && chip.iconActive]}>
         {achievement.icon(unlocked)}
       </View>
-      <Text style={[chip.label, !unlocked && chip.dim]}>{achievement.label}</Text>
+      <Text style={[chip.label, !unlocked && chip.dim, { fontSize: fs(16) }]}>{achievement.label}</Text>
       {unlocked && <View style={chip.dot} />}
     </View>
   );
@@ -138,13 +142,15 @@ const chip = StyleSheet.create({
 // ── Stat pill ─────────────────────────────────────────────────────────────────
 // icon prop accepts an optional React element shown beside the value (e.g. FireIcon).
 function StatPill({ value, label, accent, icon }) {
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
   return (
     <View style={pill.wrap}>
       <View style={pill.valueRow}>
-        <Text style={[pill.value, { color: accent }]}>{value}</Text>
+        <Text style={[pill.value, { color: accent, fontSize: fs(28) }]}>{value}</Text>
         {icon && <View style={pill.iconWrap}>{icon}</View>}
       </View>
-      <Text style={pill.label}>{label}</Text>
+      <Text style={[pill.label, { fontSize: fs(14) }]}>{label}</Text>
     </View>
   );
 }
@@ -165,6 +171,8 @@ const pill = StyleSheet.create({
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function ProgressScreen({ navigation }) {
   const { bottom } = useSafeAreaInsets();
+  const largeText = useLargeText();
+  const fs = (n) => largeText ? Math.round(n * 1.25) : n;
 
   const [prog,    setProg]    = useState({ current_node: 0, streak_days: 0, sessions_completed: 0, last_checkin_session: 0 });
   const [loading, setLoading] = useState(true);
@@ -245,20 +253,23 @@ export default function ProgressScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={s.body}>
+        <ScrollView
+          contentContainerStyle={s.body}
+          showsVerticalScrollIndicator={false}
+        >
 
           {/* ── Motivational hero ── */}
           <View style={s.heroCard}>
-            <Text style={s.heroTitle}>{heroTitle}</Text>
-            <Text style={s.heroSub}>{heroSub}</Text>
+            <Text style={[s.heroTitle, { fontSize: fs(24) }]}>{heroTitle}</Text>
+            <Text style={[s.heroSub, { fontSize: fs(16), lineHeight: fs(22) }]}>{heroSub}</Text>
           </View>
 
           {/* ── Session progress bar ── */}
           <View style={s.progressCard}>
             <View style={s.progressTopRow}>
-              <Text style={s.progressLabel}>Sessions complete</Text>
-              <Text style={s.progressFraction}>
-                <Text style={s.progressBig}>{sessions}</Text>
+              <Text style={[s.progressLabel, { fontSize: fs(15) }]}>Sessions complete</Text>
+              <Text style={[s.progressFraction, { fontSize: fs(15) }]}>
+                <Text style={[s.progressBig, { fontSize: fs(22) }]}>{sessions}</Text>
                 {' '}of {TOTAL_NODES}
               </Text>
             </View>
@@ -267,12 +278,12 @@ export default function ProgressScreen({ navigation }) {
             </View>
             {/* Next check-in hint — keeps users engaged between milestones */}
             {hasStarted && sessLeft > 0 && !isCheckinDue(prog) && (
-              <Text style={s.checkinHint}>
+              <Text style={[s.checkinHint, { fontSize: fs(14) }]}>
                 {sessLeft} session{sessLeft !== 1 ? 's' : ''} until your next progress check-in
               </Text>
             )}
             {hasStarted && isCheckinDue(prog) && (
-              <Text style={[s.checkinHint, { color: ORANGE }]}>Progress check-in available!</Text>
+              <Text style={[s.checkinHint, { color: ORANGE, fontSize: fs(14) }]}>Progress check-in available!</Text>
             )}
           </View>
 
@@ -293,7 +304,7 @@ export default function ProgressScreen({ navigation }) {
 
           {/* ── Achievements ── */}
           <View style={s.achieveSection}>
-            <Text style={s.achieveTitle}>Achievements</Text>
+            <Text style={[s.achieveTitle, { fontSize: fs(17) }]}>Achievements</Text>
             <View style={s.achieveRow}>
               {ACHIEVEMENTS.map(a => (
                 <AchievementChip key={a.id} achievement={a} ctx={ctx} />
@@ -301,7 +312,7 @@ export default function ProgressScreen({ navigation }) {
             </View>
           </View>
 
-        </View>
+        </ScrollView>
       )}
 
       <TabBar navigation={navigation} activeTab="progress" />
@@ -322,10 +333,10 @@ const s = StyleSheet.create({
   },
   retryText: { color: '#1A1A1A', fontSize: 17, fontWeight: '700' },
 
-  // All content in a column, flex-distributed so it fills the space between
-  // the header and the tab bar without needing a ScrollView.
+  // flexGrow lets the ScrollView content fill the space between header and TabBar,
+  // and expand beyond it if large text makes the content taller.
   body: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 20 * SC,
     paddingTop: 12 * SC,
     paddingBottom: 12 * SC,
@@ -402,7 +413,7 @@ const s = StyleSheet.create({
 
   // ── Achievements ───────────────────────────────────────────────────────────
   achieveSection: {
-    flex: 1,
+    // flex:1 removed — inside ScrollView a flex child collapses to zero height.
     gap: 10 * SC,
   },
   achieveTitle: {
@@ -412,7 +423,8 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
   },
   achieveRow: {
-    flex: 1,
+    // flex:1 removed for the same reason; chips use flex:1 within the row
+    // which still distributes them evenly across the available row width.
     flexDirection: 'row',
     gap: 10 * SC,
   },
