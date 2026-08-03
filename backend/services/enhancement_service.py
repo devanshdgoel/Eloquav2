@@ -62,22 +62,24 @@ def generate_enhanced_speech(
         used_voice_id, settings["speed"], settings["stability"], settings.get("style", 0),
     )
 
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-    except requests.exceptions.RequestException as e:
-        logger.error("ElevenLabs network error: %s", e)
-        raise SpeechEnhancementError(f"Network error: {str(e)}")
-
-    if response.status_code != 200:
-        logger.error("ElevenLabs API error %d: %s", response.status_code, response.text)
-        raise SpeechEnhancementError(
-            f"ElevenLabs error: {response.status_code} {response.text}"
-        )
-
     filename = f"enhanced_{uuid.uuid4().hex}.mp3"
     output_path = AUDIO_OUTPUT_DIR / filename
 
-    with open(output_path, "wb") as f:
-        f.write(response.content)
+    # stream=True avoids buffering the entire MP3 in memory before writing to disk.
+    # Audio for a paragraph of speech can be 200 KB–2 MB; under concurrent requests
+    # the non-streaming version holds all of that in the heap simultaneously.
+    try:
+        with requests.post(url, json=payload, headers=headers, timeout=30, stream=True) as response:
+            if response.status_code != 200:
+                logger.error("ElevenLabs API error %d: %s", response.status_code, response.text)
+                raise SpeechEnhancementError(
+                    f"ElevenLabs error: {response.status_code} {response.text}"
+                )
+            with open(output_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+    except requests.exceptions.RequestException as e:
+        logger.error("ElevenLabs network error: %s", e)
+        raise SpeechEnhancementError(f"Network error: {str(e)}")
 
     return output_path

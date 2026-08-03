@@ -110,7 +110,8 @@ def format_vocabulary_hint(words: list[str]) -> str:
 # Cache the vocabulary for each user for 5 minutes (one recording session).
 
 _vocab_cache: dict[str, tuple[list[str], float]] = {}
-_VOCAB_CACHE_TTL = 300  # seconds
+_VOCAB_CACHE_TTL = 300      # seconds until a cached entry expires
+_VOCAB_CACHE_MAX_SIZE = 500  # max users held in memory at once
 
 
 def _get_db():
@@ -134,12 +135,24 @@ def get_user_vocabulary_cached(uid: str) -> list[str]:
     """
     Cached wrapper — reads Firestore at most once per VOCAB_CACHE_TTL seconds.
     Use this in hot paths (per-chunk transcription) to avoid per-request Firestore reads.
+    Caps the cache at _VOCAB_CACHE_MAX_SIZE entries to prevent unbounded growth when
+    many distinct users make requests over the lifetime of the process.
     """
     now = time.time()
     if uid in _vocab_cache:
         words, expires_at = _vocab_cache[uid]
         if now < expires_at:
             return words
+
+    # Evict before inserting to keep the dict bounded.
+    # First pass: remove all expired entries (cheapest — they're useless anyway).
+    # Second pass: if still over limit, drop oldest entries (dict preserves insertion order).
+    if len(_vocab_cache) >= _VOCAB_CACHE_MAX_SIZE:
+        expired_keys = [k for k, (_, exp) in _vocab_cache.items() if now >= exp]
+        for k in expired_keys:
+            del _vocab_cache[k]
+        while len(_vocab_cache) >= _VOCAB_CACHE_MAX_SIZE:
+            _vocab_cache.pop(next(iter(_vocab_cache)))
 
     words = get_user_vocabulary(uid)
     _vocab_cache[uid] = (words, now + _VOCAB_CACHE_TTL)

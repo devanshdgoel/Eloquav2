@@ -51,6 +51,8 @@ async def analyze_voice(
     user_id = current_user["uid"]
     audio_path = save_uploaded_audio(file)
 
+    # Always delete the temp file after analysis, even if extract_features fails.
+    # Without this, every /analyze-voice call leaks a file for up to 60 minutes.
     try:
         analysis = extract_features(
             str(audio_path),
@@ -61,6 +63,8 @@ async def analyze_voice(
     except Exception as exc:
         logger.error("Voice analysis failed: %s", exc)
         raise HTTPException(status_code=500, detail="Voice analysis failed.")
+    finally:
+        audio_path.unlink(missing_ok=True)
 
     background_tasks.add_task(
         save_session,

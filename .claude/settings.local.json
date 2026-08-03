@@ -158,7 +158,8 @@
       "Bash(xargs grep -l \"Session event logging\\\\|session_logs\")",
       "Bash(npx eas *)",
       "Bash(echo \"version: $\\(node -e \"console.log\\(require\\('./frontend/package.json'\\).version\\)\"\\)\")",
-      "Bash(echo \"now: $\\(node \"C:/Users/rishi/.claude/jobs/80d4feb5/tmp/onboardCheck.js\" 6\\)\")"
+      "Bash(echo \"now: $\\(node \"C:/Users/rishi/.claude/jobs/80d4feb5/tmp/onboardCheck.js\" 6\\)\")",
+      "Bash(dir \"C:\\\\Users\\\\devan\\\\Desktop\\\\Imperial\\\\Eloqua\\\\Eloquav2\\\\Eloquav2\\\\backend\\\\services\")"
     ]
   }
 }

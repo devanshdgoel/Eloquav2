@@ -141,19 +141,24 @@ async def transcribe_chunk(
     vocab_words = get_user_vocabulary_cached(user_id)
     whisper_prompt = _build_whisper_prompt(vocab_words, previous_text)
 
+    # Always delete the temp file once transcription is done, even if it fails.
+    # Without this, every 4-second chunk from every user accumulates for 60 min.
     try:
-        if model == "soniva":
-            raw_text, _ = transcribe_soniva(str(audio_path), prompt=whisper_prompt)
-        else:
-            raw_text, _ = transcribe_audio(str(audio_path), prompt=whisper_prompt)
-    except TranscriptionError as e:
-        if e.error_type == "empty":
-            return success_response({
-                "raw_text": "",
-                "enhanced_text": "",
-                "chunk_index": chunk_index,
-            })
-        raise HTTPException(status_code=503, detail=e.message)
+        try:
+            if model == "soniva":
+                raw_text, _ = transcribe_soniva(str(audio_path), prompt=whisper_prompt)
+            else:
+                raw_text, _ = transcribe_audio(str(audio_path), prompt=whisper_prompt)
+        except TranscriptionError as e:
+            if e.error_type == "empty":
+                return success_response({
+                    "raw_text": "",
+                    "enhanced_text": "",
+                    "chunk_index": chunk_index,
+                })
+            raise HTTPException(status_code=503, detail=e.message)
+    finally:
+        audio_path.unlink(missing_ok=True)
 
     if _is_hallucination(raw_text, previous_enhanced_text):
         logger.info("Hallucination filtered at chunk %d: %r", chunk_index, raw_text)
@@ -302,64 +307,70 @@ async def process_audio(
     vocab_words  = get_user_vocabulary_cached(user_id)
     whisper_prompt = format_vocabulary_hint(vocab_words)
 
+    # Always delete the uploaded temp file when we're done, even on error.
+    # audio_path may still be needed by analyze_voice below, so we delete after all reads.
     try:
-        if model == "soniva":
-            raw_transcript, audio_duration_s = transcribe_soniva(str(audio_path), prompt=whisper_prompt)
-        else:
-            raw_transcript, audio_duration_s = transcribe_audio(str(audio_path), prompt=whisper_prompt)
-    except TranscriptionError as e:
-        if e.error_type == "empty":
-            return error_response(e.message, error_type="empty")
-        if e.error_type in ["quota", "network"]:
-            raise HTTPException(status_code=503, detail=e.message)
-        raise HTTPException(status_code=500, detail=e.message)
-
-    # Include user's few-shot examples in the clarity prompt.
-    user_examples    = get_user_examples(user_id)
-    cleaned_transcript = clarity_transcript(raw_transcript, examples=user_examples)
-
-    # Background vocabulary and example updates — non-blocking.
-    try:
-        new_terms = extract_key_terms(cleaned_transcript)
-        if new_terms:
-            update_user_vocabulary(user_id, new_terms)
-    except Exception as exc:
-        logger.warning("Vocabulary update failed (non-fatal): %s", exc)
-
-    try:
-        store_user_example(user_id, raw_transcript, cleaned_transcript)
-    except Exception as exc:
-        logger.warning("Example storage failed (non-fatal): %s", exc)
-
-    if has_cloned_voice(user_id):
-        synthesis_voice_id = get_user_voice_id(user_id)
-        # Same settings as /enhance-text: lower similarity_boost reduces uncanny valley
-        # effect from PD speech artefacts in the clone samples.
-        voice_settings = {
-            "stability":        0.75,
-            "similarity_boost": 0.70,
-            "style":            0.05,
-            "speed":            1.0,
-        }
-        profile = DEFAULT_PROFILE
-        logger.info("Using cloned voice for user %s", user_id[:8])
-    else:
-        logger.info("No cloned voice for user %s — using profile matching.", user_id[:8])
         try:
-            profile, voice_settings = analyze_voice(
-                str(audio_path), raw_transcript, audio_duration_s
-            )
-            synthesis_voice_id = profile.voice_id
+            if model == "soniva":
+                raw_transcript, audio_duration_s = transcribe_soniva(str(audio_path), prompt=whisper_prompt)
+            else:
+                raw_transcript, audio_duration_s = transcribe_audio(str(audio_path), prompt=whisper_prompt)
+        except TranscriptionError as e:
+            if e.error_type == "empty":
+                return error_response(e.message, error_type="empty")
+            if e.error_type in ["quota", "network"]:
+                raise HTTPException(status_code=503, detail=e.message)
+            raise HTTPException(status_code=500, detail=e.message)
+
+        # Include user's few-shot examples in the clarity prompt.
+        user_examples    = get_user_examples(user_id)
+        cleaned_transcript = clarity_transcript(raw_transcript, examples=user_examples)
+
+        # Background vocabulary and example updates — non-blocking.
+        try:
+            new_terms = extract_key_terms(cleaned_transcript)
+            if new_terms:
+                update_user_vocabulary(user_id, new_terms)
         except Exception as exc:
-            logger.warning("Voice profile matching failed (%s) — using default", exc)
-            profile = DEFAULT_PROFILE
-            synthesis_voice_id = DEFAULT_PROFILE.voice_id
+            logger.warning("Vocabulary update failed (non-fatal): %s", exc)
+
+        try:
+            store_user_example(user_id, raw_transcript, cleaned_transcript)
+        except Exception as exc:
+            logger.warning("Example storage failed (non-fatal): %s", exc)
+
+        if has_cloned_voice(user_id):
+            synthesis_voice_id = get_user_voice_id(user_id)
+            # Same settings as /enhance-text: lower similarity_boost reduces uncanny valley
+            # effect from PD speech artefacts in the clone samples.
             voice_settings = {
-                "stability": 0.50,
-                "similarity_boost": 0.75,
-                "style": 0.30,
-                "speed": 1.0,
+                "stability":        0.75,
+                "similarity_boost": 0.70,
+                "style":            0.05,
+                "speed":            1.0,
             }
+            profile = DEFAULT_PROFILE
+            logger.info("Using cloned voice for user %s", user_id[:8])
+        else:
+            logger.info("No cloned voice for user %s — using profile matching.", user_id[:8])
+            try:
+                profile, voice_settings = analyze_voice(
+                    str(audio_path), raw_transcript, audio_duration_s
+                )
+                synthesis_voice_id = profile.voice_id
+            except Exception as exc:
+                logger.warning("Voice profile matching failed (%s) — using default", exc)
+                profile = DEFAULT_PROFILE
+                synthesis_voice_id = DEFAULT_PROFILE.voice_id
+                voice_settings = {
+                    "stability": 0.50,
+                    "similarity_boost": 0.75,
+                    "style": 0.30,
+                    "speed": 1.0,
+                }
+    finally:
+        # Delete after all reads of audio_path (transcription + voice analysis) are done.
+        audio_path.unlink(missing_ok=True)
 
     audio_url = None
     try:
